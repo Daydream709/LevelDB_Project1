@@ -38,6 +38,12 @@ class WriteBatchInternal {
   static Status InsertInto(const WriteBatch* batch, MemTable* memtable);
 
   static void Append(WriteBatch* dst, const WriteBatch* src);
+
+  // Append an internal TTL operation. The deadline is an absolute Env time
+  // in microseconds, computed once when the DB accepts the TTL write.
+  static void PutWithExpiration(WriteBatch* batch, const Slice& key,
+                                const Slice& value,
+                                uint64_t expire_time_micros);
 };
 
 }  // namespace leveldb

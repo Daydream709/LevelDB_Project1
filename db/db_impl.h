@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <deque>
+#include <map>
 #include <set>
 #include <string>
 
@@ -39,6 +40,8 @@ class DBImpl : public DB {
   // Implementations of the DB interface
   Status Put(const WriteOptions&, const Slice& key,
              const Slice& value) override;
+  Status Put(const WriteOptions&, const Slice& key, const Slice& value,
+             uint64_t ttl) override;
   Status Delete(const WriteOptions&, const Slice& key) override;
   Status Write(const WriteOptions& options, WriteBatch* updates) override;
   Status Get(const ReadOptions& options, const Slice& key,
@@ -107,9 +110,13 @@ class DBImpl : public DB {
 
   Iterator* NewInternalIterator(const ReadOptions&,
                                 SequenceNumber* latest_snapshot,
+                                uint64_t* read_time_micros,
                                 uint32_t* seed);
 
   Status NewDB();
+  Status RebuildCurrentRecordCounts() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void ApplyRecordCountDeltas(const std::map<std::string, int64_t>& deltas)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Recover the descriptor from persistent storage.  May do a significant
   // amount of work to recover recently logged updates.  Any changes to
@@ -142,6 +149,8 @@ class DBImpl : public DB {
   void RecordBackgroundError(const Status& s);
 
   void MaybeScheduleCompaction() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status FindTTLCompactionCandidate(bool* found)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   static void BGWork(void* db);
   void BackgroundCall();
   void BackgroundCompaction() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -153,6 +162,9 @@ class DBImpl : public DB {
   Status OpenCompactionOutputFile(CompactionState* compact);
   Status FinishCompactionOutputFile(CompactionState* compact, Iterator* input);
   Status InstallCompactionResults(CompactionState* compact)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status RewriteBottomLevelRange(const Slice* begin, const Slice* end);
+  Status RewriteBottomLevelRangeLocked(const Slice* begin, const Slice* end)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   const Comparator* user_comparator() const {
@@ -192,12 +204,22 @@ class DBImpl : public DB {
 
   SnapshotList snapshots_ GUARDED_BY(mutex_);
 
+  // Exact physical record multiplicity for the installed Version and current
+  // memtables. Keys are compared by their original bytes, as required by the
+  // statistics API.
+  std::map<std::string, uint64_t> record_counts_ GUARDED_BY(mutex_);
+  uint64_t total_entries_ GUARDED_BY(mutex_) = 0;
+
   // Set of table files to protect from deletion because they are
   // part of ongoing compactions.
   std::set<uint64_t> pending_outputs_ GUARDED_BY(mutex_);
 
   // Has a background compaction been scheduled or is running?
   bool background_compaction_scheduled_ GUARDED_BY(mutex_);
+  bool bottom_rewrite_in_progress_ GUARDED_BY(mutex_) = false;
+  int ttl_compaction_level_ GUARDED_BY(mutex_) = -1;
+  std::string ttl_compaction_begin_ GUARDED_BY(mutex_);
+  std::string ttl_compaction_end_ GUARDED_BY(mutex_);
 
   ManualCompaction* manual_compaction_ GUARDED_BY(mutex_);
 

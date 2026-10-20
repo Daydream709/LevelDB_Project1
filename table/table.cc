@@ -4,6 +4,9 @@
 
 #include "leveldb/table.h"
 
+#include <cstring>
+#include <memory>
+
 #include "leveldb/cache.h"
 #include "leveldb/comparator.h"
 #include "leveldb/env.h"
@@ -14,6 +17,7 @@
 #include "table/format.h"
 #include "table/two_level_iterator.h"
 #include "util/coding.h"
+#include "util/crc32c.h"
 
 namespace leveldb {
 
@@ -33,6 +37,7 @@ struct Table::Rep {
 
   BlockHandle metaindex_handle;  // Handle to metaindex_block: saved from footer
   Block* index_block;
+  TableInternalStats internal_stats;
 };
 
 Status Table::Open(const Options& options, RandomAccessFile* file,
@@ -80,12 +85,6 @@ Status Table::Open(const Options& options, RandomAccessFile* file,
 }
 
 void Table::ReadMeta(const Footer& footer) {
-  if (rep_->options.filter_policy == nullptr) {
-    return;  // Do not need any metadata
-  }
-
-  // TODO(sanjay): Skip this if footer.metaindex_handle() size indicates
-  // it is an empty block.
   ReadOptions opt;
   if (rep_->options.paranoid_checks) {
     opt.verify_checksums = true;
@@ -98,14 +97,120 @@ void Table::ReadMeta(const Footer& footer) {
   Block* meta = new Block(contents);
 
   Iterator* iter = meta->NewIterator(BytewiseComparator());
-  std::string key = "filter.";
-  key.append(rep_->options.filter_policy->Name());
-  iter->Seek(key);
-  if (iter->Valid() && iter->key() == Slice(key)) {
-    ReadFilter(iter->value());
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    if (rep_->options.filter_policy != nullptr) {
+      std::string filter_key = "filter.";
+      filter_key.append(rep_->options.filter_policy->Name());
+      if (iter->key() == Slice(filter_key)) ReadFilter(iter->value());
+    }
+    if (iter->key() == Slice("leveldb.internal-stats.v1")) {
+      ReadInternalStats(iter->value());
+    }
   }
   delete iter;
   delete meta;
+}
+
+void Table::ReadInternalStats(const Slice& stats_handle_value) {
+  rep_->internal_stats.valid = false;
+  Slice handle_input = stats_handle_value;
+  BlockHandle handle;
+  if (!handle.DecodeFrom(&handle_input).ok()) return;
+
+  ReadOptions opt;
+  opt.verify_checksums = true;
+  BlockContents contents;
+  if (!ReadBlock(rep_->file, opt, handle, &contents).ok()) return;
+  std::unique_ptr<char[]> owner;
+  if (contents.heap_allocated) {
+    owner.reset(const_cast<char*>(contents.data.data()));
+  }
+  if (contents.data.size() < 4) return;
+
+  const size_t payload_size = contents.data.size() - 4;
+  const uint32_t checksum = DecodeFixed32(contents.data.data() + payload_size);
+  if (crc32c::Value(contents.data.data(), payload_size) != checksum) return;
+
+  Slice input(contents.data.data(), payload_size);
+  if (input.size() < 4 || std::memcmp(input.data(), "LDS1", 4) != 0) return;
+  input.remove_prefix(4);
+  if (input.size() < 4 + 8 * 4 + 16 * 8) return;
+  const uint32_t version = DecodeFixed32(input.data());
+  input.remove_prefix(4);
+  if (version != 1) return;
+
+  TableInternalStats stats;
+  stats.total_records = DecodeFixed64(input.data());
+  input.remove_prefix(8);
+  stats.ttl_records = DecodeFixed64(input.data());
+  input.remove_prefix(8);
+  stats.min_expire_time_micros = DecodeFixed64(input.data());
+  input.remove_prefix(8);
+  stats.max_expire_time_micros = DecodeFixed64(input.data());
+  input.remove_prefix(8);
+  uint64_t histogram_total = 0;
+  for (uint64_t& count : stats.expiration_histogram) {
+    count = DecodeFixed64(input.data());
+    input.remove_prefix(8);
+    histogram_total += count;
+  }
+
+  uint32_t key_count = 0;
+  if (!GetVarint32(&input, &key_count)) return;
+  uint64_t record_total = 0;
+  for (uint32_t i = 0; i < key_count; ++i) {
+    Slice key;
+    if (!GetLengthPrefixedSlice(&input, &key) || input.size() < 8) return;
+    const uint64_t count = DecodeFixed64(input.data());
+    input.remove_prefix(8);
+    if (count == 0 ||
+        !stats.key_counts.emplace(key.ToString(), count).second ||
+        record_total > UINT64_MAX - count) {
+      return;
+    }
+    record_total += count;
+  }
+  if (!input.empty() || record_total != stats.total_records ||
+      stats.ttl_records > stats.total_records ||
+      histogram_total != stats.ttl_records) {
+    return;
+  }
+  if (stats.ttl_records == 0) {
+    if (stats.min_expire_time_micros != 0 ||
+        stats.max_expire_time_micros != 0) {
+      return;
+    }
+  } else if (stats.min_expire_time_micros > stats.max_expire_time_micros) {
+    return;
+  }
+  stats.valid = true;
+  rep_->internal_stats = std::move(stats);
+}
+
+Status Table::GetInternalStats(TableInternalStats* stats) const {
+  if (stats == nullptr) {
+    return Status::InvalidArgument("table statistics output pointer is null");
+  }
+  *stats = rep_->internal_stats;
+  return Status::OK();
+}
+
+Status Table::GetTTLStats(TableInternalStats* stats) const {
+  if (stats == nullptr) {
+    return Status::InvalidArgument("table statistics output pointer is null");
+  }
+  stats->total_records = rep_->internal_stats.total_records;
+  stats->ttl_records = rep_->internal_stats.ttl_records;
+  stats->min_expire_time_micros =
+      rep_->internal_stats.min_expire_time_micros;
+  stats->max_expire_time_micros =
+      rep_->internal_stats.max_expire_time_micros;
+  for (size_t i = 0; i < 16; ++i) {
+    stats->expiration_histogram[i] =
+        rep_->internal_stats.expiration_histogram[i];
+  }
+  stats->valid = rep_->internal_stats.valid;
+  return Status::OK();
 }
 
 void Table::ReadFilter(const Slice& filter_handle_value) {

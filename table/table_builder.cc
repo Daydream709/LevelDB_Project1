@@ -5,6 +5,9 @@
 #include "leveldb/table_builder.h"
 
 #include <cassert>
+#include <algorithm>
+#include <map>
+#include <vector>
 
 #include "leveldb/comparator.h"
 #include "leveldb/env.h"
@@ -31,7 +34,10 @@ struct TableBuilder::Rep {
         filter_block(opt.filter_policy == nullptr
                          ? nullptr
                          : new FilterBlockBuilder(opt.filter_policy)),
-        pending_index_entry(false) {
+        pending_index_entry(false),
+        internal_stats_enabled(false),
+        internal_stats_total(0),
+        internal_stats_ttl(0) {
     index_block_options.block_restart_interval = 1;
   }
 
@@ -58,6 +64,15 @@ struct TableBuilder::Rep {
   // Invariant: r->pending_index_entry is true only if data_block is empty.
   bool pending_index_entry;
   BlockHandle pending_handle;  // Handle to add to index block
+
+  bool internal_stats_enabled;
+  uint64_t internal_stats_total;
+  uint64_t internal_stats_ttl;
+  uint64_t internal_stats_min_expire = 0;
+  uint64_t internal_stats_max_expire = 0;
+  uint64_t internal_stats_histogram[16] = {};
+  std::map<std::string, uint64_t> internal_key_counts;
+  std::vector<uint64_t> internal_expire_times;
 
   std::string compressed_output;
 };
@@ -95,6 +110,30 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
   Rep* r = rep_;
   assert(!r->closed);
   if (!ok()) return;
+  if (r->internal_stats_enabled) {
+    if (key.size() < 8) {
+      r->status = Status::Corruption(
+          "internal statistics enabled for a non-internal table key");
+      return;
+    }
+    const uint64_t tag = DecodeFixed64(key.data() + key.size() - 8);
+    const uint8_t type = static_cast<uint8_t>(tag & 0xff);
+    if (type > 2) {
+      r->status = Status::Corruption("invalid value type in table statistics");
+      return;
+    }
+    const Slice user_key(key.data(), key.size() - 8);
+    ++r->internal_stats_total;
+    ++r->internal_key_counts[user_key.ToString()];
+    if (type == 2) {
+      if (value.size() < 8) {
+        r->status = Status::Corruption("TTL value is shorter than its deadline");
+        return;
+      }
+      ++r->internal_stats_ttl;
+      r->internal_expire_times.push_back(DecodeFixed64(value.data()));
+    }
+  }
   if (r->num_entries > 0) {
     assert(r->options.comparator->Compare(key, Slice(r->last_key)) > 0);
   }
@@ -120,6 +159,11 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
   if (estimated_block_size >= r->options.block_size) {
     Flush();
   }
+}
+
+void TableBuilder::EnableInternalStatsMetadata() {
+  assert(!rep_->closed);
+  rep_->internal_stats_enabled = true;
 }
 
 void TableBuilder::Flush() {
@@ -216,7 +260,8 @@ Status TableBuilder::Finish() {
   assert(!r->closed);
   r->closed = true;
 
-  BlockHandle filter_block_handle, metaindex_block_handle, index_block_handle;
+  BlockHandle filter_block_handle, stats_block_handle, metaindex_block_handle,
+      index_block_handle;
 
   // Write filter block
   if (ok() && r->filter_block != nullptr) {
@@ -224,9 +269,48 @@ Status TableBuilder::Finish() {
                   &filter_block_handle);
   }
 
+  if (ok() && r->internal_stats_enabled) {
+    std::string stats;
+    stats.append("LDS1", 4);
+    PutFixed32(&stats, 1);
+    PutFixed64(&stats, r->internal_stats_total);
+    PutFixed64(&stats, r->internal_stats_ttl);
+    if (!r->internal_expire_times.empty()) {
+      const auto bounds = std::minmax_element(r->internal_expire_times.begin(),
+                                               r->internal_expire_times.end());
+      r->internal_stats_min_expire = *bounds.first;
+      r->internal_stats_max_expire = *bounds.second;
+      const long double span = static_cast<long double>(
+          r->internal_stats_max_expire - r->internal_stats_min_expire);
+      for (uint64_t expire_time : r->internal_expire_times) {
+        const long double offset = static_cast<long double>(
+            expire_time - r->internal_stats_min_expire);
+        const size_t bucket =
+            span == 0 ? 0 : std::min<size_t>(15, offset / span * 16);
+        ++r->internal_stats_histogram[bucket];
+      }
+    }
+    PutFixed64(&stats, r->internal_stats_min_expire);
+    PutFixed64(&stats, r->internal_stats_max_expire);
+    for (uint64_t count : r->internal_stats_histogram) {
+      PutFixed64(&stats, count);
+    }
+    PutVarint32(&stats,
+                static_cast<uint32_t>(r->internal_key_counts.size()));
+    for (const auto& item : r->internal_key_counts) {
+      PutLengthPrefixedSlice(&stats, item.first);
+      PutFixed64(&stats, item.second);
+    }
+    const uint32_t checksum = crc32c::Value(stats.data(), stats.size());
+    PutFixed32(&stats, checksum);
+    WriteRawBlock(stats, kNoCompression, &stats_block_handle);
+  }
+
   // Write metaindex block
   if (ok()) {
-    BlockBuilder meta_index_block(&r->options);
+    Options meta_options = r->options;
+    meta_options.comparator = BytewiseComparator();
+    BlockBuilder meta_index_block(&meta_options);
     if (r->filter_block != nullptr) {
       // Add mapping from "filter.Name" to location of filter data
       std::string key = "filter.";
@@ -236,7 +320,11 @@ Status TableBuilder::Finish() {
       meta_index_block.Add(key, handle_encoding);
     }
 
-    // TODO(postrelease): Add stats and other meta blocks
+    if (r->internal_stats_enabled) {
+      std::string handle_encoding;
+      stats_block_handle.EncodeTo(&handle_encoding);
+      meta_index_block.Add("leveldb.internal-stats.v1", handle_encoding);
+    }
     WriteBlock(&meta_index_block, &metaindex_block_handle);
   }
 

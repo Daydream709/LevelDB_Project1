@@ -46,11 +46,12 @@ class DBIter : public Iterator {
   enum Direction { kForward, kReverse };
 
   DBIter(DBImpl* db, const Comparator* cmp, Iterator* iter, SequenceNumber s,
-         uint32_t seed)
+         uint64_t read_time_micros, uint32_t seed)
       : db_(db),
         user_comparator_(cmp),
         iter_(iter),
         sequence_(s),
+        read_time_micros_(read_time_micros),
         direction_(kForward),
         valid_(false),
         rnd_(seed),
@@ -67,7 +68,15 @@ class DBIter : public Iterator {
   }
   Slice value() const override {
     assert(valid_);
-    return (direction_ == kForward) ? iter_->value() : saved_value_;
+    if (direction_ == kReverse) return saved_value_;
+    ParsedInternalKey ikey;
+    if (!ParseInternalKey(iter_->key(), &ikey) ||
+        ikey.type != kTypeValueWithTTL) {
+      return iter_->value();
+    }
+    Slice raw = iter_->value();
+    assert(raw.size() >= 8);
+    return Slice(raw.data() + 8, raw.size() - 8);
   }
   Status status() const override {
     if (status_.ok()) {
@@ -110,6 +119,7 @@ class DBIter : public Iterator {
   const Comparator* const user_comparator_;
   Iterator* const iter_;
   SequenceNumber const sequence_;
+  uint64_t const read_time_micros_;
   Status status_;
   std::string saved_key_;    // == current key when direction_==kReverse
   std::string saved_value_;  // == current raw value when direction_==kReverse
@@ -198,6 +208,27 @@ void DBIter::FindNextUserEntry(bool skipping, std::string* skip) {
             return;
           }
           break;
+        case kTypeValueWithTTL: {
+          Slice value = iter_->value();
+          if (value.size() < 8) {
+            status_ = Status::Corruption("TTL value is shorter than its deadline");
+            valid_ = false;
+            saved_key_.clear();
+            return;
+          }
+          if (read_time_micros_ >= DecodeFixed64(value.data())) {
+            SaveKey(ikey.user_key, skip);
+            skipping = true;
+          } else if (skipping &&
+                     user_comparator_->Compare(ikey.user_key, *skip) <= 0) {
+            // Hidden by a more recent value or deletion.
+          } else {
+            valid_ = true;
+            saved_key_.clear();
+            return;
+          }
+          break;
+        }
       }
     }
     iter_->Next();
@@ -252,6 +283,25 @@ void DBIter::FindPrevUserEntry() {
           ClearSavedValue();
         } else {
           Slice raw_value = iter_->value();
+          if (value_type == kTypeValueWithTTL) {
+            if (raw_value.size() < 8) {
+              status_ = Status::Corruption("TTL value is shorter than its deadline");
+              value_type = kTypeDeletion;
+              saved_key_.clear();
+              ClearSavedValue();
+              iter_->Prev();
+              continue;
+            }
+            if (read_time_micros_ >= DecodeFixed64(raw_value.data())) {
+              value_type = kTypeDeletion;
+              saved_key_.clear();
+              ClearSavedValue();
+              iter_->Prev();
+              continue;
+            }
+            raw_value.remove_prefix(8);
+            value_type = kTypeValue;
+          }
           if (saved_value_.capacity() > raw_value.size() + 1048576) {
             std::string empty;
             swap(empty, saved_value_);
@@ -311,8 +361,9 @@ void DBIter::SeekToLast() {
 
 Iterator* NewDBIterator(DBImpl* db, const Comparator* user_key_comparator,
                         Iterator* internal_iter, SequenceNumber sequence,
-                        uint32_t seed) {
-  return new DBIter(db, user_key_comparator, internal_iter, sequence, seed);
+                        uint64_t read_time_micros, uint32_t seed) {
+  return new DBIter(db, user_key_comparator, internal_iter, sequence,
+                    read_time_micros, seed);
 }
 
 }  // namespace leveldb

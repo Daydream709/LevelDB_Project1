@@ -73,7 +73,7 @@ class Version {
   // return OK.  Else return a non-OK status.  Fills *stats.
   // REQUIRES: lock is not held
   Status Get(const ReadOptions&, const LookupKey& key, std::string* val,
-             GetStats* stats);
+             uint64_t read_time_micros, GetStats* stats);
 
   // Adds "stats" into the current state.  Returns true if a new
   // compaction may need to be triggered, false otherwise.
@@ -110,6 +110,10 @@ class Version {
                                  const Slice& largest_user_key);
 
   int NumFiles(int level) const { return files_[level].size(); }
+  const std::vector<FileMetaData*>& files(int level) const {
+    assert(level >= 0 && level < config::kNumLevels);
+    return files_[level];
+  }
 
   // Return a human readable string that describes this version's contents.
   std::string DebugString() const;

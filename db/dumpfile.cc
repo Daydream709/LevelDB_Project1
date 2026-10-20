@@ -189,6 +189,21 @@ Status DumpTable(Env* env, const std::string& fname, WritableFile* dst) {
         r += "del";
       } else if (key.type == kTypeValue) {
         r += "val";
+      } else if (key.type == kTypeValueWithTTL) {
+        Slice raw_value = iter->value();
+        r += "ttl(";
+        if (raw_value.size() >= 8) {
+          AppendNumberTo(&r, DecodeFixed64(raw_value.data()));
+          raw_value.remove_prefix(8);
+        } else {
+          r += "corrupt";
+        }
+        r += ")";
+        r += " => '";
+        AppendEscapedStringTo(&r, raw_value);
+        r += "'\n";
+        dst->Append(r);
+        continue;
       } else {
         AppendNumberTo(&r, key.type);
       }

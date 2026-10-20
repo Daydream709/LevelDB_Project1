@@ -7,7 +7,8 @@
 //    count: fixed32
 //    data: record[count]
 // record :=
-//    kTypeValue varstring varstring         |
+//    kTypeValue varstring varstring                       |
+//    kTypeValueWithTTL varstring fixed64 varstring        |
 //    kTypeDeletion varstring
 // varstring :=
 //    len: varint32
@@ -61,6 +62,19 @@ Status WriteBatch::Iterate(Handler* handler) const {
           return Status::Corruption("bad WriteBatch Put");
         }
         break;
+      case kTypeValueWithTTL: {
+        uint64_t expire_time_micros;
+        if (!GetLengthPrefixedSlice(&input, &key) || input.size() < 8) {
+          return Status::Corruption("bad WriteBatch TTL Put");
+        }
+        expire_time_micros = DecodeFixed64(input.data());
+        input.remove_prefix(8);
+        if (!GetLengthPrefixedSlice(&input, &value)) {
+          return Status::Corruption("bad WriteBatch TTL Put");
+        }
+        handler->PutWithTTL(key, value, expire_time_micros);
+        break;
+      }
       case kTypeDeletion:
         if (GetLengthPrefixedSlice(&input, &key)) {
           handler->Delete(key);
@@ -108,6 +122,17 @@ void WriteBatch::Delete(const Slice& key) {
   PutLengthPrefixedSlice(&rep_, key);
 }
 
+void WriteBatchInternal::PutWithExpiration(WriteBatch* batch,
+                                           const Slice& key,
+                                           const Slice& value,
+                                           uint64_t expire_time_micros) {
+  SetCount(batch, Count(batch) + 1);
+  batch->rep_.push_back(static_cast<char>(kTypeValueWithTTL));
+  PutLengthPrefixedSlice(&batch->rep_, key);
+  PutFixed64(&batch->rep_, expire_time_micros);
+  PutLengthPrefixedSlice(&batch->rep_, value);
+}
+
 void WriteBatch::Append(const WriteBatch& source) {
   WriteBatchInternal::Append(this, &source);
 }
@@ -120,6 +145,14 @@ class MemTableInserter : public WriteBatch::Handler {
 
   void Put(const Slice& key, const Slice& value) override {
     mem_->Add(sequence_, kTypeValue, key, value);
+    sequence_++;
+  }
+  void PutWithTTL(const Slice& key, const Slice& value,
+                  uint64_t expire_time_micros) override {
+    std::string encoded;
+    PutFixed64(&encoded, expire_time_micros);
+    encoded.append(value.data(), value.size());
+    mem_->Add(sequence_, kTypeValueWithTTL, key, encoded);
     sequence_++;
   }
   void Delete(const Slice& key) override {

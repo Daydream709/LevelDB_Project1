@@ -303,6 +303,7 @@ class Repairer {
       return;
     }
     TableBuilder* builder = new TableBuilder(options_, file);
+    builder->EnableInternalStatsMetadata();
 
     // Copy data.
     Iterator* iter = NewTableIterator(t.meta);

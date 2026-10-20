@@ -8,6 +8,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 #include <set>
 #include <string>
 #include <vector>
@@ -64,6 +65,7 @@ struct DBImpl::CompactionState {
   explicit CompactionState(Compaction* c)
       : compaction(c),
         smallest_snapshot(0),
+        smallest_snapshot_time_micros(0),
         outfile(nullptr),
         builder(nullptr),
         total_bytes(0) {}
@@ -75,6 +77,7 @@ struct DBImpl::CompactionState {
   // Therefore if we have seen a sequence number S <= smallest_snapshot,
   // we can drop all entries for the same key with sequence numbers < S.
   SequenceNumber smallest_snapshot;
+  uint64_t smallest_snapshot_time_micros;
 
   std::vector<Output> outputs;
 
@@ -83,7 +86,21 @@ struct DBImpl::CompactionState {
   TableBuilder* builder;
 
   uint64_t total_bytes;
+  std::map<std::string, int64_t> record_deltas;
 };
+
+namespace {
+class CountBatchKeys : public WriteBatch::Handler {
+ public:
+  void Put(const Slice& key, const Slice&) override { ++counts_[key.ToString()]; }
+  void Delete(const Slice& key) override { ++counts_[key.ToString()]; }
+
+  const std::map<std::string, uint64_t>& counts() const { return counts_; }
+
+ private:
+  std::map<std::string, uint64_t> counts_;
+};
+}  // namespace
 
 // Fix user-supplied options to be reasonable
 template <class T, class V>
@@ -382,6 +399,90 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
   return Status::OK();
 }
 
+Status DBImpl::RebuildCurrentRecordCounts() {
+  mutex_.AssertHeld();
+  std::map<std::string, uint64_t> counts;
+  uint64_t total = 0;
+  auto add_internal_iterator = [&](Iterator* iter) -> Status {
+    iter->SeekToFirst();
+    while (iter->Valid()) {
+      ParsedInternalKey key;
+      if (!ParseInternalKey(iter->key(), &key)) {
+        Status status =
+            Status::Corruption("invalid internal key while rebuilding statistics");
+        delete iter;
+        return status;
+      }
+      ++counts[key.user_key.ToString()];
+      ++total;
+      iter->Next();
+    }
+    Status status = iter->status();
+    delete iter;
+    return status;
+  };
+
+  Status status = add_internal_iterator(mem_->NewIterator());
+  if (status.ok() && imm_ != nullptr) {
+    status = add_internal_iterator(imm_->NewIterator());
+  }
+  Version* current = versions_->current();
+  for (int level = 0; status.ok() && level < config::kNumLevels; ++level) {
+    for (FileMetaData* file : current->files(level)) {
+      TableInternalStats stats;
+      status = table_cache_->GetInternalStats(file->number, file->file_size,
+                                              &stats);
+      if (!status.ok()) break;
+      if (stats.valid) {
+        for (const auto& item : stats.key_counts) {
+          counts[item.first] += item.second;
+          total += item.second;
+        }
+      } else {
+        ReadOptions scan_options;
+        scan_options.verify_checksums = true;
+        status = add_internal_iterator(table_cache_->NewIterator(
+            scan_options, file->number, file->file_size));
+        if (!status.ok()) break;
+      }
+    }
+  }
+  if (!status.ok()) return status;
+  record_counts_.swap(counts);
+  total_entries_ = total;
+  return Status::OK();
+}
+
+void DBImpl::ApplyRecordCountDeltas(
+    const std::map<std::string, int64_t>& deltas) {
+  mutex_.AssertHeld();
+  for (const auto& item : deltas) {
+    const std::string& key = item.first;
+    const int64_t delta = item.second;
+    if (delta == 0) continue;
+    auto it = record_counts_.find(key);
+    const uint64_t old_count = it == record_counts_.end() ? 0 : it->second;
+    if (delta > 0) {
+      if (it == record_counts_.end()) {
+        record_counts_.emplace(key, static_cast<uint64_t>(delta));
+      } else {
+        it->second += static_cast<uint64_t>(delta);
+      }
+      total_entries_ += static_cast<uint64_t>(delta);
+    } else {
+      const uint64_t remove_count = static_cast<uint64_t>(-delta);
+      assert(old_count >= remove_count);
+      assert(total_entries_ >= remove_count);
+      if (old_count == remove_count) {
+        record_counts_.erase(key);
+      } else {
+        it->second -= remove_count;
+      }
+      total_entries_ -= remove_count;
+    }
+  }
+}
+
 Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
                               bool* save_manifest, VersionEdit* edit,
                               SequenceNumber* max_sequence) {
@@ -502,8 +603,16 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
   return status;
 }
 
-Status DBImpl::GetCurrentStats(const ReadOptions& options, Stats* stats){
-  return DB::GetCurrentStats(options, stats);
+Status DBImpl::GetCurrentStats(const ReadOptions& options, Stats* stats) {
+  (void)options;
+  if (stats == nullptr) {
+    return Status::InvalidArgument("statistics output pointer is null");
+  }
+  MutexLock l(&mutex_);
+  stats->total_entries = total_entries_;
+  stats->distinct_keys = record_counts_.size();
+  stats->seq = versions_->LastSequence();
+  return Status::OK();
 }
 
 Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
@@ -598,6 +707,187 @@ void DBImpl::CompactRange(const Slice* begin, const Slice* end) {
   for (int level = 0; level < max_level_with_files; level++) {
     TEST_CompactRange(level, begin, end);
   }
+  Status status = RewriteBottomLevelRange(begin, end);
+  if (!status.ok()) {
+    MutexLock l(&mutex_);
+    RecordBackgroundError(status);
+  }
+}
+
+Status DBImpl::RewriteBottomLevelRange(const Slice* begin, const Slice* end) {
+  mutex_.Lock();
+  while (background_compaction_scheduled_ && bg_error_.ok() &&
+         !shutting_down_.load(std::memory_order_acquire)) {
+    background_work_finished_signal_.Wait();
+  }
+  if (!bg_error_.ok()) {
+    Status status = bg_error_;
+    mutex_.Unlock();
+    return status;
+  }
+  if (shutting_down_.load(std::memory_order_acquire)) {
+    mutex_.Unlock();
+    return Status::IOError("DB is shutting down");
+  }
+  Status status = RewriteBottomLevelRangeLocked(begin, end);
+  if (status.ok()) MaybeScheduleCompaction();
+  mutex_.Unlock();
+  return status;
+}
+
+Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
+                                              const Slice* end) {
+  mutex_.AssertHeld();
+  if (!bg_error_.ok()) return bg_error_;
+  if (shutting_down_.load(std::memory_order_acquire)) {
+    return Status::IOError("DB is shutting down");
+  }
+  bottom_rewrite_in_progress_ = true;
+  const int bottom_level = config::kNumLevels - 1;
+  Version* base = versions_->current();
+  const std::vector<FileMetaData*>& files = base->files(bottom_level);
+  if (files.empty()) {
+    bottom_rewrite_in_progress_ = false;
+    return Status::OK();
+  }
+
+  std::vector<Iterator*> children;
+  children.reserve(files.size());
+  for (FileMetaData* file : files) {
+    children.push_back(table_cache_->NewIterator(ReadOptions(), file->number,
+                                                 file->file_size));
+  }
+  Iterator* input = NewMergingIterator(&internal_comparator_, children.data(),
+                                      children.size());
+  const bool preserve_snapshots = !snapshots_.empty();
+  const uint64_t read_time_micros = env_->NowMicros();
+
+  VersionEdit edit;
+  for (FileMetaData* file : files) edit.RemoveFile(bottom_level, file->number);
+
+  FileMetaData output_meta;
+  WritableFile* outfile = nullptr;
+  TableBuilder* builder = nullptr;
+  std::map<std::string, int64_t> deltas;
+  std::string current_user_key;
+  bool have_user_key = false;
+  bool current_key_in_range = false;
+  bool keep_current_key = false;
+  Status status = Status::OK();
+
+  input->SeekToFirst();
+  while (input->Valid()) {
+    const Slice internal_key = input->key();
+    ParsedInternalKey parsed;
+    if (!ParseInternalKey(internal_key, &parsed)) {
+      status = Status::Corruption(
+          "invalid internal key in bottom-level rewrite");
+      break;
+    }
+    --deltas[parsed.user_key.ToString()];
+
+    const bool new_user_key =
+        !have_user_key ||
+        user_comparator()->Compare(parsed.user_key, Slice(current_user_key)) !=
+            0;
+    if (new_user_key) {
+      current_user_key.assign(parsed.user_key.data(), parsed.user_key.size());
+      have_user_key = true;
+      current_key_in_range =
+          (begin == nullptr ||
+           user_comparator()->Compare(parsed.user_key, *begin) >= 0) &&
+          (end == nullptr ||
+           user_comparator()->Compare(parsed.user_key, *end) <= 0);
+      keep_current_key = true;
+      if (!preserve_snapshots && current_key_in_range) {
+        bool has_higher_level_data = false;
+        for (int level = 0; level < bottom_level; ++level) {
+          if (base->OverlapInLevel(level, &parsed.user_key, &parsed.user_key)) {
+            has_higher_level_data = true;
+            break;
+          }
+        }
+        if (parsed.type == kTypeDeletion && !has_higher_level_data) {
+          keep_current_key = false;
+        } else if (parsed.type == kTypeValueWithTTL &&
+                   !has_higher_level_data) {
+          const Slice raw_value = input->value();
+          if (raw_value.size() < 8) {
+            status = Status::Corruption(
+                "TTL value is shorter than its deadline during rewrite");
+            break;
+          }
+          keep_current_key =
+              read_time_micros < DecodeFixed64(raw_value.data());
+        }
+      }
+    }
+
+    const bool keep =
+        !current_key_in_range || preserve_snapshots || keep_current_key;
+    if (keep) {
+      if (builder == nullptr) {
+        output_meta.number = versions_->NewFileNumber();
+        pending_outputs_.insert(output_meta.number);
+        status = env_->NewWritableFile(
+            TableFileName(dbname_, output_meta.number), &outfile);
+        if (!status.ok()) break;
+        builder = new TableBuilder(options_, outfile);
+        builder->EnableInternalStatsMetadata();
+      }
+      if (builder->NumEntries() == 0) {
+        output_meta.smallest.DecodeFrom(internal_key);
+      }
+      output_meta.largest.DecodeFrom(internal_key);
+      builder->Add(internal_key, input->value());
+      ++deltas[parsed.user_key.ToString()];
+    }
+    input->Next();
+  }
+  if (status.ok()) status = input->status();
+  delete input;
+
+  if (builder != nullptr) {
+    if (status.ok()) {
+      status = builder->Finish();
+    } else {
+      builder->Abandon();
+    }
+    output_meta.file_size = builder->FileSize();
+    delete builder;
+    builder = nullptr;
+  }
+  if (outfile != nullptr) {
+    if (status.ok()) status = outfile->Sync();
+    if (status.ok()) status = outfile->Close();
+    delete outfile;
+    outfile = nullptr;
+  }
+  if (status.ok() && output_meta.number != 0) {
+    Iterator* verify = table_cache_->NewIterator(
+        ReadOptions(), output_meta.number, output_meta.file_size);
+    status = verify->status();
+    delete verify;
+    if (status.ok()) {
+      edit.AddFile(bottom_level, output_meta.number, output_meta.file_size,
+                   output_meta.smallest, output_meta.largest);
+    }
+  }
+
+  if (status.ok()) {
+    status = versions_->LogAndApply(&edit, &mutex_);
+    if (status.ok()) ApplyRecordCountDeltas(deltas);
+  }
+  if (output_meta.number != 0) {
+    pending_outputs_.erase(output_meta.number);
+    if (!status.ok()) {
+      table_cache_->Evict(output_meta.number);
+      env_->RemoveFile(TableFileName(dbname_, output_meta.number));
+    }
+  }
+  if (status.ok()) RemoveObsoleteFiles();
+  bottom_rewrite_in_progress_ = false;
+  return status;
 }
 
 void DBImpl::TEST_CompactRange(int level, const Slice* begin,
@@ -668,6 +958,146 @@ void DBImpl::RecordBackgroundError(const Status& s) {
   }
 }
 
+Status DBImpl::FindTTLCompactionCandidate(bool* found) {
+  mutex_.AssertHeld();
+  *found = false;
+  // Background scheduling is opportunistic and conservative. Explicit
+  // compactions still use the sequence/time snapshot bounds, while automatic
+  // TTL work waits for snapshots to be released so it cannot spin on a record
+  // whose older view is still protected.
+  if (!snapshots_.empty()) return Status::OK();
+  const uint64_t now = env_->NowMicros();
+  const uint64_t safe_time = snapshots_.oldest_read_time_micros(now);
+  Version* current = versions_->current();
+  double best_score = -1.0;
+  int best_level = -1;
+  std::string best_begin;
+  std::string best_end;
+
+  for (int level = 0; level < config::kNumLevels; ++level) {
+    for (FileMetaData* file : current->files(level)) {
+      TableInternalStats stats;
+      Status status = table_cache_->GetTTLStats(
+          file->number, file->file_size, &stats);
+      if (!status.ok()) return status;
+
+      if (!stats.valid) {
+        std::vector<uint64_t> expirations;
+        ReadOptions scan_options;
+        scan_options.verify_checksums = true;
+        Iterator* iter = table_cache_->NewIterator(
+            scan_options, file->number, file->file_size);
+        uint64_t total = 0;
+        Status scan_status = Status::OK();
+        for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+          ParsedInternalKey key;
+          if (!ParseInternalKey(iter->key(), &key)) {
+            scan_status = Status::Corruption(
+                "invalid internal key while scanning TTL summary");
+            break;
+          }
+          ++total;
+          if (key.type == kTypeValueWithTTL) {
+            Slice value = iter->value();
+            if (value.size() < 8) {
+              scan_status = Status::Corruption(
+                  "TTL value is shorter than its deadline while scanning summary");
+              break;
+            }
+            expirations.push_back(DecodeFixed64(value.data()));
+          }
+        }
+        if (scan_status.ok()) scan_status = iter->status();
+        delete iter;
+        if (!scan_status.ok()) return scan_status;
+        stats.total_records = total;
+        stats.ttl_records = expirations.size();
+        if (!expirations.empty()) {
+          const auto bounds = std::minmax_element(expirations.begin(),
+                                                   expirations.end());
+          stats.min_expire_time_micros = *bounds.first;
+          stats.max_expire_time_micros = *bounds.second;
+          const long double span = static_cast<long double>(
+              stats.max_expire_time_micros - stats.min_expire_time_micros);
+          for (uint64_t expiry : expirations) {
+            const long double offset = static_cast<long double>(
+                expiry - stats.min_expire_time_micros);
+            const size_t bucket =
+                span == 0 ? 0 : std::min<size_t>(15, offset / span * 16);
+            ++stats.expiration_histogram[bucket];
+          }
+        }
+      }
+
+      if (stats.total_records == 0 || stats.ttl_records == 0 ||
+          safe_time < stats.min_expire_time_micros) {
+        continue;
+      }
+      uint64_t expired_estimate = 0;
+      if (safe_time >= stats.max_expire_time_micros) {
+        expired_estimate = stats.ttl_records;
+      } else {
+        const long double span = static_cast<long double>(
+            stats.max_expire_time_micros - stats.min_expire_time_micros);
+        for (size_t bucket = 0; bucket < 16; ++bucket) {
+          const uint64_t upper = static_cast<uint64_t>(
+              stats.min_expire_time_micros +
+              span * static_cast<long double>(bucket + 1) / 16.0L);
+          if (upper <= safe_time) {
+            expired_estimate += stats.expiration_histogram[bucket];
+          }
+        }
+      }
+      const bool aged =
+          safe_time >= stats.min_expire_time_micros &&
+          safe_time - stats.min_expire_time_micros >= 60ULL * 1000000ULL;
+      const double expired_ratio =
+          static_cast<double>(expired_estimate) / stats.total_records;
+      if (expired_estimate == 0 || (!aged && expired_ratio < 0.30)) continue;
+
+      int target_level = level;
+      const Slice smallest = file->smallest.user_key();
+      const Slice largest = file->largest.user_key();
+      for (int upper_level = 0; upper_level < level; ++upper_level) {
+        if (current->OverlapInLevel(upper_level, &smallest, &largest)) {
+          target_level = upper_level;
+          break;
+        }
+      }
+      if (target_level == config::kNumLevels - 1 && !snapshots_.empty()) {
+        continue;
+      }
+
+      uint64_t estimated_io = file->file_size;
+      if (target_level + 1 < config::kNumLevels) {
+        for (FileMetaData* overlap : current->files(target_level + 1)) {
+          if (user_comparator()->Compare(overlap->largest.user_key(), smallest) >= 0 &&
+              user_comparator()->Compare(overlap->smallest.user_key(), largest) <= 0) {
+            estimated_io += overlap->file_size;
+          }
+        }
+      }
+      const double score =
+          static_cast<double>(file->file_size) * expired_ratio /
+          std::max<uint64_t>(estimated_io, 1);
+      if (score > best_score) {
+        best_score = score;
+        best_level = target_level;
+        best_begin.assign(smallest.data(), smallest.size());
+        best_end.assign(largest.data(), largest.size());
+      }
+    }
+  }
+
+  if (best_level >= 0) {
+    ttl_compaction_level_ = best_level;
+    ttl_compaction_begin_.swap(best_begin);
+    ttl_compaction_end_.swap(best_end);
+    *found = true;
+  }
+  return Status::OK();
+}
+
 void DBImpl::MaybeScheduleCompaction() {
   mutex_.AssertHeld();
   if (background_compaction_scheduled_) {
@@ -676,9 +1106,19 @@ void DBImpl::MaybeScheduleCompaction() {
     // DB is being deleted; no more background compactions
   } else if (!bg_error_.ok()) {
     // Already got an error; no more changes
+  } else if (bottom_rewrite_in_progress_) {
+    // A same-level bottom rewrite owns the current Version until its
+    // replacement is installed.
   } else if (imm_ == nullptr && manual_compaction_ == nullptr &&
              !versions_->NeedsCompaction()) {
-    // No work to be done
+    bool ttl_candidate = false;
+    Status status = FindTTLCompactionCandidate(&ttl_candidate);
+    if (!status.ok()) {
+      RecordBackgroundError(status);
+    } else if (ttl_candidate) {
+      background_compaction_scheduled_ = true;
+      env_->Schedule(&DBImpl::BGWork, this);
+    }
   } else {
     background_compaction_scheduled_ = true;
     env_->Schedule(&DBImpl::BGWork, this);
@@ -716,9 +1156,14 @@ void DBImpl::BackgroundCompaction() {
     return;
   }
 
-  Compaction* c;
+  Compaction* c = nullptr;
   bool is_manual = (manual_compaction_ != nullptr);
+  bool is_ttl_compaction = false;
+  bool ttl_bottom_rewrite = false;
   InternalKey manual_end;
+  InternalKey ttl_begin;
+  InternalKey ttl_end;
+  Status status;
   if (is_manual) {
     ManualCompaction* m = manual_compaction_;
     c = versions_->CompactRange(m->level, m->begin, m->end);
@@ -731,14 +1176,34 @@ void DBImpl::BackgroundCompaction() {
         m->level, (m->begin ? m->begin->DebugString().c_str() : "(begin)"),
         (m->end ? m->end->DebugString().c_str() : "(end)"),
         (m->done ? "(end)" : manual_end.DebugString().c_str()));
+  } else if (ttl_compaction_level_ >= 0) {
+    const int level = ttl_compaction_level_;
+    const std::string begin = ttl_compaction_begin_;
+    const std::string end = ttl_compaction_end_;
+    ttl_compaction_level_ = -1;
+    ttl_compaction_begin_.clear();
+    ttl_compaction_end_.clear();
+    if (level == config::kNumLevels - 1) {
+      const Slice begin_slice(begin);
+      const Slice end_slice(end);
+      status = RewriteBottomLevelRangeLocked(&begin_slice, &end_slice);
+      ttl_bottom_rewrite = true;
+      if (!status.ok()) RecordBackgroundError(status);
+    } else {
+      ttl_begin = InternalKey(begin, kMaxSequenceNumber, kValueTypeForSeek);
+      ttl_end = InternalKey(end, 0, static_cast<ValueType>(0));
+      c = versions_->CompactRange(level, &ttl_begin, &ttl_end);
+      is_ttl_compaction = true;
+    }
   } else {
     c = versions_->PickCompaction();
   }
 
-  Status status;
-  if (c == nullptr) {
+  if (ttl_bottom_rewrite) {
+    // The same-level rewrite already installed its Version edit.
+  } else if (c == nullptr) {
     // Nothing to do
-  } else if (!is_manual && c->IsTrivialMove()) {
+  } else if (!is_manual && !is_ttl_compaction && c->IsTrivialMove()) {
     // Move file to next level
     assert(c->num_input_files(0) == 1);
     FileMetaData* f = c->input(0, 0);
@@ -827,6 +1292,7 @@ Status DBImpl::OpenCompactionOutputFile(CompactionState* compact) {
   Status s = env_->NewWritableFile(fname, &compact->outfile);
   if (s.ok()) {
     compact->builder = new TableBuilder(options_, compact->outfile);
+    compact->builder->EnableInternalStatsMetadata();
   }
   return s;
 }
@@ -895,7 +1361,10 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
     compact->compaction->edit()->AddFile(level + 1, out.number, out.file_size,
                                          out.smallest, out.largest);
   }
-  return versions_->LogAndApply(compact->compaction->edit(), &mutex_);
+  Status status =
+      versions_->LogAndApply(compact->compaction->edit(), &mutex_);
+  if (status.ok()) ApplyRecordCountDeltas(compact->record_deltas);
+  return status;
 }
 
 Status DBImpl::DoCompactionWork(CompactionState* compact) {
@@ -915,6 +1384,9 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   } else {
     compact->smallest_snapshot = snapshots_.oldest()->sequence_number();
   }
+  const uint64_t compaction_time_micros = env_->NowMicros();
+  compact->smallest_snapshot_time_micros =
+      snapshots_.oldest_read_time_micros(compaction_time_micros);
 
   Iterator* input = versions_->MakeInputIterator(compact->compaction);
 
@@ -942,6 +1414,11 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     }
 
     Slice key = input->key();
+    if (key.size() < 8) {
+      status = Status::Corruption("internal key is too short during compaction");
+      break;
+    }
+    --compact->record_deltas[ExtractUserKey(key).ToString()];
     if (compact->compaction->ShouldStopBefore(key) &&
         compact->builder != nullptr) {
       status = FinishCompactionOutputFile(compact, input);
@@ -981,6 +1458,21 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         //     few iterations of this loop (by rule (A) above).
         // Therefore this deletion marker is obsolete and can be dropped.
         drop = true;
+      } else if (ikey.type == kTypeValueWithTTL &&
+                 ikey.sequence <= compact->smallest_snapshot &&
+                 compact->compaction->IsBaseLevelForKey(ikey.user_key)) {
+        const Slice raw_value = input->value();
+        if (raw_value.size() < 8) {
+          status = Status::Corruption(
+              "TTL value is shorter than its deadline during compaction");
+          break;
+        }
+        if (DecodeFixed64(raw_value.data()) <=
+            compact->smallest_snapshot_time_micros) {
+          // The expired value acts as a deletion barrier. Older records in
+          // this compaction are hidden by the normal sequence rule above.
+          drop = true;
+        }
       }
 
       last_sequence_for_key = ikey.sequence;
@@ -1008,6 +1500,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       }
       compact->current_output()->largest.DecodeFrom(key);
       compact->builder->Add(key, input->value());
+      ++compact->record_deltas[ExtractUserKey(key).ToString()];
 
       // Close output file if it is big enough
       if (compact->builder->FileSize() >=
@@ -1085,9 +1578,11 @@ static void CleanupIteratorState(void* arg1, void* arg2) {
 
 Iterator* DBImpl::NewInternalIterator(const ReadOptions& options,
                                       SequenceNumber* latest_snapshot,
+                                      uint64_t* read_time_micros,
                                       uint32_t* seed) {
   mutex_.Lock();
   *latest_snapshot = versions_->LastSequence();
+  *read_time_micros = env_->NowMicros();
 
   // Collect together all needed child iterators
   std::vector<Iterator*> list;
@@ -1112,8 +1607,10 @@ Iterator* DBImpl::NewInternalIterator(const ReadOptions& options,
 
 Iterator* DBImpl::TEST_NewInternalIterator() {
   SequenceNumber ignored;
+  uint64_t ignored_time;
   uint32_t ignored_seed;
-  return NewInternalIterator(ReadOptions(), &ignored, &ignored_seed);
+  return NewInternalIterator(ReadOptions(), &ignored, &ignored_time,
+                             &ignored_seed);
 }
 
 int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes() {
@@ -1126,11 +1623,14 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
   Status s;
   MutexLock l(&mutex_);
   SequenceNumber snapshot;
+  uint64_t read_time_micros;
   if (options.snapshot != nullptr) {
-    snapshot =
-        static_cast<const SnapshotImpl*>(options.snapshot)->sequence_number();
+    const auto* snap = static_cast<const SnapshotImpl*>(options.snapshot);
+    snapshot = snap->sequence_number();
+    read_time_micros = snap->read_time_micros();
   } else {
     snapshot = versions_->LastSequence();
+    read_time_micros = env_->NowMicros();
   }
 
   MemTable* mem = mem_;
@@ -1148,12 +1648,13 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
     mutex_.Unlock();
     // First look in the memtable, then in the immutable memtable (if any).
     LookupKey lkey(key, snapshot);
-    if (mem->Get(lkey, value, &s)) {
+    if (mem->Get(lkey, read_time_micros, value, &s)) {
       // Done
-    } else if (imm != nullptr && imm->Get(lkey, value, &s)) {
+    } else if (imm != nullptr &&
+               imm->Get(lkey, read_time_micros, value, &s)) {
       // Done
     } else {
-      s = current->Get(options, lkey, value, &stats);
+      s = current->Get(options, lkey, value, read_time_micros, &stats);
       have_stat_update = true;
     }
     mutex_.Lock();
@@ -1170,14 +1671,19 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
 
 Iterator* DBImpl::NewIterator(const ReadOptions& options) {
   SequenceNumber latest_snapshot;
+  uint64_t latest_read_time_micros;
   uint32_t seed;
-  Iterator* iter = NewInternalIterator(options, &latest_snapshot, &seed);
+  Iterator* iter = NewInternalIterator(options, &latest_snapshot,
+                                       &latest_read_time_micros, &seed);
+  SequenceNumber sequence = latest_snapshot;
+  uint64_t read_time_micros = latest_read_time_micros;
+  if (options.snapshot != nullptr) {
+    const auto* snap = static_cast<const SnapshotImpl*>(options.snapshot);
+    sequence = snap->sequence_number();
+    read_time_micros = snap->read_time_micros();
+  }
   return NewDBIterator(this, user_comparator(), iter,
-                       (options.snapshot != nullptr
-                            ? static_cast<const SnapshotImpl*>(options.snapshot)
-                                  ->sequence_number()
-                            : latest_snapshot),
-                       seed);
+                       sequence, read_time_micros, seed);
 }
 
 void DBImpl::RecordReadSample(Slice key) {
@@ -1189,12 +1695,13 @@ void DBImpl::RecordReadSample(Slice key) {
 
 const Snapshot* DBImpl::GetSnapshot() {
   MutexLock l(&mutex_);
-  return snapshots_.New(versions_->LastSequence());
+  return snapshots_.New(versions_->LastSequence(), env_->NowMicros());
 }
 
 void DBImpl::ReleaseSnapshot(const Snapshot* snapshot) {
   MutexLock l(&mutex_);
   snapshots_.Delete(static_cast<const SnapshotImpl*>(snapshot));
+  MaybeScheduleCompaction();
 }
 
 // Convenience methods
@@ -1202,11 +1709,34 @@ Status DBImpl::Put(const WriteOptions& o, const Slice& key, const Slice& val) {
   return DB::Put(o, key, val);
 }
 
+Status DBImpl::Put(const WriteOptions& options, const Slice& key,
+                   const Slice& value, uint64_t ttl) {
+  const uint64_t now = env_->NowMicros();
+  const uint64_t scale = 1000000;
+  if (ttl > std::numeric_limits<uint64_t>::max() / scale) {
+    return Status::InvalidArgument("TTL seconds overflow microseconds");
+  }
+  const uint64_t ttl_micros = ttl * scale;
+  if (now > std::numeric_limits<uint64_t>::max() - ttl_micros) {
+    return Status::InvalidArgument("TTL deadline overflows Env time");
+  }
+  WriteBatch batch;
+  WriteBatchInternal::PutWithExpiration(&batch, key, value,
+                                        now + ttl_micros);
+  return Write(options, &batch);
+}
+
 Status DBImpl::Delete(const WriteOptions& options, const Slice& key) {
   return DB::Delete(options, key);
 }
 
 Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
+  if (updates != nullptr) {
+    CountBatchKeys validation;
+    Status validation_status = updates->Iterate(&validation);
+    if (!validation_status.ok()) return validation_status;
+  }
+
   Writer w(&mutex_);
   w.batch = updates;
   w.sync = options.sync;
@@ -1227,37 +1757,54 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
   Writer* last_writer = &w;
   if (status.ok() && updates != nullptr) {  // nullptr batch is for compactions
     WriteBatch* write_batch = BuildBatchGroup(&last_writer);
-    WriteBatchInternal::SetSequence(write_batch, last_sequence + 1);
-    last_sequence += WriteBatchInternal::Count(write_batch);
+    bool sequence_assigned = false;
+    CountBatchKeys batch_counts;
+    status = write_batch->Iterate(&batch_counts);
+    const uint64_t batch_count =
+        static_cast<uint64_t>(WriteBatchInternal::Count(write_batch));
+    if (status.ok() && batch_count > kMaxSequenceNumber - last_sequence) {
+      status = Status::InvalidArgument("sequence number space exhausted");
+    }
+    if (status.ok()) {
+      WriteBatchInternal::SetSequence(
+          write_batch, batch_count == 0 ? last_sequence : last_sequence + 1);
+      last_sequence += batch_count;
+      sequence_assigned = true;
 
-    // Add to log and apply to memtable.  We can release the lock
-    // during this phase since &w is currently responsible for logging
-    // and protects against concurrent loggers and concurrent writes
-    // into mem_.
-    {
-      mutex_.Unlock();
-      status = log_->AddRecord(WriteBatchInternal::Contents(write_batch));
-      bool sync_error = false;
-      if (status.ok() && options.sync) {
-        status = logfile_->Sync();
-        if (!status.ok()) {
-          sync_error = true;
+      // Add to log and apply to memtable. We can release the lock during this
+      // phase since this writer owns the front of the queue.
+      {
+        mutex_.Unlock();
+        status = log_->AddRecord(WriteBatchInternal::Contents(write_batch));
+        bool sync_error = false;
+        if (status.ok() && options.sync) {
+          status = logfile_->Sync();
+          if (!status.ok()) {
+            sync_error = true;
+          }
+        }
+        if (status.ok()) {
+          status = WriteBatchInternal::InsertInto(write_batch, mem_);
+        }
+        mutex_.Lock();
+        if (sync_error) {
+          RecordBackgroundError(status);
         }
       }
       if (status.ok()) {
-        status = WriteBatchInternal::InsertInto(write_batch, mem_);
-      }
-      mutex_.Lock();
-      if (sync_error) {
-        // The state of the log file is indeterminate: the log record we
-        // just added may or may not show up when the DB is re-opened.
-        // So we force the DB into a mode where all future writes fail.
-        RecordBackgroundError(status);
+        std::map<std::string, int64_t> deltas;
+        for (const auto& item : batch_counts.counts()) {
+          deltas[item.first] = static_cast<int64_t>(item.second);
+        }
+        ApplyRecordCountDeltas(deltas);
       }
     }
     if (write_batch == tmp_batch_) tmp_batch_->Clear();
 
-    versions_->SetLastSequence(last_sequence);
+    if (status.ok() && sequence_assigned) {
+      versions_->SetLastSequence(last_sequence);
+      MaybeScheduleCompaction();
+    }
   }
 
   while (true) {
@@ -1502,7 +2049,7 @@ Status DB::Put(const WriteOptions& opt, const Slice& key, const Slice& value) {
 }
 
 Status DB::Put(const WriteOptions&, const Slice&, const Slice&, uint64_t) {
-  // TODO: Replace this starter stub with TTL-aware storage and reads.
+  // Preserve a safe default for DB implementations that do not support TTL.
   return Status::NotSupported("TTL Put is not implemented");
 }
 
@@ -1542,6 +2089,9 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
     edit.SetPrevLogNumber(0);  // No older logs needed after recovery.
     edit.SetLogNumber(impl->logfile_number_);
     s = impl->versions_->LogAndApply(&edit, &impl->mutex_);
+  }
+  if (s.ok()) {
+    s = impl->RebuildCurrentRecordCounts();
   }
   if (s.ok()) {
     impl->RemoveObsoleteFiles();

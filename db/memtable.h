@@ -60,7 +60,8 @@ class MemTable {
   // If memtable contains a deletion for key, store a NotFound() error
   // in *status and return true.
   // Else, return false.
-  bool Get(const LookupKey& key, std::string* value, Status* s);
+  bool Get(const LookupKey& key, uint64_t read_time_micros,
+           std::string* value, Status* s);
 
  private:
   friend class MemTableIterator;
