@@ -348,6 +348,11 @@ void MetadataIndex::Invalidate(const Slice& key) {
   value_cache_->Erase(cache_key);
 }
 
+void MetadataIndex::InvalidateAll() {
+  ++value_cache_generation_;
+  if (value_cache_generation_ == 0) ++value_cache_generation_;
+}
+
 void MetadataIndex::ClearActiveThrough(uint64_t mseq) {
   for (auto iter = active_.begin(); iter != active_.end();) {
     if (iter->second.mseq <= mseq) {

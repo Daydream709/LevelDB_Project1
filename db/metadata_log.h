@@ -16,6 +16,11 @@ namespace leveldb {
 inline unsigned MetadataWALVersion(const Slice& record) {
   static const char v1[] = "LDBMETA1";
   static const char v2[] = "LDBMETA2";
+  static const char v3[] = "LDBMETA3";
+  if (record.size() >= sizeof(v3) - 1 &&
+      std::memcmp(record.data(), v3, sizeof(v3) - 1) == 0) {
+    return 3;
+  }
   if (record.size() >= sizeof(v2) - 1 &&
       std::memcmp(record.data(), v2, sizeof(v2) - 1) == 0) {
     return 2;
@@ -40,13 +45,29 @@ inline Status ExtractMetadataWALBatch(const Slice& record, Slice* batch) {
   }
   Slice input = record;
   input.remove_prefix(sizeof("LDBMETA1") - 1);
-  const size_t header_size = version == 2 ? 32 : 24;
+  const size_t header_size = version >= 2 ? 32 : 24;
   if (input.size() < header_size) {
     return Status::Corruption("metadata WAL header truncated");
   }
   input.remove_prefix(header_size);
   if (!GetLengthPrefixedSlice(&input, batch)) {
     return Status::Corruption("metadata WAL batch truncated");
+  }
+  if (version == 3) {
+    if (input.empty()) return Status::Corruption("metadata WAL mode missing");
+    const unsigned char mode = static_cast<unsigned char>(input[0]);
+    input.remove_prefix(1);
+    if (mode == 1) {
+      if (input.size() != 8) {
+        return Status::Corruption("metadata WAL file reference truncated");
+      }
+      if (DecodeFixed64(input.data()) == 0) {
+        return Status::Corruption("metadata WAL file number is zero");
+      }
+      input.remove_prefix(8);
+      return Status::OK();
+    }
+    if (mode != 0) return Status::Corruption("metadata WAL mode invalid");
   }
   uint32_t updates;
   if (!GetVarint32(&input, &updates) || updates > (1U << 24)) {

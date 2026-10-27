@@ -9,10 +9,12 @@
 #include <deque>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "db/dbformat.h"
 #include "db/log_writer.h"
 #include "db/snapshot.h"
+#include "db/version_edit.h"
 #include "leveldb/db.h"
 #include "leveldb/env.h"
 #include "port/port.h"
@@ -25,7 +27,6 @@ class MetadataIndex;
 struct MetadataCommitMeta;
 class TableCache;
 class Version;
-class VersionEdit;
 class VersionSet;
 
 
@@ -138,6 +139,11 @@ class DBImpl : public DB {
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status SyncMetadataWALPrefix(uint64_t through_log)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  std::vector<MetadataFileMeta> MetadataLookupFiles()
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status LoadMetadataWALFile(uint64_t number, uint64_t mseq,
+                             MetadataFileMeta* file)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void BeginMetadataCommit() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void EndMetadataCommit() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -215,6 +221,7 @@ class DBImpl : public DB {
   uint64_t metadata_recovery_max_mseq_ GUARDED_BY(mutex_);
   uint64_t metadata_wal_bytes_ GUARDED_BY(mutex_);
   uint64_t metadata_wal_checkpoint_bytes_ GUARDED_BY(mutex_);
+  std::vector<MetadataFileMeta> metadata_wal_files_ GUARDED_BY(mutex_);
   size_t recovery_metadata_event_index_ GUARDED_BY(mutex_);
   bool metadata_needs_rebuild_ GUARDED_BY(mutex_);
   bool metadata_rebuild_only_error_ GUARDED_BY(mutex_);

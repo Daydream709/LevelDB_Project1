@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 #include "leveldb/env.h"
 #include "leveldb/db.h"
+#include "leveldb/write_batch.h"
 #include <cstdlib>
 #include <unistd.h>   // getpid
 #include <cstdio>     // snprintf
@@ -214,6 +215,145 @@ TEST_F(StatsDBTest, MissingMetadataRunRebuildsFromPrimary) {
   ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).ok());
   ASSERT_EQ(stats.total_entries, kEntries);
   ASSERT_EQ(stats.distinct_keys, kEntries);
+}
+
+TEST_F(StatsDBTest, LargeWriteBatchSpillsAndRecoversMetadata) {
+  delete db_;
+  db_ = nullptr;
+  Options options;
+  options.create_if_missing = false;
+  options.metadata_workspace_size = 8 * 1024;
+  options.metadata_memtable_size = 1 * 1024 * 1024;
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+
+  const int kKeys = 5000;
+  WriteBatch batch;
+  for (int i = 0; i < kKeys; ++i) {
+    char key[32];
+    std::snprintf(key, sizeof(key), "key-%05d", i);
+    batch.Put(key, "first");
+  }
+  // A second pass makes the same keys recur in later spilled runs.
+  for (int i = 0; i < kKeys; ++i) {
+    char key[32];
+    std::snprintf(key, sizeof(key), "key-%05d", i);
+    batch.Put(key, "second");
+  }
+  ASSERT_TRUE(db_->Write(WriteOptions(), &batch).ok());
+
+  Stats stats;
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).ok());
+  ASSERT_EQ(stats.total_entries, 2 * kKeys);
+  ASSERT_EQ(stats.distinct_keys, kKeys);
+  ASSERT_EQ(stats.seq, 2 * kKeys);
+
+  ASSERT_TRUE(db_->Put(WriteOptions(), "key-00001", "third").ok());
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).ok());
+  ASSERT_EQ(stats.total_entries, 2 * kKeys + 1);
+  ASSERT_EQ(stats.distinct_keys, kKeys);
+  ASSERT_EQ(stats.seq, 2 * kKeys + 1);
+
+  delete db_;
+  db_ = nullptr;
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).ok());
+  ASSERT_EQ(stats.total_entries, 2 * kKeys + 1);
+  ASSERT_EQ(stats.distinct_keys, kKeys);
+  ASSERT_EQ(stats.seq, 2 * kKeys + 1);
+
+  // A smaller budget makes the next commit freeze and checkpoint the WAL
+  // referenced .mchg file together with the active generation.
+  delete db_;
+  db_ = nullptr;
+  options.metadata_memtable_size = 32 * 1024;
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+  WriteBatch checkpoint_batch;
+  const int kAdditionalKeys = 5000;
+  for (int i = 0; i < kAdditionalKeys; ++i) {
+    char key[32];
+    std::snprintf(key, sizeof(key), "extra-%05d", i);
+    checkpoint_batch.Put(key, "value");
+  }
+  ASSERT_TRUE(db_->Write(WriteOptions(), &checkpoint_batch).ok());
+  auto checkpoint_mseq = [this]() -> unsigned long long {
+    std::string property;
+    EXPECT_TRUE(db_->GetProperty("leveldb.metadata-stats", &property));
+    const std::string key = "checkpoint_mseq=";
+    const size_t offset = property.find(key);
+    EXPECT_NE(offset, std::string::npos) << property;
+    if (offset == std::string::npos) return 0;
+    return std::strtoull(property.c_str() + offset + key.size(), nullptr, 10);
+  };
+  bool checkpointed = false;
+  for (int i = 0; i < 500; ++i) {
+    if (checkpoint_mseq() >= 3) {
+      checkpointed = true;
+      break;
+    }
+    Env::Default()->SleepForMicroseconds(10000);
+  }
+  if (!checkpointed) {
+    std::string property;
+    db_->GetProperty("leveldb.metadata-stats", &property);
+    ADD_FAILURE() << "metadata checkpoint did not advance: " << property;
+  }
+  ASSERT_TRUE(checkpointed);
+
+  delete db_;
+  db_ = nullptr;
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).ok());
+  ASSERT_EQ(stats.total_entries, 2 * kKeys + 1 + kAdditionalKeys);
+  ASSERT_EQ(stats.distinct_keys, kKeys + kAdditionalKeys);
+  ASSERT_EQ(stats.seq, 2 * kKeys + 1 + kAdditionalKeys);
+  std::string value;
+  ASSERT_TRUE(db_->Get(ReadOptions(), "key-00001", &value).ok());
+  ASSERT_EQ(value, "third");
+}
+
+TEST_F(StatsDBTest, MissingLargeBatchChangeFileRebuildsFromPrimary) {
+  delete db_;
+  db_ = nullptr;
+  Options options;
+  options.create_if_missing = false;
+  options.metadata_workspace_size = 64 * 1024;
+  options.metadata_memtable_size = 1 * 1024 * 1024;
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+
+  const int kKeys = 1200;
+  WriteBatch batch;
+  for (int pass = 0; pass < 2; ++pass) {
+    for (int i = 0; i < kKeys; ++i) {
+      char key[32];
+      std::snprintf(key, sizeof(key), "key-%05d", i);
+      batch.Put(key, pass == 0 ? "first" : "second");
+    }
+  }
+  ASSERT_TRUE(db_->Write(WriteOptions(), &batch).ok());
+
+  delete db_;
+  db_ = nullptr;
+  std::vector<std::string> children;
+  ASSERT_TRUE(Env::Default()->GetChildren(dbname_, &children).ok());
+  std::string change_file;
+  for (const std::string& child : children) {
+    if (child.size() >= 5 && child.compare(child.size() - 5, 5, ".mchg") == 0) {
+      change_file = child;
+      break;
+    }
+  }
+  ASSERT_FALSE(change_file.empty());
+  ASSERT_TRUE(Env::Default()->RemoveFile(dbname_ + "/" + change_file).ok());
+
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+  Stats stats;
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).ok());
+  ASSERT_EQ(stats.total_entries, 2 * kKeys);
+  ASSERT_EQ(stats.distinct_keys, kKeys);
+  ASSERT_EQ(stats.seq, 2 * kKeys);
+  std::string value;
+  ASSERT_TRUE(db_->Get(ReadOptions(), "key-00001", &value).ok());
+  ASSERT_EQ(value, "second");
 }
 
 int main(int argc, char** argv) {

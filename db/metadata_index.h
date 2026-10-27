@@ -57,6 +57,7 @@ class MetadataIndex {
                 MetadataValue* value, bool* found) const;
   void Apply(const std::vector<std::pair<std::string, MetadataValue>>& values);
   void Invalidate(const Slice& key);
+  void InvalidateAll();
 
   size_t ActiveMemoryUsage() const { return active_memory_usage_; }
   size_t ImmutableMemoryUsage() const;
