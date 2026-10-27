@@ -25,8 +25,8 @@ import random
 import sys
 import time
 
-import google_benchmark as benchmark
-from google_benchmark import Counter
+import DatabaseDesign.leveldb_project1.third_party.benchmark.bindings.python.google_benchmark as benchmark
+from DatabaseDesign.leveldb_project1.third_party.benchmark.bindings.python.google_benchmark import Counter
 
 
 @benchmark.register

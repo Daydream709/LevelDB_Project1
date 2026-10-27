@@ -34,11 +34,20 @@ int main(int argc,char** argv){
       if(arg=="--case")c.name=v;else if(arg=="--db")c.path=v;
       else if(arg=="--keys")c.keys=std::stoull(v);else if(arg=="--threads")c.threads=std::stoull(v);
       else if(arg=="--rounds")c.rounds=std::stoull(v);else if(arg=="--value-bytes")c.value_bytes=std::stoull(v);
+      else if(arg=="--profiling")c.profiling=(std::stoul(v)!=0);
+      else if(arg=="--profiling-output")c.profiling_output=v;
+      else if(arg=="--profiling-sample-interval")c.profiling_sample_interval=std::stoul(v);
       else if(arg=="--seed")c.seed=std::stoull(v);else if(arg=="--expired-percent")c.expired_percent=std::stoul(v);
       else Check(false,"unknown argument "+arg);
     }
     Check(c.keys>0&&c.threads>0&&c.rounds>0&&c.value_bytes>=16&&c.expired_percent<=100&&!c.path.empty(),"invalid config");
+    if(c.profiling || !c.profiling_output.empty()){
+      Check(c.profiling_sample_interval>0,"profiling sample interval must be positive");
+      ProfilerOptions po;po.foreground_sample_interval=c.profiling_sample_interval;
+      c.profiler=std::make_shared<Profiler>(po);c.profiler->SetEnabled(c.profiling);
+    }
     auto it=cases.find(c.name);Check(it!=cases.end(),"unknown case "+c.name);it->second(c);
+    if(c.profiler && !c.profiling_output.empty())Ok(c.profiler->Export(c.profiling_output));
     rusage usage{};getrusage(RUSAGE_SELF,&usage);
     std::cout<<"HW_RESULT {\"case\":"<<Json(c.name)<<",\"status\":\"pass\",\"peak_rss_kib\":"<<usage.ru_maxrss<<",\"metrics\":[";
     bool first=true;for(const auto& m:Metrics()){if(!first)std::cout<<',';first=false;
@@ -46,5 +55,10 @@ int main(int argc,char** argv){
         <<",\"ops_per_second\":"<<(m.seconds>0?m.ops/m.seconds:0)<<",\"p50_us\":"<<m.p50<<",\"p95_us\":"<<m.p95<<",\"p99_us\":"<<m.p99
         <<",\"latency_samples\":"<<m.samples<<",\"append_bytes_during_phase\":"<<m.bytes<<",\"db_directory_bytes_after_drain\":"<<m.disk<<'}';}
     std::cout<<"]}"<<std::endl;return 0;
-  }catch(const std::exception& e){std::cout<<"HW_RESULT {\"case\":"<<Json(c.name)<<",\"status\":\"fail\",\"error\":"<<Json(e.what())<<"}"<<std::endl;return 1;}
+  }catch(const std::exception& e){
+    if(c.profiler && !c.profiling_output.empty()){
+      auto status=c.profiler->Export(c.profiling_output);
+      if(!status.ok())std::cerr<<"Profiling export: "<<status.ToString()<<'\n';
+    }
+    std::cout<<"HW_RESULT {\"case\":"<<Json(c.name)<<",\"status\":\"fail\",\"error\":"<<Json(e.what())<<"}"<<std::endl;return 1;}
 }

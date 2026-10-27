@@ -36,7 +36,7 @@ googletest-global-environment-unittest_ (a program written with Google Test).
 """
 
 import re
-from googletest.test import gtest_test_utils
+from DatabaseDesign.leveldb_project1.third_party.googletest.googletest.test import gtest_test_utils
 
 
 def RunAndReturnOutput(args=None):

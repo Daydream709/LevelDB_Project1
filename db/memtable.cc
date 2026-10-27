@@ -3,6 +3,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/memtable.h"
+#include "util/profiler.h"
 #include "db/dbformat.h"
 #include "leveldb/comparator.h"
 #include "leveldb/env.h"
@@ -128,12 +129,15 @@ bool MemTable::Get(const LookupKey& key, uint64_t read_time_micros,
           return true;
         }
         case kTypeValueWithTTL: {
+          ProfileScope ttl_check("ttl.check");
+          ProfileScope::Count("ttl.values_examined");
           Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
           if (v.size() < 8) {
             *s = Status::Corruption("TTL value is shorter than its deadline");
           } else {
             const uint64_t expire_time_micros = DecodeFixed64(v.data());
             if (read_time_micros >= expire_time_micros) {
+              ProfileScope::Count("ttl.expired_read_results");
               *s = Status::NotFound(Slice());
             } else {
               value->assign(v.data() + 8, v.size() - 8);

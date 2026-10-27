@@ -40,7 +40,7 @@ This script tests such functionality by invoking gtest_list_output_unittest_
 
 import os
 import re
-from googletest.test import gtest_test_utils
+from DatabaseDesign.leveldb_project1.third_party.googletest.googletest.test import gtest_test_utils
 
 GTEST_LIST_TESTS_FLAG = '--gtest_list_tests'
 GTEST_OUTPUT_FLAG = '--gtest_output'

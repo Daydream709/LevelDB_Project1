@@ -32,7 +32,7 @@
 """Verifies that Google Test correctly determines whether to use colors."""
 
 import os
-from googletest.test import gtest_test_utils
+from DatabaseDesign.leveldb_project1.third_party.googletest.googletest.test import gtest_test_utils
 
 IS_WINDOWS = os.name == 'nt'
 

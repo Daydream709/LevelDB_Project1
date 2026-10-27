@@ -3,6 +3,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "leveldb/table_builder.h"
+#include "util/profiler.h"
 
 #include <cassert>
 #include <algorithm>
@@ -111,6 +112,8 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
   assert(!r->closed);
   if (!ok()) return;
   if (r->internal_stats_enabled) {
+    ProfileScope collect("metadata.collect_sst_index");
+    ProfileScope::Count("metadata.index_records");
     if (key.size() < 8) {
       r->status = Status::Corruption(
           "internal statistics enabled for a non-internal table key");
@@ -270,12 +273,14 @@ Status TableBuilder::Finish() {
   }
 
   if (ok() && r->internal_stats_enabled) {
+    ProfileScope serialize("metadata.serialize_index");
     std::string stats;
     stats.append("LDS1", 4);
     PutFixed32(&stats, 1);
     PutFixed64(&stats, r->internal_stats_total);
     PutFixed64(&stats, r->internal_stats_ttl);
     if (!r->internal_expire_times.empty()) {
+      ProfileScope histogram("ttl.build_histogram");
       const auto bounds = std::minmax_element(r->internal_expire_times.begin(),
                                                r->internal_expire_times.end());
       r->internal_stats_min_expire = *bounds.first;
@@ -303,7 +308,10 @@ Status TableBuilder::Finish() {
     }
     const uint32_t checksum = crc32c::Value(stats.data(), stats.size());
     PutFixed32(&stats, checksum);
+    ProfileScope::Count("metadata.serialized_index_bytes", stats.size());
+    ProfileScope::Count("metadata.serialized_index_keys", r->internal_key_counts.size());
     WriteRawBlock(stats, kNoCompression, &stats_block_handle);
+    serialize.SetStatus(status());
   }
 
   // Write metaindex block

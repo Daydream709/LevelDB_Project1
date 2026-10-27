@@ -3,6 +3,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/version_set.h"
+#include "util/profiler.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -272,12 +273,15 @@ static void SaveValue(void* arg, const Slice& ikey, const Slice& v) {
         s->state = kFound;
         s->value->assign(v.data(), v.size());
       } else if (parsed_key.type == kTypeValueWithTTL) {
+        ProfileScope ttl_check("ttl.check");
+        ProfileScope::Count("ttl.values_examined");
         if (v.size() < 8) {
           s->state = kCorrupt;
         } else {
           const uint64_t expire_time_micros = DecodeFixed64(v.data());
           if (s->read_time_micros >= expire_time_micros) {
             s->state = kExpired;
+            ProfileScope::Count("ttl.expired_read_results");
           } else {
             s->state = kFound;
             s->value->assign(v.data() + 8, v.size() - 8);
@@ -797,6 +801,7 @@ void VersionSet::AppendVersion(Version* v) {
 }
 
 Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
+  ProfileScope profile("manifest.install");
   if (edit->has_log_number_) {
     assert(edit->log_number_ >= log_number_);
     assert(edit->log_number_ < next_file_number_);
@@ -877,7 +882,7 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     }
   }
 
-  return s;
+  return profile.Result(s);
 }
 
 Status VersionSet::Recover(bool* save_manifest) {

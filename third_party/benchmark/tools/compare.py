@@ -13,8 +13,9 @@ import sys
 import unittest
 from argparse import ArgumentParser
 
-import gbench
-from gbench import report, util
+import DatabaseDesign.leveldb_project1.third_party.benchmark.tools.gbench as gbench
+from DatabaseDesign.leveldb_project1.third_party.benchmark.tools.gbench import report
+from DatabaseDesign.leveldb_project1.third_party.benchmark.tools.gbench import util
 
 
 def check_inputs(in1, in2, flags):

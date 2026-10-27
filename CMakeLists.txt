@@ -188,6 +188,7 @@ target_sources(leveldb
     "util/mutexlock.h"
     "util/no_destructor.h"
     "util/options.cc"
+    "util/profiler.cc"
     "util/random.h"
     "util/status.cc"
 
@@ -331,6 +332,7 @@ if(LEVELDB_BUILD_TESTS)
         "db/corruption_test.cc"
         "db/db_test.cc"
         "db/ttl_metadata_test.cc"
+        "util/profiler_test.cc"
         "db/dbformat_test.cc"
         "db/filename_test.cc"
         "db/log_test.cc"
@@ -488,6 +490,7 @@ if(LEVELDB_INSTALL)
       "${LEVELDB_PUBLIC_INCLUDE_DIR}/filter_policy.h"
       "${LEVELDB_PUBLIC_INCLUDE_DIR}/iterator.h"
       "${LEVELDB_PUBLIC_INCLUDE_DIR}/options.h"
+      "${LEVELDB_PUBLIC_INCLUDE_DIR}/profiler.h"
       "${LEVELDB_PUBLIC_INCLUDE_DIR}/slice.h"
       "${LEVELDB_PUBLIC_INCLUDE_DIR}/status.h"
       "${LEVELDB_PUBLIC_INCLUDE_DIR}/table_builder.h"

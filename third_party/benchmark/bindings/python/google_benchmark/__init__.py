@@ -29,7 +29,7 @@ Example usage:
 
 import atexit
 
-from google_benchmark import _benchmark
+from DatabaseDesign.leveldb_project1.third_party.benchmark.bindings.python.google_benchmark import _benchmark
 from google_benchmark._benchmark import (
     Counter as Counter,
     State as State,

@@ -48,7 +48,7 @@ try:
 except ImportError:
   pass
 import sys
-from googletest.test import gtest_test_utils
+from DatabaseDesign.leveldb_project1.third_party.googletest.googletest.test import gtest_test_utils
 
 # Constants.
 

@@ -3,6 +3,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/builder.h"
+#include "util/profiler.h"
 
 #include "db/dbformat.h"
 #include "db/filename.h"
@@ -41,7 +42,7 @@ Status BuildTable(const std::string& dbname, Env* env, const Options& options,
     }
 
     // Finish and check for builder errors
-    s = builder->Finish();
+    s = ProfileStatus("sst.finish", [&] { return builder->Finish(); });
     if (s.ok()) {
       meta->file_size = builder->FileSize();
       assert(meta->file_size > 0);
@@ -50,7 +51,7 @@ Status BuildTable(const std::string& dbname, Env* env, const Options& options,
 
     // Finish and check for file errors
     if (s.ok()) {
-      s = file->Sync();
+      s = ProfileStatus("sst.sync", [&] { return file->Sync(); });
     }
     if (s.ok()) {
       s = file->Close();

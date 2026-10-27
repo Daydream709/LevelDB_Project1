@@ -36,7 +36,7 @@ Google Test) with different environments and command line flags.
 """
 
 import os
-from googletest.test import gtest_test_utils
+from DatabaseDesign.leveldb_project1.third_party.googletest.googletest.test import gtest_test_utils
 
 
 # Constants.

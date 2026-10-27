@@ -32,7 +32,7 @@
 """Tests for Google Test's --gtest_fail_if_no_test_linked flag."""
 
 import os
-from googletest.test import gtest_test_utils
+from DatabaseDesign.leveldb_project1.third_party.googletest.googletest.test import gtest_test_utils
 
 # The command line flag for enabling the fail-if-no-test-linked behavior.
 FAIL_IF_NO_TEST_LINKED_FLAG = "gtest_fail_if_no_test_linked"

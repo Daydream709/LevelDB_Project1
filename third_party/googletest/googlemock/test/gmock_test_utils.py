@@ -32,7 +32,7 @@
 import os
 
 # pylint: disable=C6204
-from googletest.test import gtest_test_utils
+from DatabaseDesign.leveldb_project1.third_party.googletest.googletest.test import gtest_test_utils
 
 
 def GetSourceDir():

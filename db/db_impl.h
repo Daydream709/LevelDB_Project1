@@ -18,6 +18,7 @@
 #include "leveldb/env.h"
 #include "port/port.h"
 #include "port/thread_annotations.h"
+#include "util/profiler.h"
 
 namespace leveldb {
 
@@ -30,7 +31,8 @@ class VersionSet;
 
 class DBImpl : public DB {
  public:
-  DBImpl(const Options& options, const std::string& dbname);
+  DBImpl(const Options& options, const std::string& dbname,
+         uint64_t profiling_id = 0);
 
   DBImpl(const DBImpl&) = delete;
   DBImpl& operator=(const DBImpl&) = delete;
@@ -77,6 +79,9 @@ class DBImpl : public DB {
   // Samples are taken approximately once every config::kReadBytesPeriod
   // bytes.
   void RecordReadSample(Slice key);
+
+  const std::shared_ptr<Profiler>& profiler() const { return profiler_; }
+  uint64_t profiling_id() const { return profiling_id_; }
 
  private:
   friend class DB;
@@ -172,6 +177,10 @@ class DBImpl : public DB {
   }
 
   // Constant after construction
+  const std::shared_ptr<Profiler> profiler_;
+  const uint64_t profiling_id_;
+  std::unique_ptr<Env> profiling_env_;
+  DBProfileMutexObserver profiling_mutex_observer_;
   Env* const env_;
   const InternalKeyComparator internal_comparator_;
   const InternalFilterPolicy internal_filter_policy_;
@@ -216,6 +225,11 @@ class DBImpl : public DB {
 
   // Has a background compaction been scheduled or is running?
   bool background_compaction_scheduled_ GUARDED_BY(mutex_);
+  uint64_t profiling_schedule_time_ GUARDED_BY(mutex_) = 0;
+  uint64_t profiling_parent_job_id_ GUARDED_BY(mutex_) = 0;
+  // Callback diagnostics finish after its DB lock is released. Close waits for
+  // that publication too, so a post-close export contains no unfinished jobs.
+  unsigned profiling_callbacks_ GUARDED_BY(mutex_) = 0;
   bool bottom_rewrite_in_progress_ GUARDED_BY(mutex_) = false;
   int ttl_compaction_level_ GUARDED_BY(mutex_) = -1;
   std::string ttl_compaction_begin_ GUARDED_BY(mutex_);

@@ -86,6 +86,7 @@ struct DBImpl::CompactionState {
   TableBuilder* builder;
 
   uint64_t total_bytes;
+  const char* profiling_trigger = "size";
   std::map<std::string, int64_t> record_deltas;
 };
 
@@ -140,12 +141,25 @@ static int TableCacheSize(const Options& sanitized_options) {
   return sanitized_options.max_open_files - kNumNonTableCacheFiles;
 }
 
-DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
-    : env_(raw_options.env),
+namespace {
+Options WithProfilingEnv(const Options& src, Env* env) {
+  Options result = src;
+  result.env = env;
+  return result;
+}
+}
+
+DBImpl::DBImpl(const Options& raw_options, const std::string& dbname,
+               uint64_t profiling_id)
+    : profiler_(raw_options.profiler),
+      profiling_id_(profiler_ ? (profiling_id ? profiling_id : NewProfileDatabaseID()) : 0),
+      profiling_env_(profiler_ ? NewProfilingEnv(raw_options.env, profiling_id_) : nullptr),
+      profiling_mutex_observer_(profiling_id_),
+      env_(profiling_env_ ? profiling_env_.get() : raw_options.env),
       internal_comparator_(raw_options.comparator),
       internal_filter_policy_(raw_options.filter_policy),
       options_(SanitizeOptions(dbname, &internal_comparator_,
-                               &internal_filter_policy_, raw_options)),
+                               &internal_filter_policy_, WithProfilingEnv(raw_options, env_))),
       owns_info_log_(options_.info_log != raw_options.info_log),
       owns_cache_(options_.block_cache != raw_options.block_cache),
       dbname_(dbname),
@@ -164,13 +178,16 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
       background_compaction_scheduled_(false),
       manual_compaction_(nullptr),
       versions_(new VersionSet(dbname_, &options_, table_cache_,
-                               &internal_comparator_)) {}
+                               &internal_comparator_)) {
+  if (profiler_) mutex_.SetObserver(&profiling_mutex_observer_);
+}
 
 DBImpl::~DBImpl() {
+  ProfileScope profile(profiler_, profiling_id_, "op.close");
   // Wait for background work to finish.
   mutex_.Lock();
   shutting_down_.store(true, std::memory_order_release);
-  while (background_compaction_scheduled_) {
+  while (background_compaction_scheduled_ || profiling_callbacks_ != 0) {
     background_work_finished_signal_.Wait();
   }
   mutex_.Unlock();
@@ -338,7 +355,7 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
     }
   }
 
-  s = versions_->Recover(save_manifest);
+  { ProfileScope stage("recovery.manifest"); s = versions_->Recover(save_manifest); stage.SetStatus(s); }
   if (!s.ok()) {
     return s;
   }
@@ -400,6 +417,7 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
 }
 
 Status DBImpl::RebuildCurrentRecordCounts() {
+  ProfileScope profile("recovery.rebuild_counts");
   mutex_.AssertHeld();
   std::map<std::string, uint64_t> counts;
   uint64_t total = 0;
@@ -415,6 +433,8 @@ Status DBImpl::RebuildCurrentRecordCounts() {
       }
       ++counts[key.user_key.ToString()];
       ++total;
+      ProfileScope::Count("recovery.scanned_records");
+      ProfileScope::Count("recovery.scanned_encoded_bytes", iter->key().size() + iter->value().size());
       iter->Next();
     }
     Status status = iter->status();
@@ -422,32 +442,42 @@ Status DBImpl::RebuildCurrentRecordCounts() {
     return status;
   };
 
-  Status status = add_internal_iterator(mem_->NewIterator());
-  if (status.ok() && imm_ != nullptr) {
-    status = add_internal_iterator(imm_->NewIterator());
+  Status status;
+  {
+    ProfileScope memory("recovery.merge_memtables");
+    status = add_internal_iterator(mem_->NewIterator());
+    if (status.ok() && imm_ != nullptr) status = add_internal_iterator(imm_->NewIterator());
+    memory.SetStatus(status);
   }
   Version* current = versions_->current();
   for (int level = 0; status.ok() && level < config::kNumLevels; ++level) {
     for (FileMetaData* file : current->files(level)) {
       TableInternalStats stats;
-      status = table_cache_->GetInternalStats(file->number, file->file_size,
-                                              &stats);
+      ProfileScope::Count("recovery.sst_files");
+      status = ProfileStatus("recovery.sst_index", [&] {
+        return table_cache_->GetInternalStats(file->number, file->file_size, &stats);
+      });
       if (!status.ok()) break;
       if (stats.valid) {
+        ProfileScope merge_index("recovery.merge_index");
+        ProfileScope::Count("recovery.index_files");
         for (const auto& item : stats.key_counts) {
           counts[item.first] += item.second;
           total += item.second;
         }
       } else {
+        ProfileScope fallback("recovery.fallback_scan");
+        ProfileScope::Count("recovery.fallback_files");
         ReadOptions scan_options;
         scan_options.verify_checksums = true;
         status = add_internal_iterator(table_cache_->NewIterator(
             scan_options, file->number, file->file_size));
+        fallback.SetStatus(status);
         if (!status.ok()) break;
       }
     }
   }
-  if (!status.ok()) return status;
+  if (!status.ok()) return profile.Result(status);
   record_counts_.swap(counts);
   total_entries_ = total;
   return Status::OK();
@@ -455,6 +485,8 @@ Status DBImpl::RebuildCurrentRecordCounts() {
 
 void DBImpl::ApplyRecordCountDeltas(
     const std::map<std::string, int64_t>& deltas) {
+  ProfileScope profile("metadata.apply_deltas");
+  ProfileScope::Count("metadata.delta_keys", deltas.size());
   mutex_.AssertHeld();
   for (const auto& item : deltas) {
     const std::string& key = item.first;
@@ -486,6 +518,8 @@ void DBImpl::ApplyRecordCountDeltas(
 Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
                               bool* save_manifest, VersionEdit* edit,
                               SequenceNumber* max_sequence) {
+  ProfileScope profile("recovery.wal", true, "open");
+  ProfileScope::Count("recovery.wal_files");
   struct LogReporter : public log::Reader::Reporter {
     Env* env;
     Logger* info_log;
@@ -507,7 +541,7 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
   Status status = env_->NewSequentialFile(fname, &file);
   if (!status.ok()) {
     MaybeIgnoreError(&status);
-    return status;
+    return profile.Result(status);
   }
 
   // Create the log reader.
@@ -542,7 +576,10 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
       mem = new MemTable(internal_comparator_);
       mem->Ref();
     }
-    status = WriteBatchInternal::InsertInto(&batch, mem);
+    status = ProfileStatus("recovery.wal_replay", [&] { return WriteBatchInternal::InsertInto(&batch, mem); });
+    ProfileScope::Count("recovery.wal_batches");
+    ProfileScope::Count("recovery.wal_attempted_records", WriteBatchInternal::Count(&batch));
+    if (status.ok()) ProfileScope::Count("recovery.wal_records", WriteBatchInternal::Count(&batch));
     MaybeIgnoreError(&status);
     if (!status.ok()) {
       break;
@@ -600,13 +637,14 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
     mem->Unref();
   }
 
-  return status;
+  return profile.Result(status);
 }
 
 Status DBImpl::GetCurrentStats(const ReadOptions& options, Stats* stats) {
+  ProfileScope profile(profiler_, profiling_id_, "op.stats_query");
   (void)options;
   if (stats == nullptr) {
-    return Status::InvalidArgument("statistics output pointer is null");
+    return profile.Result(Status::InvalidArgument("statistics output pointer is null"));
   }
   MutexLock l(&mutex_);
   stats->total_entries = total_entries_;
@@ -617,6 +655,7 @@ Status DBImpl::GetCurrentStats(const ReadOptions& options, Stats* stats) {
 
 Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
                                 Version* base) {
+  ProfileScope profile("flush.write_table");
   mutex_.AssertHeld();
   const uint64_t start_micros = env_->NowMicros();
   FileMetaData meta;
@@ -629,7 +668,7 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   Status s;
   {
     mutex_.Unlock();
-    s = BuildTable(dbname_, env_, options_, table_cache_, iter, &meta);
+    s = ProfileStatus("flush.build_table", [&] { return BuildTable(dbname_, env_, options_, table_cache_, iter, &meta); });
     mutex_.Lock();
   }
 
@@ -656,10 +695,11 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   stats.micros = env_->NowMicros() - start_micros;
   stats.bytes_written = meta.file_size;
   stats_[level].Add(stats);
-  return s;
+  return profile.Result(s);
 }
 
 void DBImpl::CompactMemTable() {
+  ProfileScope profile("flush", true, "memtable");
   mutex_.AssertHeld();
   assert(imm_ != nullptr);
 
@@ -690,9 +730,11 @@ void DBImpl::CompactMemTable() {
   } else {
     RecordBackgroundError(s);
   }
+  profile.SetStatus(s);
 }
 
 void DBImpl::CompactRange(const Slice* begin, const Slice* end) {
+  ProfileScope profile(profiler_, profiling_id_, "op.compact_range");
   int max_level_with_files = 1;
   {
     MutexLock l(&mutex_);
@@ -712,6 +754,7 @@ void DBImpl::CompactRange(const Slice* begin, const Slice* end) {
     MutexLock l(&mutex_);
     RecordBackgroundError(status);
   }
+  profile.SetStatus(status);
 }
 
 Status DBImpl::RewriteBottomLevelRange(const Slice* begin, const Slice* end) {
@@ -737,6 +780,8 @@ Status DBImpl::RewriteBottomLevelRange(const Slice* begin, const Slice* end) {
 
 Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
                                               const Slice* end) {
+  ProfileScope profile("compaction.bottom_rewrite", true,
+                       background_compaction_scheduled_ ? "ttl" : "manual", config::kNumLevels - 1);
   mutex_.AssertHeld();
   if (!bg_error_.ok()) return bg_error_;
   if (shutting_down_.load(std::memory_order_acquire)) {
@@ -751,6 +796,9 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
     return Status::OK();
   }
 
+  uint64_t profiling_input_bytes = 0;
+  for (FileMetaData* file : files) profiling_input_bytes += file->file_size;
+  ProfileScope::Count("gc.input_sst_bytes", profiling_input_bytes);
   std::vector<Iterator*> children;
   children.reserve(files.size());
   for (FileMetaData* file : files) {
@@ -784,6 +832,8 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
           "invalid internal key in bottom-level rewrite");
       break;
     }
+    ProfileScope filtering("gc.iterate_filter");
+    ProfileScope::Count("gc.records_checked");
     --deltas[parsed.user_key.ToString()];
 
     const bool new_user_key =
@@ -826,6 +876,7 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
     const bool keep =
         !current_key_in_range || preserve_snapshots || keep_current_key;
     if (keep) {
+      if (preserve_snapshots) ProfileScope::Count("gc.retained_snapshot_records");
       if (builder == nullptr) {
         output_meta.number = versions_->NewFileNumber();
         pending_outputs_.insert(output_meta.number);
@@ -839,8 +890,16 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
         output_meta.smallest.DecodeFrom(internal_key);
       }
       output_meta.largest.DecodeFrom(internal_key);
-      builder->Add(internal_key, input->value());
+      { ProfileScope emit("gc.output_add"); builder->Add(internal_key, input->value()); }
+      ProfileScope::Count("gc.records_output");
       ++deltas[parsed.user_key.ToString()];
+    }
+    if (!keep) {
+      ProfileScope::Count("gc.records_dropped");
+      ProfileScope::Count("gc.dropped_encoded_bytes", internal_key.size() + input->value().size());
+      if (new_user_key && parsed.type == kTypeValueWithTTL) ProfileScope::Count("gc.dropped_expired_ttl");
+      else if (new_user_key && parsed.type == kTypeDeletion) ProfileScope::Count("gc.dropped_tombstone");
+      else ProfileScope::Count("gc.dropped_hidden_version");
     }
     input->Next();
   }
@@ -849,16 +908,17 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
 
   if (builder != nullptr) {
     if (status.ok()) {
-      status = builder->Finish();
+      status = ProfileStatus("sst.finish", [&] { return builder->Finish(); });
     } else {
       builder->Abandon();
     }
     output_meta.file_size = builder->FileSize();
+    ProfileScope::Count("gc.generated_output_sst_bytes", output_meta.file_size);
     delete builder;
     builder = nullptr;
   }
   if (outfile != nullptr) {
-    if (status.ok()) status = outfile->Sync();
+    if (status.ok()) status = ProfileStatus("sst.sync", [&] { return outfile->Sync(); });
     if (status.ok()) status = outfile->Close();
     delete outfile;
     outfile = nullptr;
@@ -875,8 +935,14 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
   }
 
   if (status.ok()) {
-    status = versions_->LogAndApply(&edit, &mutex_);
-    if (status.ok()) ApplyRecordCountDeltas(deltas);
+    { ProfileScope stage("compaction.install_manifest"); status = versions_->LogAndApply(&edit, &mutex_); stage.SetStatus(status); }
+    if (status.ok()) {
+      ProfileScope::Count("gc.installed_input_sst_bytes", profiling_input_bytes);
+      ProfileScope::Count("gc.installed_output_sst_bytes", output_meta.file_size);
+      for (const auto& delta : deltas)
+        if (delta.second < 0) ProfileScope::Count("gc.installed_removed_records", static_cast<uint64_t>(-delta.second));
+      ApplyRecordCountDeltas(deltas);
+    }
   }
   if (output_meta.number != 0) {
     pending_outputs_.erase(output_meta.number);
@@ -887,7 +953,7 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
   }
   if (status.ok()) RemoveObsoleteFiles();
   bottom_rewrite_in_progress_ = false;
-  return status;
+  return profile.Result(status);
 }
 
 void DBImpl::TEST_CompactRange(int level, const Slice* begin,
@@ -959,13 +1025,14 @@ void DBImpl::RecordBackgroundError(const Status& s) {
 }
 
 Status DBImpl::FindTTLCompactionCandidate(bool* found) {
+  ProfileScope profile("ttl.schedule");
   mutex_.AssertHeld();
   *found = false;
   // Background scheduling is opportunistic and conservative. Explicit
   // compactions still use the sequence/time snapshot bounds, while automatic
   // TTL work waits for snapshots to be released so it cannot spin on a record
   // whose older view is still protected.
-  if (!snapshots_.empty()) return Status::OK();
+  if (!snapshots_.empty()) { ProfileScope::Count("ttl.schedule_snapshot_skips"); return Status::OK(); }
   const uint64_t now = env_->NowMicros();
   const uint64_t safe_time = snapshots_.oldest_read_time_micros(now);
   Version* current = versions_->current();
@@ -977,11 +1044,15 @@ Status DBImpl::FindTTLCompactionCandidate(bool* found) {
   for (int level = 0; level < config::kNumLevels; ++level) {
     for (FileMetaData* file : current->files(level)) {
       TableInternalStats stats;
-      Status status = table_cache_->GetTTLStats(
-          file->number, file->file_size, &stats);
-      if (!status.ok()) return status;
+      ProfileScope::Count("ttl.schedule_checked_files");
+      Status status = ProfileStatus("ttl.load_summary", [&] {
+        return table_cache_->GetTTLStats(file->number, file->file_size, &stats);
+      });
+      if (!status.ok()) return profile.Result(status);
 
       if (!stats.valid) {
+        ProfileScope fallback("ttl.summary_fallback_scan");
+        ProfileScope::Count("ttl.summary_fallback_files");
         std::vector<uint64_t> expirations;
         ReadOptions scan_options;
         scan_options.verify_checksums = true;
@@ -1008,6 +1079,7 @@ Status DBImpl::FindTTLCompactionCandidate(bool* found) {
           }
         }
         if (scan_status.ok()) scan_status = iter->status();
+        fallback.SetStatus(scan_status);
         delete iter;
         if (!scan_status.ok()) return scan_status;
         stats.total_records = total;
@@ -1055,6 +1127,8 @@ Status DBImpl::FindTTLCompactionCandidate(bool* found) {
           static_cast<double>(expired_estimate) / stats.total_records;
       if (expired_estimate == 0 || (!aged && expired_ratio < 0.30)) continue;
 
+      ProfileScope scoring("ttl.score_candidate");
+      ProfileScope::Count("ttl.schedule_candidates");
       int target_level = level;
       const Slice smallest = file->smallest.user_key();
       const Slice largest = file->largest.user_key();
@@ -1090,6 +1164,7 @@ Status DBImpl::FindTTLCompactionCandidate(bool* found) {
   }
 
   if (best_level >= 0) {
+    ProfileScope::Count("ttl.schedule_selected");
     ttl_compaction_level_ = best_level;
     ttl_compaction_begin_.swap(best_begin);
     ttl_compaction_end_.swap(best_end);
@@ -1117,10 +1192,14 @@ void DBImpl::MaybeScheduleCompaction() {
       RecordBackgroundError(status);
     } else if (ttl_candidate) {
       background_compaction_scheduled_ = true;
+      profiling_schedule_time_ = ProfileScope::Current() ? ProfileScope::Now() : 0;
+      profiling_parent_job_id_ = ProfileScope::CurrentTaskID();
       env_->Schedule(&DBImpl::BGWork, this);
     }
   } else {
     background_compaction_scheduled_ = true;
+    profiling_schedule_time_ = ProfileScope::Current() ? ProfileScope::Now() : 0;
+      profiling_parent_job_id_ = ProfileScope::CurrentTaskID();
     env_->Schedule(&DBImpl::BGWork, this);
   }
 }
@@ -1130,7 +1209,17 @@ void DBImpl::BGWork(void* db) {
 }
 
 void DBImpl::BackgroundCall() {
+  const bool tracked = profiler_ != nullptr;
+  {
+  ProfileScope profile(profiler_, profiling_id_, "background", true, "scheduled");
   MutexLock l(&mutex_);
+  if (tracked) ++profiling_callbacks_;
+  profile.SetParentTaskID(profiling_parent_job_id_);
+  profiling_parent_job_id_ = 0;
+  if (profile.active() && profiling_schedule_time_) {
+    ProfileScope::Duration("background.queue_wait", ProfileScope::Now() - profiling_schedule_time_, true);
+  }
+  profiling_schedule_time_ = 0;
   assert(background_compaction_scheduled_);
   if (shutting_down_.load(std::memory_order_acquire)) {
     // No more background work when shutting down.
@@ -1138,6 +1227,7 @@ void DBImpl::BackgroundCall() {
     // No more background work after a background error.
   } else {
     BackgroundCompaction();
+    profile.SetStatus(bg_error_);
   }
 
   background_compaction_scheduled_ = false;
@@ -1146,6 +1236,14 @@ void DBImpl::BackgroundCall() {
   // so reschedule another compaction if needed.
   MaybeScheduleCompaction();
   background_work_finished_signal_.SignalAll();
+  }  // Publish the profiling event before allowing DB teardown.
+  if (tracked) {
+    MutexLock l(&mutex_);
+    assert(profiling_callbacks_ != 0);
+    --profiling_callbacks_;
+    background_work_finished_signal_.SignalAll();
+  }
+
 }
 
 void DBImpl::BackgroundCompaction() {
@@ -1204,6 +1302,7 @@ void DBImpl::BackgroundCompaction() {
   } else if (c == nullptr) {
     // Nothing to do
   } else if (!is_manual && !is_ttl_compaction && c->IsTrivialMove()) {
+    ProfileScope move("compaction.move", true, "trivial_move", c->level());
     // Move file to next level
     assert(c->num_input_files(0) == 1);
     FileMetaData* f = c->input(0, 0);
@@ -1211,6 +1310,7 @@ void DBImpl::BackgroundCompaction() {
     c->edit()->AddFile(c->level() + 1, f->number, f->file_size, f->smallest,
                        f->largest);
     status = versions_->LogAndApply(c->edit(), &mutex_);
+    move.SetStatus(status);
     if (!status.ok()) {
       RecordBackgroundError(status);
     }
@@ -1221,6 +1321,7 @@ void DBImpl::BackgroundCompaction() {
         status.ToString().c_str(), versions_->LevelSummary(&tmp));
   } else {
     CompactionState* compact = new CompactionState(c);
+    compact->profiling_trigger = is_ttl_compaction ? "ttl" : is_manual ? "manual" : "size";
     status = DoCompactionWork(compact);
     if (!status.ok()) {
       RecordBackgroundError(status);
@@ -1310,7 +1411,7 @@ Status DBImpl::FinishCompactionOutputFile(CompactionState* compact,
   Status s = input->status();
   const uint64_t current_entries = compact->builder->NumEntries();
   if (s.ok()) {
-    s = compact->builder->Finish();
+    s = ProfileStatus("sst.finish", [&] { return compact->builder->Finish(); });
   } else {
     compact->builder->Abandon();
   }
@@ -1322,7 +1423,7 @@ Status DBImpl::FinishCompactionOutputFile(CompactionState* compact,
 
   // Finish and check for file errors
   if (s.ok()) {
-    s = compact->outfile->Sync();
+    s = ProfileStatus("sst.sync", [&] { return compact->outfile->Sync(); });
   }
   if (s.ok()) {
     s = compact->outfile->Close();
@@ -1361,13 +1462,26 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
     compact->compaction->edit()->AddFile(level + 1, out.number, out.file_size,
                                          out.smallest, out.largest);
   }
-  Status status =
-      versions_->LogAndApply(compact->compaction->edit(), &mutex_);
-  if (status.ok()) ApplyRecordCountDeltas(compact->record_deltas);
+  Status status;
+  { ProfileScope stage("compaction.install_manifest");
+    status = versions_->LogAndApply(compact->compaction->edit(), &mutex_);
+    stage.SetStatus(status);
+  }
+  if (status.ok()) {
+    for (int which = 0; which < 2; ++which)
+      for (int i = 0; i < compact->compaction->num_input_files(which); ++i)
+        ProfileScope::Count("gc.installed_input_sst_bytes", compact->compaction->input(which, i)->file_size);
+    for (const auto& output : compact->outputs)
+      ProfileScope::Count("gc.installed_output_sst_bytes", output.file_size);
+    for (const auto& delta : compact->record_deltas)
+      if (delta.second < 0) ProfileScope::Count("gc.installed_removed_records", static_cast<uint64_t>(-delta.second));
+    ApplyRecordCountDeltas(compact->record_deltas);
+  }
   return status;
 }
 
 Status DBImpl::DoCompactionWork(CompactionState* compact) {
+  ProfileScope profile("compaction.merge", true, compact->profiling_trigger, compact->compaction->level());
   const uint64_t start_micros = env_->NowMicros();
   int64_t imm_micros = 0;  // Micros spent doing imm_ compactions
 
@@ -1413,6 +1527,8 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       imm_micros += (env_->NowMicros() - imm_start);
     }
 
+    ProfileScope filtering("gc.iterate_filter");
+    ProfileScope::Count("gc.records_checked");
     Slice key = input->key();
     if (key.size() < 8) {
       status = Status::Corruption("internal key is too short during compaction");
@@ -1447,6 +1563,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       if (last_sequence_for_key <= compact->smallest_snapshot) {
         // Hidden by an newer entry for same user key
         drop = true;  // (A)
+        ProfileScope::Count("gc.dropped_hidden_version");
       } else if (ikey.type == kTypeDeletion &&
                  ikey.sequence <= compact->smallest_snapshot &&
                  compact->compaction->IsBaseLevelForKey(ikey.user_key)) {
@@ -1458,6 +1575,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         //     few iterations of this loop (by rule (A) above).
         // Therefore this deletion marker is obsolete and can be dropped.
         drop = true;
+        ProfileScope::Count("gc.dropped_tombstone");
       } else if (ikey.type == kTypeValueWithTTL &&
                  ikey.sequence <= compact->smallest_snapshot &&
                  compact->compaction->IsBaseLevelForKey(ikey.user_key)) {
@@ -1472,9 +1590,18 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
           // The expired value acts as a deletion barrier. Older records in
           // this compaction are hidden by the normal sequence rule above.
           drop = true;
+          ProfileScope::Count("gc.dropped_expired_ttl");
+        } else {
+          ProfileScope::Count("gc.ttl_retained_time_boundary");
         }
       }
 
+      if (!drop && ikey.type == kTypeValueWithTTL) {
+        if (ikey.sequence > compact->smallest_snapshot)
+          ProfileScope::Count("gc.ttl_retained_sequence_boundary");
+        // The preceding TTL branch already checked base level and records its
+        // time-bound retention; do not call IsBaseLevelForKey a second time.
+      }
       last_sequence_for_key = ikey.sequence;
     }
 #if 0
@@ -1487,7 +1614,12 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         (int)last_sequence_for_key, (int)compact->smallest_snapshot);
 #endif
 
+    if (drop) {
+      ProfileScope::Count("gc.records_dropped");
+      ProfileScope::Count("gc.dropped_encoded_bytes", key.size() + input->value().size());
+    }
     if (!drop) {
+      ProfileScope::Count("gc.records_output");
       // Open output file if necessary
       if (compact->builder == nullptr) {
         status = OpenCompactionOutputFile(compact);
@@ -1499,7 +1631,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         compact->current_output()->smallest.DecodeFrom(key);
       }
       compact->current_output()->largest.DecodeFrom(key);
-      compact->builder->Add(key, input->value());
+      { ProfileScope emit("gc.output_add"); compact->builder->Add(key, input->value()); }
       ++compact->record_deltas[ExtractUserKey(key).ToString()];
 
       // Close output file if it is big enough
@@ -1532,10 +1664,12 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   for (int which = 0; which < 2; which++) {
     for (int i = 0; i < compact->compaction->num_input_files(which); i++) {
       stats.bytes_read += compact->compaction->input(which, i)->file_size;
+      ProfileScope::Count("gc.input_sst_bytes", compact->compaction->input(which, i)->file_size);
     }
   }
   for (size_t i = 0; i < compact->outputs.size(); i++) {
     stats.bytes_written += compact->outputs[i].file_size;
+    ProfileScope::Count("gc.generated_output_sst_bytes", compact->outputs[i].file_size);
   }
 
   mutex_.Lock();
@@ -1549,7 +1683,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   }
   VersionSet::LevelSummaryStorage tmp;
   Log(options_.info_log, "compacted to: %s", versions_->LevelSummary(&tmp));
-  return status;
+  return profile.Result(status);
 }
 
 namespace {
@@ -1620,6 +1754,7 @@ int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes() {
 
 Status DBImpl::Get(const ReadOptions& options, const Slice& key,
                    std::string* value) {
+  ProfileScope profile(profiler_, profiling_id_, "op.get");
   Status s;
   MutexLock l(&mutex_);
   SequenceNumber snapshot;
@@ -1648,13 +1783,18 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
     mutex_.Unlock();
     // First look in the memtable, then in the immutable memtable (if any).
     LookupKey lkey(key, snapshot);
-    if (mem->Get(lkey, read_time_micros, value, &s)) {
+    bool found;
+    { ProfileScope lookup("read.memtable"); found = mem->Get(lkey, read_time_micros, value, &s); lookup.SetStatus(s); }
+    if (found) {
       // Done
-    } else if (imm != nullptr &&
-               imm->Get(lkey, read_time_micros, value, &s)) {
+    } else if (imm != nullptr && [&] {
+      ProfileScope lookup("read.immutable_memtable");
+      bool found_imm = imm->Get(lkey, read_time_micros, value, &s);
+      lookup.SetStatus(s); return found_imm;
+    }()) {
       // Done
     } else {
-      s = current->Get(options, lkey, value, read_time_micros, &stats);
+      s = ProfileStatus("read.sst", [&] { return current->Get(options, lkey, value, read_time_micros, &stats); });
       have_stat_update = true;
     }
     mutex_.Lock();
@@ -1666,10 +1806,11 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
   mem->Unref();
   if (imm != nullptr) imm->Unref();
   current->Unref();
-  return s;
+  return profile.Result(s);
 }
 
 Iterator* DBImpl::NewIterator(const ReadOptions& options) {
+  ProfileScope profile(profiler_, profiling_id_, "op.new_iterator");
   SequenceNumber latest_snapshot;
   uint64_t latest_read_time_micros;
   uint32_t seed;
@@ -1694,11 +1835,13 @@ void DBImpl::RecordReadSample(Slice key) {
 }
 
 const Snapshot* DBImpl::GetSnapshot() {
+  ProfileScope profile(profiler_, profiling_id_, "op.snapshot");
   MutexLock l(&mutex_);
   return snapshots_.New(versions_->LastSequence(), env_->NowMicros());
 }
 
 void DBImpl::ReleaseSnapshot(const Snapshot* snapshot) {
+  ProfileScope profile(profiler_, profiling_id_, "op.release_snapshot");
   MutexLock l(&mutex_);
   snapshots_.Delete(static_cast<const SnapshotImpl*>(snapshot));
   MaybeScheduleCompaction();
@@ -1706,35 +1849,47 @@ void DBImpl::ReleaseSnapshot(const Snapshot* snapshot) {
 
 // Convenience methods
 Status DBImpl::Put(const WriteOptions& o, const Slice& key, const Slice& val) {
-  return DB::Put(o, key, val);
+  ProfileScope profile(profiler_, profiling_id_, "op.put");
+  return profile.Result(DB::Put(o, key, val));
 }
 
 Status DBImpl::Put(const WriteOptions& options, const Slice& key,
                    const Slice& value, uint64_t ttl) {
-  const uint64_t now = env_->NowMicros();
-  const uint64_t scale = 1000000;
-  if (ttl > std::numeric_limits<uint64_t>::max() / scale) {
-    return Status::InvalidArgument("TTL seconds overflow microseconds");
-  }
-  const uint64_t ttl_micros = ttl * scale;
-  if (now > std::numeric_limits<uint64_t>::max() - ttl_micros) {
-    return Status::InvalidArgument("TTL deadline overflows Env time");
-  }
+  ProfileScope profile(profiler_, profiling_id_, "op.ttl_put");
+  uint64_t deadline = 0;
+  Status deadline_status = ProfileStatus("ttl.deadline", [&] {
+    const uint64_t now = env_->NowMicros();
+    const uint64_t scale = 1000000;
+    if (ttl > std::numeric_limits<uint64_t>::max() / scale)
+      return Status::InvalidArgument("TTL seconds overflow microseconds");
+    const uint64_t ttl_micros = ttl * scale;
+    if (now > std::numeric_limits<uint64_t>::max() - ttl_micros)
+      return Status::InvalidArgument("TTL deadline overflows Env time");
+    deadline = now + ttl_micros;
+    return Status::OK();
+  });
+  if (!deadline_status.ok()) return profile.Result(deadline_status);
   WriteBatch batch;
-  WriteBatchInternal::PutWithExpiration(&batch, key, value,
-                                        now + ttl_micros);
-  return Write(options, &batch);
+  {
+    ProfileScope encoding("ttl.encode");
+    WriteBatchInternal::PutWithExpiration(&batch, key, value, deadline);
+  }
+  return profile.Result(Write(options, &batch));
 }
 
 Status DBImpl::Delete(const WriteOptions& options, const Slice& key) {
-  return DB::Delete(options, key);
+  ProfileScope profile(profiler_, profiling_id_, "op.delete");
+  return profile.Result(DB::Delete(options, key));
 }
 
 Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
+  ProfileScope profile(profiler_, profiling_id_,
+                       updates ? "op.write_batch" : "internal.flush_request",
+                       false, "", -1, true);
   if (updates != nullptr) {
     CountBatchKeys validation;
-    Status validation_status = updates->Iterate(&validation);
-    if (!validation_status.ok()) return validation_status;
+    Status validation_status = ProfileStatus("write.validate_batch", [&] { return updates->Iterate(&validation); });
+    if (!validation_status.ok()) return profile.Result(validation_status);
   }
 
   Writer w(&mutex_);
@@ -1744,22 +1899,27 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
 
   MutexLock l(&mutex_);
   writers_.push_back(&w);
+  {
+  ProfileScope queue("write.queue_wait");
   while (!w.done && &w != writers_.front()) {
     w.cv.Wait();
   }
+  }
   if (w.done) {
-    return w.status;
+    return profile.Result(w.status);
   }
 
   // May temporarily unlock and wait.
-  Status status = MakeRoomForWrite(updates == nullptr);
+  Status status;
+  { ProfileScope stage("write.make_room"); status = MakeRoomForWrite(updates == nullptr); stage.SetStatus(status); }
   uint64_t last_sequence = versions_->LastSequence();
   Writer* last_writer = &w;
   if (status.ok() && updates != nullptr) {  // nullptr batch is for compactions
-    WriteBatch* write_batch = BuildBatchGroup(&last_writer);
+    WriteBatch* write_batch;
+    { ProfileScope grouping("write.group_batch"); write_batch = BuildBatchGroup(&last_writer); }
     bool sequence_assigned = false;
     CountBatchKeys batch_counts;
-    status = write_batch->Iterate(&batch_counts);
+    status = ProfileStatus("metadata.count_batch_keys", [&] { return write_batch->Iterate(&batch_counts); });
     const uint64_t batch_count =
         static_cast<uint64_t>(WriteBatchInternal::Count(write_batch));
     if (status.ok() && batch_count > kMaxSequenceNumber - last_sequence) {
@@ -1775,16 +1935,16 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
       // phase since this writer owns the front of the queue.
       {
         mutex_.Unlock();
-        status = log_->AddRecord(WriteBatchInternal::Contents(write_batch));
+        status = ProfileStatus("write.wal_append", [&] { return log_->AddRecord(WriteBatchInternal::Contents(write_batch)); });
         bool sync_error = false;
         if (status.ok() && options.sync) {
-          status = logfile_->Sync();
+          status = ProfileStatus("write.wal_sync", [&] { return logfile_->Sync(); });
           if (!status.ok()) {
             sync_error = true;
           }
         }
         if (status.ok()) {
-          status = WriteBatchInternal::InsertInto(write_batch, mem_);
+          status = ProfileStatus("write.memtable_insert", [&] { return WriteBatchInternal::InsertInto(write_batch, mem_); });
         }
         mutex_.Lock();
         if (sync_error) {
@@ -1792,6 +1952,9 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
         }
       }
       if (status.ok()) {
+        ProfileScope publishing("write.publish_counts");
+        ProfileScope::Count("write.committed_groups");
+        ProfileScope::Count("write.committed_records", batch_count);
         std::map<std::string, int64_t> deltas;
         for (const auto& item : batch_counts.counts()) {
           deltas[item.first] = static_cast<int64_t>(item.second);
@@ -1823,7 +1986,7 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
     writers_.front()->cv.Signal();
   }
 
-  return status;
+  return profile.Result(status);
 }
 
 // REQUIRES: Writer list must be non-empty
@@ -2064,7 +2227,9 @@ DB::~DB() = default;
 Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
   *dbptr = nullptr;
 
-  DBImpl* impl = new DBImpl(options, dbname);
+  const uint64_t profiling_id = options.profiler ? NewProfileDatabaseID() : 0;
+  ProfileScope profile(options.profiler, profiling_id, "recovery.open", true, "open");
+  DBImpl* impl = new DBImpl(options, dbname, profiling_id);
   impl->mutex_.Lock();
   VersionEdit edit;
   // Recover handles create_if_missing, error_if_exists
@@ -2074,7 +2239,7 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
     // Create new log and a corresponding memtable.
     uint64_t new_log_number = impl->versions_->NewFileNumber();
     WritableFile* lfile;
-    s = options.env->NewWritableFile(LogFileName(dbname, new_log_number),
+    s = impl->env_->NewWritableFile(LogFileName(dbname, new_log_number),
                                      &lfile);
     if (s.ok()) {
       edit.SetLogNumber(new_log_number);
@@ -2091,9 +2256,10 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
     s = impl->versions_->LogAndApply(&edit, &impl->mutex_);
   }
   if (s.ok()) {
-    s = impl->RebuildCurrentRecordCounts();
+    { ProfileScope stage("recovery.final_counts"); s = impl->RebuildCurrentRecordCounts(); stage.SetStatus(s); }
   }
   if (s.ok()) {
+    ProfileScope publish("recovery.publish");
     impl->RemoveObsoleteFiles();
     impl->MaybeScheduleCompaction();
   }
@@ -2104,7 +2270,7 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
   } else {
     delete impl;
   }
-  return s;
+  return profile.Result(s);
 }
 
 Snapshot::~Snapshot() = default;

@@ -47,6 +47,17 @@ namespace port {
 
 class CondVar;
 
+// Optional per-mutex observer. Installed before the mutex is used by threads.
+class MutexObserver {
+ public:
+  virtual ~MutexObserver() = default;
+  virtual uint64_t BeforeLock() = 0;
+  virtual void AfterLock(uint64_t ticket) = 0;
+  virtual void BeforeUnlock() = 0;
+  virtual uint64_t BeforeWait() = 0;
+  virtual void AfterWait(uint64_t ticket) = 0;
+};
+
 // Thinly wraps std::mutex.
 class LOCKABLE Mutex {
  public:
@@ -56,13 +67,22 @@ class LOCKABLE Mutex {
   Mutex(const Mutex&) = delete;
   Mutex& operator=(const Mutex&) = delete;
 
-  void Lock() EXCLUSIVE_LOCK_FUNCTION() { mu_.lock(); }
-  void Unlock() UNLOCK_FUNCTION() { mu_.unlock(); }
+  void SetObserver(MutexObserver* observer) { observer_ = observer; }
+  void Lock() EXCLUSIVE_LOCK_FUNCTION() {
+    const uint64_t ticket = observer_ ? observer_->BeforeLock() : 0;
+    mu_.lock();
+    if (observer_) observer_->AfterLock(ticket);
+  }
+  void Unlock() UNLOCK_FUNCTION() {
+    if (observer_) observer_->BeforeUnlock();
+    mu_.unlock();
+  }
   void AssertHeld() ASSERT_EXCLUSIVE_LOCK() {}
 
  private:
   friend class CondVar;
   std::mutex mu_;
+  MutexObserver* observer_ = nullptr;
 };
 
 // Thinly wraps std::condition_variable.
@@ -75,9 +95,11 @@ class CondVar {
   CondVar& operator=(const CondVar&) = delete;
 
   void Wait() {
+    const uint64_t ticket = mu_->observer_ ? mu_->observer_->BeforeWait() : 0;
     std::unique_lock<std::mutex> lock(mu_->mu_, std::adopt_lock);
     cv_.wait(lock);
     lock.release();
+    if (mu_->observer_) mu_->observer_->AfterWait(ticket);
   }
   void Signal() { cv_.notify_one(); }
   void SignalAll() { cv_.notify_all(); }

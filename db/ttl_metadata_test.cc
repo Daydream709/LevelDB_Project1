@@ -3,6 +3,10 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/db_impl.h"
+#include "util/profiler.h"
+#include "table/format.h"
+#include "util/coding.h"
+#include "util/crc32c.h"
 
 #include <atomic>
 #include <chrono>
@@ -137,7 +141,7 @@ class FaultClockEnv : public EnvWrapper {
   bool release_table_sync_ = false;
 };
 
-class TTLMetadataTest : public testing::Test {
+class TTLMetadataTest : public testing::TestWithParam<bool> {
  protected:
   void SetUp() override {
     std::string test_dir;
@@ -146,6 +150,10 @@ class TTLMetadataTest : public testing::Test {
               std::to_string(Env::Default()->NowMicros()) + "-" +
               std::to_string(reinterpret_cast<uintptr_t>(this));
     options_.env = &env_;
+    if (GetParam()) {
+      options_.profiler = std::make_shared<Profiler>();
+      options_.profiler->SetEnabled(true);
+    }
     options_.compression = kNoCompression;
     options_.write_buffer_size = 64 << 10;
     options_.max_file_size = 1 << 20;
@@ -214,7 +222,7 @@ class TTLMetadataTest : public testing::Test {
   std::unique_ptr<DB> db_;
 };
 
-TEST_F(TTLMetadataTest, FixedTimeSnapshotsAndBidirectionalIterator) {
+TEST_P(TTLMetadataTest, FixedTimeSnapshotsAndBidirectionalIterator) {
   ASSERT_LEVELDB_OK(Open(true));
   ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "a", "old"));
   const Snapshot* before_ttl = db_->GetSnapshot();
@@ -256,7 +264,7 @@ TEST_F(TTLMetadataTest, FixedTimeSnapshotsAndBidirectionalIterator) {
   db_->ReleaseSnapshot(after_expiry);
 }
 
-TEST_F(TTLMetadataTest, CorruptSSTIndexFallsBackToScanningData) {
+TEST_P(TTLMetadataTest, CorruptSSTIndexFallsBackToScanningData) {
   ASSERT_LEVELDB_OK(Open(true));
   ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "a", "one"));
   ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "a", "two", 60));
@@ -285,9 +293,69 @@ TEST_F(TTLMetadataTest, CorruptSSTIndexFallsBackToScanningData) {
   ExpectStatsMatchPhysicalScan(3);
   ExpectValue("a", "two");
   ExpectMissing("b");
+  if (GetParam()) {
+    EXPECT_GT(ProfilerTestPeer::Counter(*options_.profiler, "recovery.fallback_files"), 0U);
+    EXPECT_GT(ProfilerTestPeer::MetricField(*options_.profiler, "metadata.load_index", "errors"), 0U);
+  }
 }
 
-TEST_F(TTLMetadataTest, UnreadableSSTDataFailsIndexRebuild) {
+
+TEST_P(TTLMetadataTest, MissingSSTIndexFallsBackAndRebuildsExactCounts) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "legacy", "value"));
+  ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+  db_.reset();
+  std::vector<std::string> children;
+  ASSERT_LEVELDB_OK(env_.GetChildren(dbname_, &children));
+  std::string file;
+  for (const auto& child : children)
+    if (child.size() > 4 && child.substr(child.size() - 4) == ".ldb") file = dbname_ + "/" + child;
+  ASSERT_FALSE(file.empty());
+  std::string contents;
+  ASSERT_LEVELDB_OK(ReadFileToString(&env_, file, &contents));
+  Footer footer;
+  Slice footer_bytes(contents.data() + contents.size() - Footer::kEncodedLength,
+                     Footer::kEncodedLength);
+  ASSERT_LEVELDB_OK(footer.DecodeFrom(&footer_bytes));
+  const auto offset = footer.metaindex_handle().offset();
+  const auto size = footer.metaindex_handle().size();
+  const std::string marker = "leveldb.internal-stats.v1";
+  const auto position = contents.find(marker, offset);
+  ASSERT_NE(position, std::string::npos);
+  ASSERT_LT(position + marker.size(), offset + size + 1);
+  contents[position + marker.size() - 1] = '0'; // valid legacy/unknown optional metadata name
+  EncodeFixed32(&contents[offset + size + 1],
+                crc32c::Mask(crc32c::Value(contents.data() + offset, size + 1)));
+  ASSERT_LEVELDB_OK(WriteStringToFile(&env_, contents, file));
+  Reopen();
+  ExpectValue("legacy", "value");
+  ExpectStatsMatchPhysicalScan(1);
+  if (GetParam()) {
+    EXPECT_GT(ProfilerTestPeer::Counter(*options_.profiler, "metadata.index_missing"), 0U);
+    EXPECT_GT(ProfilerTestPeer::Counter(*options_.profiler, "recovery.fallback_files"), 0U);
+  }
+}
+
+TEST_P(TTLMetadataTest, SuccessfulGCCountsOnlyInstalledRecordRemoval) {
+  options_.profiler = std::make_shared<Profiler>();
+  options_.profiler->SetEnabled(true);
+  ASSERT_LEVELDB_OK(Open(true));
+  for (int i = 0; i < 8; ++i)
+    ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), std::to_string(i), "value", i < 4 ? 1 : 3600));
+  ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+  env_.Advance(2 * kMicrosPerSecond);
+  for (int level = 0; level < config::kNumLevels - 1; ++level)
+    static_cast<DBImpl*>(db_.get())->TEST_CompactRange(level, nullptr, nullptr);
+  db_->CompactRange(nullptr, nullptr);
+  ExpectStatsMatchPhysicalScan(8);
+  Stats stats;
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
+  EXPECT_EQ(stats.total_entries, 4U);
+  EXPECT_EQ(ProfilerTestPeer::Counter(*options_.profiler, "gc.installed_removed_records"), 4U);
+  EXPECT_GT(ProfilerTestPeer::Counter(*options_.profiler, "gc.installed_input_sst_bytes"), 0U);
+}
+
+TEST_P(TTLMetadataTest, UnreadableSSTDataFailsIndexRebuild) {
   ASSERT_LEVELDB_OK(Open(true));
   ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "a", "one"));
   ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
@@ -317,9 +385,13 @@ TEST_F(TTLMetadataTest, UnreadableSSTDataFailsIndexRebuild) {
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(reopened, nullptr);
   EXPECT_TRUE(status.IsCorruption() || status.IsIOError()) << status.ToString();
+  if (GetParam()) {
+    EXPECT_EQ(ProfilerTestPeer::MetricField(*options_.profiler, "recovery.open", "errors"), 1U);
+    EXPECT_GT(ProfilerTestPeer::Counter(*options_.profiler, "recovery.fallback_files"), 0U);
+  }
 }
 
-TEST_F(TTLMetadataTest, RandomOperationsMatchVisibilityAndPhysicalOracle) {
+TEST_P(TTLMetadataTest, RandomOperationsMatchVisibilityAndPhysicalOracle) {
   ASSERT_LEVELDB_OK(Open(true));
   struct ModelValue {
     bool present = false;
@@ -381,7 +453,7 @@ TEST_F(TTLMetadataTest, RandomOperationsMatchVisibilityAndPhysicalOracle) {
   ExpectStatsMatchPhysicalScan(operations);
 }
 
-TEST_F(TTLMetadataTest, CompactionDeltaIncludesConcurrentSameKeyWrite) {
+TEST_P(TTLMetadataTest, CompactionDeltaIncludesConcurrentSameKeyWrite) {
   ASSERT_LEVELDB_OK(Open(true));
   ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "same", "older"));
   ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
@@ -408,7 +480,7 @@ TEST_F(TTLMetadataTest, CompactionDeltaIncludesConcurrentSameKeyWrite) {
   ExpectStatsMatchPhysicalScan(3);
 }
 
-TEST_F(TTLMetadataTest, WALTableAndManifestFailuresDoNotCorruptPublishedCounts) {
+TEST_P(TTLMetadataTest, WALTableAndManifestFailuresDoNotCorruptPublishedCounts) {
   ASSERT_LEVELDB_OK(Open(true));
   env_.SetFault(FaultClockEnv::Fault::kLogAppend);
   EXPECT_TRUE(db_->Put(WriteOptions(), "wal-failure", "v").IsIOError());
@@ -417,6 +489,10 @@ TEST_F(TTLMetadataTest, WALTableAndManifestFailuresDoNotCorruptPublishedCounts) 
   ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
   EXPECT_EQ(stats.total_entries, 0U);
   EXPECT_EQ(stats.seq, 0U);
+  if (GetParam()) {
+    EXPECT_EQ(ProfilerTestPeer::Counter(*options_.profiler, "io.wal.append_errors"), 1U);
+    EXPECT_EQ(ProfilerTestPeer::Counter(*options_.profiler, "write.committed_records"), 0U);
+  }
 
   // A new database isolates the flush and manifest fault cases.
   db_.reset();
@@ -444,7 +520,41 @@ TEST_F(TTLMetadataTest, WALTableAndManifestFailuresDoNotCorruptPublishedCounts) 
   ExpectValue("manifest-failure", "v");
   Reopen();
   ExpectStatsMatchPhysicalScan(1);
+  if (GetParam()) {
+    EXPECT_GT(ProfilerTestPeer::Counter(*options_.profiler, "io.sst.sync_errors"), 0U);
+    EXPECT_GT(ProfilerTestPeer::Counter(*options_.profiler, "io.manifest.append_errors"), 0U);
+    EXPECT_GE(ProfilerTestPeer::MetricField(*options_.profiler, "flush", "errors"), 2U);
+    EXPECT_EQ(ProfilerTestPeer::Counter(*options_.profiler, "gc.installed_removed_records"), 0U);
+  }
 }
+
+
+TEST_P(TTLMetadataTest, RuntimeToggleDuringFlushCompletesCapturedTask) {
+  options_.profiler = std::make_shared<Profiler>();
+  options_.profiler->SetEnabled(true);
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "toggle", "value", 60));
+  env_.BlockNextTableSync();
+  Status flush_status;
+  std::thread flush([&] {
+    flush_status = static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable();
+  });
+  const bool blocked = env_.WaitForBlockedTableSync();
+  options_.profiler->SetEnabled(false);
+  env_.ReleaseTableSync();
+  flush.join();
+  ASSERT_TRUE(blocked);
+  ASSERT_LEVELDB_OK(flush_status);
+  EXPECT_EQ(ProfilerTestPeer::MetricField(*options_.profiler, "flush", "completed"), 1U);
+  const auto queries = ProfilerTestPeer::MetricField(*options_.profiler, "op.get", "calls");
+  ExpectValue("toggle", "value");
+  EXPECT_EQ(ProfilerTestPeer::MetricField(*options_.profiler, "op.get", "calls"), queries);
+  options_.profiler->SetEnabled(true);
+  ExpectValue("toggle", "value");
+  EXPECT_EQ(ProfilerTestPeer::MetricField(*options_.profiler, "op.get", "calls"), queries + 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(PlainAndProfiled, TTLMetadataTest, testing::Bool());
 
 }  // namespace
 }  // namespace leveldb

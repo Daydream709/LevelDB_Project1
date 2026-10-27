@@ -3,6 +3,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/db_iter.h"
+#include "util/profiler.h"
 
 #include "db/db_impl.h"
 #include "db/dbformat.h"
@@ -149,6 +150,7 @@ inline bool DBIter::ParseKey(ParsedInternalKey* ikey) {
 }
 
 void DBIter::Next() {
+  ProfileScope profile(db_->profiler(), db_->profiling_id(), "op.iterator.next");
   assert(valid_);
 
   if (direction_ == kReverse) {  // Switch directions?
@@ -164,7 +166,7 @@ void DBIter::Next() {
     if (!iter_->Valid()) {
       valid_ = false;
       saved_key_.clear();
-      return;
+      profile.SetStatus(status()); return;
     }
     // saved_key_ already contains the key to skip past.
   } else {
@@ -177,11 +179,13 @@ void DBIter::Next() {
     if (!iter_->Valid()) {
       valid_ = false;
       saved_key_.clear();
-      return;
+      profile.SetStatus(status()); return;
     }
   }
 
   FindNextUserEntry(true, &saved_key_);
+
+  profile.SetStatus(status());
 }
 
 void DBIter::FindNextUserEntry(bool skipping, std::string* skip) {
@@ -209,6 +213,8 @@ void DBIter::FindNextUserEntry(bool skipping, std::string* skip) {
           }
           break;
         case kTypeValueWithTTL: {
+          ProfileScope ttl_check("ttl.check");
+          ProfileScope::Count("ttl.values_examined");
           Slice value = iter_->value();
           if (value.size() < 8) {
             status_ = Status::Corruption("TTL value is shorter than its deadline");
@@ -217,6 +223,7 @@ void DBIter::FindNextUserEntry(bool skipping, std::string* skip) {
             return;
           }
           if (read_time_micros_ >= DecodeFixed64(value.data())) {
+            ProfileScope::Count("ttl.expired_read_results");
             SaveKey(ikey.user_key, skip);
             skipping = true;
           } else if (skipping &&
@@ -238,6 +245,7 @@ void DBIter::FindNextUserEntry(bool skipping, std::string* skip) {
 }
 
 void DBIter::Prev() {
+  ProfileScope profile(db_->profiler(), db_->profiling_id(), "op.iterator.prev");
   assert(valid_);
 
   if (direction_ == kForward) {  // Switch directions?
@@ -251,7 +259,7 @@ void DBIter::Prev() {
         valid_ = false;
         saved_key_.clear();
         ClearSavedValue();
-        return;
+        profile.SetStatus(status()); return;
       }
       if (user_comparator_->Compare(ExtractUserKey(iter_->key()), saved_key_) <
           0) {
@@ -262,6 +270,8 @@ void DBIter::Prev() {
   }
 
   FindPrevUserEntry();
+
+  profile.SetStatus(status());
 }
 
 void DBIter::FindPrevUserEntry() {
@@ -284,6 +294,8 @@ void DBIter::FindPrevUserEntry() {
         } else {
           Slice raw_value = iter_->value();
           if (value_type == kTypeValueWithTTL) {
+            ProfileScope ttl_check("ttl.check");
+            ProfileScope::Count("ttl.values_examined");
             if (raw_value.size() < 8) {
               status_ = Status::Corruption("TTL value is shorter than its deadline");
               value_type = kTypeDeletion;
@@ -293,6 +305,7 @@ void DBIter::FindPrevUserEntry() {
               continue;
             }
             if (read_time_micros_ >= DecodeFixed64(raw_value.data())) {
+              ProfileScope::Count("ttl.expired_read_results");
               value_type = kTypeDeletion;
               saved_key_.clear();
               ClearSavedValue();
@@ -326,6 +339,7 @@ void DBIter::FindPrevUserEntry() {
 }
 
 void DBIter::Seek(const Slice& target) {
+  ProfileScope profile(db_->profiler(), db_->profiling_id(), "op.iterator.seek");
   direction_ = kForward;
   ClearSavedValue();
   saved_key_.clear();
@@ -337,9 +351,12 @@ void DBIter::Seek(const Slice& target) {
   } else {
     valid_ = false;
   }
+
+  profile.SetStatus(status());
 }
 
 void DBIter::SeekToFirst() {
+  ProfileScope profile(db_->profiler(), db_->profiling_id(), "op.iterator.seektofirst");
   direction_ = kForward;
   ClearSavedValue();
   iter_->SeekToFirst();
@@ -348,13 +365,18 @@ void DBIter::SeekToFirst() {
   } else {
     valid_ = false;
   }
+
+  profile.SetStatus(status());
 }
 
 void DBIter::SeekToLast() {
+  ProfileScope profile(db_->profiler(), db_->profiling_id(), "op.iterator.seektolast");
   direction_ = kReverse;
   ClearSavedValue();
   iter_->SeekToLast();
   FindPrevUserEntry();
+
+  profile.SetStatus(status());
 }
 
 }  // anonymous namespace

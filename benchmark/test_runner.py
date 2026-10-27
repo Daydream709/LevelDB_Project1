@@ -7,9 +7,9 @@ import subprocess
 import uuid
 import tempfile
 import unittest
-import runner
-from runner import run
-from compare import compare
+import DatabaseDesign.leveldb_project1.benchmark.runner as runner
+from DatabaseDesign.leveldb_project1.benchmark.runner import run
+from DatabaseDesign.leveldb_project1.benchmark.compare import compare
 
 class RunnerTests(unittest.TestCase):
     def test_timeout_terminates_descendant(self):
