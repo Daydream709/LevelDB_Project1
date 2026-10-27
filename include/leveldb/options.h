@@ -82,6 +82,18 @@ struct LEVELDB_EXPORT Options {
   // the next time the database is opened.
   size_t write_buffer_size = 4 * 1024 * 1024;
 
+  // Memory budget for the auxiliary per-key metadata statistics index.
+  // Metadata values are folded into sorted metadata files when this budget
+  // is reached. The default keeps the mutable index small relative to the
+  // primary write buffer.
+  size_t metadata_memtable_size = 1 * 1024 * 1024;
+
+  // Approximate budget for cached metadata table handles and lookup blocks.
+  size_t metadata_cache_size = 8 * 1024 * 1024;
+
+  // Workspace used by metadata compaction and rebuild merge stages.
+  size_t metadata_workspace_size = 4 * 1024 * 1024;
+
   // Number of open files that can be used by the DB.  You may need to
   // increase this if your database has a large working set (budget
   // one open file per 2MB of working set).

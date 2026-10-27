@@ -1,9 +1,11 @@
 #include "gtest/gtest.h"
 #include "leveldb/env.h"
 #include "leveldb/db.h"
+#include <cstdlib>
 #include <unistd.h>   // getpid
 #include <cstdio>     // snprintf
 #include <string>
+#include <vector>
 
 using namespace leveldb;
 
@@ -92,6 +94,126 @@ TEST_F(StatsDBTest, CompactionUpdate) {
 
   ASSERT_GT(st.total_entries, 0);
   ASSERT_GT(st.distinct_keys, 0);
+}
+
+TEST_F(StatsDBTest, CompactionDeltaSpillsWithinWorkspace) {
+  delete db_;
+  db_ = nullptr;
+  Options options;
+  options.create_if_missing = false;
+  options.metadata_workspace_size = 64 * 1024;
+  options.metadata_memtable_size = 1 * 1024 * 1024;
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+
+  const int kKeys = 3000;
+  for (int i = 0; i < kKeys; ++i) {
+    const std::string key = "key-" + std::to_string(i);
+    ASSERT_TRUE(db_->Put(WriteOptions(), key, "old").ok());
+  }
+  // Place the first generation on disk so the next flush overlaps it and
+  // forces a primary compaction over a delta set larger than the workspace.
+  db_->CompactRange(nullptr, nullptr);
+  for (int i = 0; i < kKeys; ++i) {
+    ASSERT_TRUE(
+        db_->Put(WriteOptions(), "key-" + std::to_string(i), "new").ok());
+  }
+
+  Stats before;
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &before).ok());
+  ASSERT_EQ(before.total_entries, 2 * kKeys);
+  ASSERT_EQ(before.distinct_keys, kKeys);
+
+  db_->CompactRange(nullptr, nullptr);
+
+  Stats after;
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &after).ok());
+  ASSERT_EQ(after.total_entries, kKeys);
+  ASSERT_EQ(after.distinct_keys, kKeys);
+}
+
+TEST_F(StatsDBTest, ManifestTailCompactionRecovery) {
+  ASSERT_TRUE(db_->Put(WriteOptions(), "hot", "first").ok());
+  db_->CompactRange(nullptr, nullptr);
+  ASSERT_TRUE(db_->Put(WriteOptions(), "hot", "second").ok());
+  ASSERT_TRUE(db_->Put(WriteOptions(), "stable", "v").ok());
+
+  Stats before;
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &before).ok());
+  ASSERT_EQ(before.total_entries, 3);
+  ASSERT_EQ(before.distinct_keys, 2);
+
+  db_->CompactRange(nullptr, nullptr);
+  Stats compacted;
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &compacted).ok());
+  ASSERT_EQ(compacted.total_entries, 2);
+  ASSERT_EQ(compacted.distinct_keys, 2);
+
+  delete db_;
+  db_ = nullptr;
+  Options options;
+  options.create_if_missing = false;
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+
+  Stats recovered;
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &recovered).ok());
+  ASSERT_EQ(recovered.total_entries, compacted.total_entries);
+  ASSERT_EQ(recovered.distinct_keys, compacted.distinct_keys);
+  ASSERT_EQ(recovered.seq, compacted.seq);
+}
+
+TEST_F(StatsDBTest, MissingMetadataRunRebuildsFromPrimary) {
+  delete db_;
+  db_ = nullptr;
+  Options options;
+  options.create_if_missing = false;
+  options.metadata_memtable_size = 64 * 1024;
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+
+  const int kEntries = 1600;
+  for (int i = 0; i < kEntries; ++i) {
+    ASSERT_TRUE(db_->Put(WriteOptions(), "key-" + std::to_string(i), "v").ok());
+  }
+
+  auto metadata_field = [this](const std::string& field) -> unsigned long long {
+    std::string property;
+    EXPECT_TRUE(db_->GetProperty("leveldb.metadata-stats", &property));
+    const std::string key = field + "=";
+    const size_t offset = property.find(key);
+    EXPECT_NE(offset, std::string::npos) << property;
+    if (offset == std::string::npos) return 0;
+    return std::strtoull(property.c_str() + offset + key.size(), nullptr, 10);
+  };
+  bool checkpointed = false;
+  for (int i = 0; i < 500; ++i) {
+    if (metadata_field("metadata_files") > 0 &&
+        metadata_field("checkpoint_mseq") > 0) {
+      checkpointed = true;
+      break;
+    }
+    Env::Default()->SleepForMicroseconds(10000);
+  }
+  ASSERT_TRUE(checkpointed);
+  delete db_;
+  db_ = nullptr;
+
+  std::vector<std::string> children;
+  ASSERT_TRUE(Env::Default()->GetChildren(dbname_, &children).ok());
+  std::string metadata_file;
+  for (const std::string& child : children) {
+    if (child.size() >= 5 && child.compare(child.size() - 5, 5, ".midx") == 0) {
+      metadata_file = child;
+      break;
+    }
+  }
+  ASSERT_FALSE(metadata_file.empty());
+  ASSERT_TRUE(Env::Default()->RemoveFile(dbname_ + "/" + metadata_file).ok());
+
+  options.metadata_memtable_size = 1 * 1024 * 1024;
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+  Stats stats;
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).ok());
+  ASSERT_EQ(stats.total_entries, kEntries);
+  ASSERT_EQ(stats.distinct_keys, kEntries);
 }
 
 int main(int argc, char** argv) {

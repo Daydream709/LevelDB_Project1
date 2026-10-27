@@ -115,9 +115,11 @@ class Threads {
 struct DBState {
   TestEnv env; Options options; std::unique_ptr<Cache> cache;
   std::unique_ptr<DB> db; std::string path;
-  explicit DBState(const Config& c, bool fresh=true, uint64_t time=kEpoch):env(c.real_clock),cache(NewLRUCache(8<<20)),path(c.path) {
+  explicit DBState(const Config& c, bool fresh=true, uint64_t time=kEpoch,
+                   size_t metadata_budget=1<<20):env(c.real_clock),cache(NewLRUCache(8<<20)),path(c.path) {
     env.now=time; options.env=&env; options.block_cache=cache.get();
     options.create_if_missing=fresh; options.compression=kNoCompression;
+    options.metadata_memtable_size=metadata_budget;
     options.write_buffer_size=256<<10; options.max_file_size=256<<10;
     if(fresh) { Ok(DestroyDB(path,options)); }
     Open();

@@ -40,6 +40,17 @@ std::string SSTTableFileName(const std::string& dbname, uint64_t number) {
   return MakeFileName(dbname, number, "sst");
 }
 
+std::string MetadataFileName(const std::string& dbname, uint64_t number) {
+  assert(number > 0);
+  return MakeFileName(dbname, number, "midx");
+}
+
+std::string MetadataChangeFileName(const std::string& dbname,
+                                   uint64_t number) {
+  assert(number > 0);
+  return MakeFileName(dbname, number, "mchg");
+}
+
 std::string DescriptorFileName(const std::string& dbname, uint64_t number) {
   assert(number > 0);
   char buf[100];
@@ -74,7 +85,7 @@ std::string OldInfoLogFileName(const std::string& dbname) {
 //    dbname/LOG
 //    dbname/LOG.old
 //    dbname/MANIFEST-[0-9]+
-//    dbname/[0-9]+.(log|sst|ldb)
+//    dbname/[0-9]+.(log|sst|ldb|midx|mchg)
 bool ParseFileName(const std::string& filename, uint64_t* number,
                    FileType* type) {
   Slice rest(filename);
@@ -112,6 +123,10 @@ bool ParseFileName(const std::string& filename, uint64_t* number,
       *type = kTableFile;
     } else if (suffix == Slice(".dbtmp")) {
       *type = kTempFile;
+    } else if (suffix == Slice(".midx")) {
+      *type = kMetadataFile;
+    } else if (suffix == Slice(".mchg")) {
+      *type = kMetadataFile;
     } else {
       return false;
     }

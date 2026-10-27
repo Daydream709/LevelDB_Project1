@@ -21,6 +21,8 @@
 namespace leveldb {
 
 class MemTable;
+class MetadataIndex;
+struct MetadataCommitMeta;
 class TableCache;
 class Version;
 class VersionEdit;
@@ -130,8 +132,24 @@ class DBImpl : public DB {
   Status RecoverLogFile(uint64_t log_number, bool last_log, bool* save_manifest,
                         VersionEdit* edit, SequenceNumber* max_sequence)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status ApplyMetadataCommit(const MetadataCommitMeta& commit)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status ReplayMetadataCommitsBefore(uint64_t mseq)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status SyncMetadataWALPrefix(uint64_t through_log)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void BeginMetadataCommit() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void EndMetadataCommit() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  Status WriteLevel0Table(MemTable* mem, VersionEdit* edit, Version* base)
+  Status FlushMetadata() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status CompactMetadata() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void MaybeFreezeMetadata() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status RebuildMetadata() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status LogAndApply(VersionEdit* edit) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  Status WriteLevel0Table(MemTable* mem, VersionEdit* edit, Version* base,
+                          uint64_t* output_number = nullptr,
+                          bool keep_pending_until_install = false)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   Status MakeRoomForWrite(bool force /* compact even if there is room? */)
@@ -144,6 +162,8 @@ class DBImpl : public DB {
   void MaybeScheduleCompaction() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   static void BGWork(void* db);
   void BackgroundCall();
+  static void MetadataBGWork(void* db);
+  void BackgroundMetadataCall();
   void BackgroundCompaction() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void CleanupCompaction(CompactionState* compact)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -170,6 +190,7 @@ class DBImpl : public DB {
 
   // table_cache_ provides its own synchronization
   TableCache* const table_cache_;
+  MetadataIndex* const metadata_index_;
 
   // Lock over the persistent DB state.  Non-null iff successfully acquired.
   FileLock* db_lock_;
@@ -178,6 +199,9 @@ class DBImpl : public DB {
   port::Mutex mutex_;
   std::atomic<bool> shutting_down_;
   port::CondVar background_work_finished_signal_ GUARDED_BY(mutex_);
+  port::CondVar metadata_work_signal_ GUARDED_BY(mutex_);
+  port::CondVar metadata_worker_finished_signal_ GUARDED_BY(mutex_);
+  bool metadata_worker_exited_ GUARDED_BY(mutex_);
   MemTable* mem_;
   MemTable* imm_ GUARDED_BY(mutex_);  // Memtable being compacted
   std::atomic<bool> has_imm_;         // So bg thread can detect non-null imm_
@@ -185,6 +209,21 @@ class DBImpl : public DB {
   uint64_t logfile_number_ GUARDED_BY(mutex_);
   log::Writer* log_;
   uint32_t seed_ GUARDED_BY(mutex_);  // For sampling.
+  uint64_t metadata_total_entries_ GUARDED_BY(mutex_);
+  uint64_t metadata_distinct_keys_ GUARDED_BY(mutex_);
+  uint64_t metadata_mseq_ GUARDED_BY(mutex_);
+  uint64_t metadata_recovery_max_mseq_ GUARDED_BY(mutex_);
+  uint64_t metadata_wal_bytes_ GUARDED_BY(mutex_);
+  uint64_t metadata_wal_checkpoint_bytes_ GUARDED_BY(mutex_);
+  size_t recovery_metadata_event_index_ GUARDED_BY(mutex_);
+  bool metadata_needs_rebuild_ GUARDED_BY(mutex_);
+  bool metadata_rebuild_only_error_ GUARDED_BY(mutex_);
+  bool metadata_rebuild_in_progress_ GUARDED_BY(mutex_);
+  bool metadata_commit_in_progress_ GUARDED_BY(mutex_);
+  size_t metadata_commit_blockers_ GUARDED_BY(mutex_);
+  bool metadata_storage_work_in_progress_ GUARDED_BY(mutex_);
+  bool manifest_commit_in_progress_ GUARDED_BY(mutex_);
+  bool write_log_in_progress_ GUARDED_BY(mutex_);
 
   // Queue of writers.
   std::deque<Writer*> writers_ GUARDED_BY(mutex_);

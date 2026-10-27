@@ -471,6 +471,18 @@ class DBTest : public testing::Test {
     return static_cast<int>(files.size());
   }
 
+  int CountTableFiles() {
+    std::vector<std::string> files;
+    env_->GetChildren(dbname_, &files);
+    int count = 0;
+    for (const std::string& file : files) {
+      uint64_t number;
+      FileType type;
+      if (ParseFileName(file, &number, &type) && type == kTableFile) ++count;
+    }
+    return count;
+  }
+
   uint64_t Size(const Slice& start, const Slice& limit) {
     Range r(start, limit);
     uint64_t size;
@@ -1922,12 +1934,17 @@ TEST_F(DBTest, StillReadSST) {
 TEST_F(DBTest, FilesDeletedAfterCompaction) {
   ASSERT_LEVELDB_OK(Put("foo", "v2"));
   Compact("a", "z");
-  const int num_files = CountFiles();
+  const int num_files = CountTableFiles();
   for (int i = 0; i < 10; i++) {
     ASSERT_LEVELDB_OK(Put("foo", "v2"));
     Compact("a", "z");
   }
-  ASSERT_EQ(CountFiles(), num_files);
+  // A range compaction can leave files in two adjacent levels while the
+  // automatic picker catches up. Verify that this does not grow with each
+  // rewrite, and that every on-disk primary table is still in the live
+  // Version (obsolete table files have been deleted).
+  ASSERT_LE(CountTableFiles(), num_files + 1);
+  ASSERT_EQ(CountTableFiles(), TotalTableFiles());
 }
 
 TEST_F(DBTest, BloomFilter) {

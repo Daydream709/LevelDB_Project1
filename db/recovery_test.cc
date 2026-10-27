@@ -64,7 +64,9 @@ class RecoveryTest : public testing::Test {
 
   void Open(Options* options = nullptr) {
     ASSERT_LEVELDB_OK(OpenWithStatus(options));
-    ASSERT_EQ(1, NumLogs());
+    // Older WALs may remain after their primary memtables are flushed because
+    // metadata has an independent recovery boundary.
+    ASSERT_LE(1, NumLogs());
   }
 
   Status Put(const std::string& k, const std::string& v) {
@@ -111,6 +113,10 @@ class RecoveryTest : public testing::Test {
   }
 
   uint64_t FirstLogFile() { return GetFiles(kLogFile)[0]; }
+  uint64_t LastLogFile() {
+    const std::vector<uint64_t> logs = GetFiles(kLogFile);
+    return logs.back();
+  }
 
   std::vector<uint64_t> GetFiles(FileType t) {
     std::vector<std::string> filenames;
@@ -229,20 +235,20 @@ TEST_F(RecoveryTest, LogFileReuse) {
       CompactMemTable();
     }
     Close();
-    ASSERT_EQ(1, NumLogs());
-    uint64_t number = FirstLogFile();
+    ASSERT_EQ(2, NumLogs());
+    uint64_t number = LastLogFile();
     if (i == 0) {
       ASSERT_EQ(0, FileSize(LogName(number)));
     } else {
       ASSERT_LT(0, FileSize(LogName(number)));
     }
     Open();
-    ASSERT_EQ(1, NumLogs());
-    ASSERT_EQ(number, FirstLogFile()) << "did not reuse log file";
+    ASSERT_EQ(2, NumLogs());
+    ASSERT_EQ(number, LastLogFile()) << "did not reuse active log file";
     ASSERT_EQ("bar", Get("foo"));
     Open();
-    ASSERT_EQ(1, NumLogs());
-    ASSERT_EQ(number, FirstLogFile()) << "did not reuse log file";
+    ASSERT_EQ(2, NumLogs());
+    ASSERT_EQ(number, LastLogFile()) << "did not reuse active log file";
     ASSERT_EQ("bar", Get("foo"));
   }
 }
@@ -267,8 +273,9 @@ TEST_F(RecoveryTest, MultipleMemTables) {
   opt.write_buffer_size = (kNum * 100) / 2;
   Open(&opt);
   ASSERT_LE(2, NumTables());
-  ASSERT_EQ(1, NumLogs());
-  ASSERT_NE(old_log_file, FirstLogFile()) << "must not reuse log";
+  ASSERT_EQ(2, NumLogs());
+  ASSERT_EQ(old_log_file, FirstLogFile());
+  ASSERT_NE(old_log_file, LastLogFile()) << "must create a new active log";
   for (int i = 0; i < kNum; i++) {
     char buf[100];
     std::snprintf(buf, sizeof(buf), "%050d", i);

@@ -35,6 +35,27 @@ TEST(VersionEditTest, EncodeDecode) {
   edit.SetLogNumber(kBig + 100);
   edit.SetNextFile(kBig + 200);
   edit.SetLastSequence(kBig + 1000);
+  MetadataFileMeta metadata_file;
+  metadata_file.kind = kMetadataChange;
+  metadata_file.number = kBig + 1100;
+  metadata_file.file_size = kBig + 1200;
+  metadata_file.min_mseq = kBig + 1300;
+  metadata_file.max_mseq = kBig + 1300;
+  metadata_file.level = 1;
+  metadata_file.smallest = "a";
+  metadata_file.largest = "z";
+  edit.AddMetadataFile(metadata_file);
+  edit.RemoveMetadataFile(kBig + 1400);
+  MetadataCommitMeta metadata_commit;
+  metadata_commit.file_number = metadata_file.number;
+  metadata_commit.prev_mseq = kBig + 1500;
+  metadata_commit.mseq = kBig + 1501;
+  metadata_commit.total_entries = kBig + 1600;
+  metadata_commit.distinct_keys = kBig + 1700;
+  metadata_commit.wal_number = kBig + 1800;
+  edit.AddMetadataCommit(metadata_commit);
+  edit.SetMetadataCheckpoint(kBig + 1200, kBig + 2100, kBig + 2000,
+                             kBig + 2200);
   TestEncodeDecode(edit);
 }
 

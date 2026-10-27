@@ -9,6 +9,7 @@
 #include "db/dbformat.h"
 #include "db/filename.h"
 #include "db/log_reader.h"
+#include "db/metadata_log.h"
 #include "db/version_edit.h"
 #include "db/write_batch_internal.h"
 #include "leveldb/env.h"
@@ -98,15 +99,24 @@ static void WriteBatchPrinter(uint64_t pos, Slice record, WritableFile* dst) {
   std::string r = "--- offset ";
   AppendNumberTo(&r, pos);
   r += "; ";
-  if (record.size() < 12) {
+  Slice batch_record = record;
+  if (IsMetadataWALRecord(record)) {
+    Status envelope_status = ExtractMetadataWALBatch(record, &batch_record);
+    if (!envelope_status.ok()) {
+      r += "invalid metadata transaction: " + envelope_status.ToString() + "\n";
+      dst->Append(r);
+      return;
+    }
+  }
+  if (batch_record.size() < 12) {
     r += "log record length ";
-    AppendNumberTo(&r, record.size());
+    AppendNumberTo(&r, batch_record.size());
     r += " is too small\n";
     dst->Append(r);
     return;
   }
   WriteBatch batch;
-  WriteBatchInternal::SetContents(&batch, record);
+  WriteBatchInternal::SetContents(&batch, batch_record);
   r += "sequence ";
   AppendNumberTo(&r, WriteBatchInternal::Sequence(&batch));
   r.push_back('\n');

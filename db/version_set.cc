@@ -743,6 +743,11 @@ VersionSet::VersionSet(const std::string& dbname, const Options* options,
       last_sequence_(0),
       log_number_(0),
       prev_log_number_(0),
+      has_metadata_checkpoint_(false),
+      metadata_checkpoint_mseq_(0),
+      metadata_total_entries_(0),
+      metadata_distinct_keys_(0),
+      metadata_wal_number_(0),
       descriptor_file_(nullptr),
       descriptor_log_(nullptr),
       dummy_versions_(this),
@@ -788,6 +793,45 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
 
   edit->SetNextFile(next_file_number_);
   edit->SetLastSequence(last_sequence_);
+  if (!edit->has_metadata_checkpoint_ && has_metadata_checkpoint_) {
+    edit->SetMetadataCheckpoint(metadata_checkpoint_mseq_,
+                                metadata_total_entries_,
+                                metadata_distinct_keys_,
+                                metadata_wal_number_);
+  }
+
+  std::vector<MetadataFileMeta> next_metadata_files = metadata_files_;
+  for (uint64_t number : edit->deleted_metadata_files_) {
+    next_metadata_files.erase(
+        std::remove_if(next_metadata_files.begin(), next_metadata_files.end(),
+                       [number](const MetadataFileMeta& file) {
+                         return file.number == number;
+                       }),
+        next_metadata_files.end());
+  }
+  for (const MetadataFileMeta& file : edit->metadata_files_) {
+    next_metadata_files.push_back(file);
+    MarkFileNumberUsed(file.number);
+  }
+  std::vector<MetadataCommitMeta> next_metadata_commits = metadata_commits_;
+  for (const MetadataCommitMeta& commit : edit->metadata_commits_) {
+    next_metadata_commits.push_back(commit);
+    MarkFileNumberUsed(commit.file_number);
+  }
+  if (edit->has_metadata_checkpoint_) {
+    next_metadata_commits.erase(
+        std::remove_if(next_metadata_commits.begin(),
+                       next_metadata_commits.end(),
+                       [edit](const MetadataCommitMeta& commit) {
+                         return commit.mseq <=
+                                edit->metadata_checkpoint_mseq_;
+                       }),
+        next_metadata_commits.end());
+  }
+  std::sort(next_metadata_commits.begin(), next_metadata_commits.end(),
+            [](const MetadataCommitMeta& a, const MetadataCommitMeta& b) {
+              return a.mseq < b.mseq;
+            });
 
   Version* v = new Version(this);
   {
@@ -844,6 +888,13 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     AppendVersion(v);
     log_number_ = edit->log_number_;
     prev_log_number_ = edit->prev_log_number_;
+    metadata_files_.swap(next_metadata_files);
+    metadata_commits_.swap(next_metadata_commits);
+    has_metadata_checkpoint_ = edit->has_metadata_checkpoint_;
+    metadata_checkpoint_mseq_ = edit->metadata_checkpoint_mseq_;
+    metadata_total_entries_ = edit->metadata_total_entries_;
+    metadata_distinct_keys_ = edit->metadata_distinct_keys_;
+    metadata_wal_number_ = edit->metadata_wal_number_;
   } else {
     delete v;
     if (!new_manifest_file.empty()) {
@@ -921,6 +972,42 @@ Status VersionSet::Recover(bool* save_manifest) {
 
       if (s.ok()) {
         builder.Apply(&edit);
+        for (uint64_t number : edit.deleted_metadata_files_) {
+          metadata_files_.erase(
+              std::remove_if(metadata_files_.begin(), metadata_files_.end(),
+                             [number](const MetadataFileMeta& file) {
+                               return file.number == number;
+                             }),
+              metadata_files_.end());
+        }
+        for (const MetadataFileMeta& metadata_file : edit.metadata_files_) {
+          metadata_files_.push_back(metadata_file);
+          MarkFileNumberUsed(metadata_file.number);
+        }
+        for (const MetadataCommitMeta& commit : edit.metadata_commits_) {
+          metadata_commits_.push_back(commit);
+          MarkFileNumberUsed(commit.file_number);
+        }
+        if (edit.has_metadata_checkpoint_) {
+          has_metadata_checkpoint_ = true;
+          metadata_checkpoint_mseq_ = edit.metadata_checkpoint_mseq_;
+          metadata_total_entries_ = edit.metadata_total_entries_;
+          metadata_distinct_keys_ = edit.metadata_distinct_keys_;
+          metadata_wal_number_ = edit.metadata_wal_number_;
+          metadata_commits_.erase(
+              std::remove_if(metadata_commits_.begin(),
+                             metadata_commits_.end(),
+                             [this](const MetadataCommitMeta& commit) {
+                               return commit.mseq <=
+                                      metadata_checkpoint_mseq_;
+                             }),
+              metadata_commits_.end());
+          std::sort(metadata_commits_.begin(), metadata_commits_.end(),
+                    [](const MetadataCommitMeta& a,
+                       const MetadataCommitMeta& b) {
+                      return a.mseq < b.mseq;
+                    });
+        }
       }
 
       if (edit.has_log_number_) {
@@ -1082,6 +1169,19 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
     }
   }
 
+  for (const MetadataFileMeta& file : metadata_files_) {
+    edit.AddMetadataFile(file);
+  }
+  for (const MetadataCommitMeta& commit : metadata_commits_) {
+    edit.AddMetadataCommit(commit);
+  }
+  if (has_metadata_checkpoint_) {
+    edit.SetMetadataCheckpoint(metadata_checkpoint_mseq_,
+                               metadata_total_entries_,
+                               metadata_distinct_keys_,
+                               metadata_wal_number_);
+  }
+
   // Save files
   for (int level = 0; level < config::kNumLevels; level++) {
     const std::vector<FileMetaData*>& files = current_->files_[level];
@@ -1147,6 +1247,13 @@ uint64_t VersionSet::ApproximateOffsetOf(Version* v, const InternalKey& ikey) {
 }
 
 void VersionSet::AddLiveFiles(std::set<uint64_t>* live) {
+  AddLiveTableFiles(live);
+  for (const MetadataFileMeta& file : metadata_files_) {
+    live->insert(file.number);
+  }
+}
+
+void VersionSet::AddLiveTableFiles(std::set<uint64_t>* live) {
   for (Version* v = dummy_versions_.next_; v != &dummy_versions_;
        v = v->next_) {
     for (int level = 0; level < config::kNumLevels; level++) {

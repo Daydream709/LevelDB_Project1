@@ -227,6 +227,20 @@ class VersionSet {
   // being compacted, or zero if there is no such log file.
   uint64_t PrevLogNumber() const { return prev_log_number_; }
 
+  const std::vector<MetadataFileMeta>& metadata_files() const {
+    return metadata_files_;
+  }
+  const std::vector<MetadataCommitMeta>& metadata_commits() const {
+    return metadata_commits_;
+  }
+  bool has_metadata_checkpoint() const { return has_metadata_checkpoint_; }
+  uint64_t metadata_checkpoint_mseq() const {
+    return metadata_checkpoint_mseq_;
+  }
+  uint64_t metadata_total_entries() const { return metadata_total_entries_; }
+  uint64_t metadata_distinct_keys() const { return metadata_distinct_keys_; }
+  uint64_t metadata_wal_number() const { return metadata_wal_number_; }
+
   // Pick level and inputs for a new compaction.
   // Returns nullptr if there is no compaction to be done.
   // Otherwise returns a pointer to a heap-allocated object that
@@ -257,6 +271,7 @@ class VersionSet {
   // Add all files listed in any live version to *live.
   // May also mutate some internal state.
   void AddLiveFiles(std::set<uint64_t>* live);
+  void AddLiveTableFiles(std::set<uint64_t>* live);
 
   // Return the approximate offset in the database of the data for
   // "key" as of version "v".
@@ -303,6 +318,13 @@ class VersionSet {
   uint64_t last_sequence_;
   uint64_t log_number_;
   uint64_t prev_log_number_;  // 0 or backing store for memtable being compacted
+  std::vector<MetadataFileMeta> metadata_files_;
+  std::vector<MetadataCommitMeta> metadata_commits_;
+  bool has_metadata_checkpoint_;
+  uint64_t metadata_checkpoint_mseq_;
+  uint64_t metadata_total_entries_;
+  uint64_t metadata_distinct_keys_;
+  uint64_t metadata_wal_number_;
 
   // Opened lazily
   WritableFile* descriptor_file_;

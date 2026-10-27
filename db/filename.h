@@ -25,6 +25,7 @@ enum FileType {
   kDescriptorFile,
   kCurrentFile,
   kTempFile,
+  kMetadataFile,
   kInfoLogFile  // Either the current one, or an old one
 };
 
@@ -42,6 +43,12 @@ std::string TableFileName(const std::string& dbname, uint64_t number);
 // in the db named by "dbname". The result will be prefixed with
 // "dbname".
 std::string SSTTableFileName(const std::string& dbname, uint64_t number);
+
+// Return the name of an auxiliary metadata table file.
+std::string MetadataFileName(const std::string& dbname, uint64_t number);
+
+// Return the name of a committed metadata change table.
+std::string MetadataChangeFileName(const std::string& dbname, uint64_t number);
 
 // Return the name of the descriptor file for the db named by
 // "dbname" and the specified incarnation number.  The result will be

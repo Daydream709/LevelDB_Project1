@@ -20,7 +20,12 @@ enum Tag {
   kDeletedFile = 6,
   kNewFile = 7,
   // 8 was used for large value refs
-  kPrevLogNumber = 9
+  kPrevLogNumber = 9,
+  kMetadataFile = 10,
+  kDeletedMetadataFile = 11,
+  kMetadataCheckpoint = 12,
+  kMetadataCommit = 13,
+  kMetadataLsmFile = 14
 };
 
 void VersionEdit::Clear() {
@@ -34,9 +39,17 @@ void VersionEdit::Clear() {
   has_prev_log_number_ = false;
   has_next_file_number_ = false;
   has_last_sequence_ = false;
+  metadata_checkpoint_mseq_ = 0;
+  metadata_total_entries_ = 0;
+  metadata_distinct_keys_ = 0;
+  metadata_wal_number_ = 0;
+  has_metadata_checkpoint_ = false;
   compact_pointers_.clear();
   deleted_files_.clear();
   new_files_.clear();
+  metadata_files_.clear();
+  metadata_commits_.clear();
+  deleted_metadata_files_.clear();
 }
 
 void VersionEdit::EncodeTo(std::string* dst) const {
@@ -81,6 +94,38 @@ void VersionEdit::EncodeTo(std::string* dst) const {
     PutVarint64(dst, f.file_size);
     PutLengthPrefixedSlice(dst, f.smallest.Encode());
     PutLengthPrefixedSlice(dst, f.largest.Encode());
+  }
+
+  for (const MetadataFileMeta& f : metadata_files_) {
+    PutVarint32(dst, kMetadataLsmFile);
+    PutVarint32(dst, static_cast<uint32_t>(f.kind));
+    PutVarint32(dst, static_cast<uint32_t>(f.level));
+    PutVarint64(dst, f.number);
+    PutVarint64(dst, f.file_size);
+    PutVarint64(dst, f.min_mseq);
+    PutVarint64(dst, f.max_mseq);
+    PutLengthPrefixedSlice(dst, f.smallest);
+    PutLengthPrefixedSlice(dst, f.largest);
+  }
+  for (const MetadataCommitMeta& commit : metadata_commits_) {
+    PutVarint32(dst, kMetadataCommit);
+    PutVarint64(dst, commit.file_number);
+    PutVarint64(dst, commit.mseq);
+    PutVarint64(dst, commit.prev_mseq);
+    PutVarint64(dst, commit.total_entries);
+    PutVarint64(dst, commit.distinct_keys);
+    PutVarint64(dst, commit.wal_number);
+  }
+  for (uint64_t number : deleted_metadata_files_) {
+    PutVarint32(dst, kDeletedMetadataFile);
+    PutVarint64(dst, number);
+  }
+  if (has_metadata_checkpoint_) {
+    PutVarint32(dst, kMetadataCheckpoint);
+    PutVarint64(dst, metadata_checkpoint_mseq_);
+    PutVarint64(dst, metadata_total_entries_);
+    PutVarint64(dst, metadata_distinct_keys_);
+    PutVarint64(dst, metadata_wal_number_);
   }
 }
 
@@ -183,6 +228,92 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
           new_files_.push_back(std::make_pair(level, f));
         } else {
           msg = "new-file entry";
+        }
+        break;
+
+      case kMetadataFile: {
+        uint32_t kind;
+        MetadataFileMeta metadata_file;
+        if (GetVarint32(&input, &kind) &&
+            (kind == kMetadataIndex || kind == kMetadataChange) &&
+            GetVarint64(&input, &metadata_file.number) &&
+            GetVarint64(&input, &metadata_file.file_size) &&
+            GetVarint64(&input, &metadata_file.min_mseq) &&
+            GetVarint64(&input, &metadata_file.max_mseq) &&
+            GetLengthPrefixedSlice(&input, &str)) {
+          metadata_file.kind = static_cast<MetadataFileKind>(kind);
+          metadata_file.level = 0;
+          metadata_file.smallest = str.ToString();
+          if (GetLengthPrefixedSlice(&input, &str)) {
+            metadata_file.largest = str.ToString();
+            metadata_files_.push_back(std::move(metadata_file));
+          } else {
+            msg = "metadata largest key";
+          }
+        } else {
+          msg = "metadata file entry";
+        }
+        break;
+      }
+
+      case kMetadataLsmFile: {
+        uint32_t kind;
+        uint32_t metadata_level;
+        MetadataFileMeta metadata_file;
+        if (GetVarint32(&input, &kind) &&
+            (kind == kMetadataIndex || kind == kMetadataChange) &&
+            GetVarint32(&input, &metadata_level) && metadata_level < 64 &&
+            GetVarint64(&input, &metadata_file.number) &&
+            GetVarint64(&input, &metadata_file.file_size) &&
+            GetVarint64(&input, &metadata_file.min_mseq) &&
+            GetVarint64(&input, &metadata_file.max_mseq) &&
+            GetLengthPrefixedSlice(&input, &str)) {
+          metadata_file.kind = static_cast<MetadataFileKind>(kind);
+          metadata_file.level = static_cast<int>(metadata_level);
+          metadata_file.smallest = str.ToString();
+          if (GetLengthPrefixedSlice(&input, &str)) {
+            metadata_file.largest = str.ToString();
+            metadata_files_.push_back(std::move(metadata_file));
+          } else {
+            msg = "metadata largest key";
+          }
+        } else {
+          msg = "metadata LSM file entry";
+        }
+        break;
+      }
+
+      case kMetadataCommit: {
+        MetadataCommitMeta commit;
+        if (GetVarint64(&input, &commit.file_number) &&
+            GetVarint64(&input, &commit.mseq) &&
+            GetVarint64(&input, &commit.prev_mseq) &&
+            GetVarint64(&input, &commit.total_entries) &&
+            GetVarint64(&input, &commit.distinct_keys) &&
+            GetVarint64(&input, &commit.wal_number)) {
+          metadata_commits_.push_back(commit);
+        } else {
+          msg = "metadata commit event";
+        }
+        break;
+      }
+
+      case kDeletedMetadataFile:
+        if (GetVarint64(&input, &number)) {
+          deleted_metadata_files_.insert(number);
+        } else {
+          msg = "deleted metadata file";
+        }
+        break;
+
+      case kMetadataCheckpoint:
+        if (GetVarint64(&input, &metadata_checkpoint_mseq_) &&
+            GetVarint64(&input, &metadata_total_entries_) &&
+            GetVarint64(&input, &metadata_distinct_keys_) &&
+            GetVarint64(&input, &metadata_wal_number_)) {
+          has_metadata_checkpoint_ = true;
+        } else {
+          msg = "metadata checkpoint";
         }
         break;
 

@@ -26,6 +26,30 @@ struct FileMetaData {
   InternalKey largest;   // Largest internal key served by table
 };
 
+enum MetadataFileKind { kMetadataIndex = 1, kMetadataChange = 2 };
+
+struct MetadataFileMeta {
+  MetadataFileMeta() : kind(kMetadataIndex), number(0), file_size(0),
+                      min_mseq(0), max_mseq(0), level(0) {}
+  MetadataFileKind kind;
+  uint64_t number;
+  uint64_t file_size;
+  uint64_t min_mseq;
+  uint64_t max_mseq;
+  int level;
+  std::string smallest;
+  std::string largest;
+};
+
+struct MetadataCommitMeta {
+  uint64_t file_number = 0;
+  uint64_t mseq = 0;
+  uint64_t prev_mseq = 0;
+  uint64_t total_entries = 0;
+  uint64_t distinct_keys = 0;
+  uint64_t wal_number = 0;
+};
+
 class VersionEdit {
  public:
   VersionEdit() { Clear(); }
@@ -52,6 +76,23 @@ class VersionEdit {
   void SetLastSequence(SequenceNumber seq) {
     has_last_sequence_ = true;
     last_sequence_ = seq;
+  }
+  void AddMetadataFile(const MetadataFileMeta& file) {
+    metadata_files_.push_back(file);
+  }
+  void RemoveMetadataFile(uint64_t number) {
+    deleted_metadata_files_.insert(number);
+  }
+  void AddMetadataCommit(const MetadataCommitMeta& commit) {
+    metadata_commits_.push_back(commit);
+  }
+  void SetMetadataCheckpoint(uint64_t mseq, uint64_t total_entries,
+                             uint64_t distinct_keys, uint64_t wal_number) {
+    has_metadata_checkpoint_ = true;
+    metadata_checkpoint_mseq_ = mseq;
+    metadata_total_entries_ = total_entries;
+    metadata_distinct_keys_ = distinct_keys;
+    metadata_wal_number_ = wal_number;
   }
   void SetCompactPointer(int level, const InternalKey& key) {
     compact_pointers_.push_back(std::make_pair(level, key));
@@ -95,10 +136,18 @@ class VersionEdit {
   bool has_prev_log_number_;
   bool has_next_file_number_;
   bool has_last_sequence_;
+  uint64_t metadata_checkpoint_mseq_;
+  uint64_t metadata_total_entries_;
+  uint64_t metadata_distinct_keys_;
+  uint64_t metadata_wal_number_;
+  bool has_metadata_checkpoint_;
 
   std::vector<std::pair<int, InternalKey>> compact_pointers_;
   DeletedFileSet deleted_files_;
   std::vector<std::pair<int, FileMetaData>> new_files_;
+  std::vector<MetadataFileMeta> metadata_files_;
+  std::vector<MetadataCommitMeta> metadata_commits_;
+  std::set<uint64_t> deleted_metadata_files_;
 };
 
 }  // namespace leveldb

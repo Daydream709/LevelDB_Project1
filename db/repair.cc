@@ -31,6 +31,7 @@
 #include "db/log_reader.h"
 #include "db/log_writer.h"
 #include "db/memtable.h"
+#include "db/metadata_log.h"
 #include "db/table_cache.h"
 #include "db/version_edit.h"
 #include "db/write_batch_internal.h"
@@ -170,7 +171,7 @@ class Repairer {
     // corruptions cause entire commits to be skipped instead of
     // propagating bad information (like overly large sequence
     // numbers).
-    log::Reader reader(lfile, &reporter, false /*do not checksum*/,
+    log::Reader reader(lfile, &reporter, true /*checksum*/,
                        0 /*initial_offset*/);
 
     // Read all the records and add to a memtable
@@ -181,12 +182,22 @@ class Repairer {
     mem->Ref();
     int counter = 0;
     while (reader.ReadRecord(&record, &scratch)) {
-      if (record.size() < 12) {
+      Slice batch_record = record;
+      if (IsMetadataWALRecord(record)) {
+        status = ExtractMetadataWALBatch(record, &batch_record);
+        if (!status.ok()) {
+          Log(options_.info_log, "Log #%llu: ignoring invalid metadata record: %s",
+              (unsigned long long)log, status.ToString().c_str());
+          status = Status::OK();
+          continue;
+        }
+      }
+      if (batch_record.size() < 12) {
         reporter.Corruption(record.size(),
                             Status::Corruption("log record too small"));
         continue;
       }
-      WriteBatchInternal::SetContents(&batch, record);
+      WriteBatchInternal::SetContents(&batch, batch_record);
       status = WriteBatchInternal::InsertInto(&batch, mem);
       if (status.ok()) {
         counter += WriteBatchInternal::Count(&batch);
