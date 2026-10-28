@@ -3,6 +3,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/memtable.h"
+#include "util/profiler.h"
 #include "db/dbformat.h"
 #include "leveldb/comparator.h"
 #include "leveldb/env.h"
@@ -99,7 +100,8 @@ void MemTable::Add(SequenceNumber s, ValueType type, const Slice& key,
   table_.Insert(buf);
 }
 
-bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
+bool MemTable::Get(const LookupKey& key, uint64_t read_time_micros,
+                   std::string* value, Status* s) {
   Slice memkey = key.memtable_key();
   Table::Iterator iter(&table_);
   iter.Seek(memkey.data());
@@ -124,6 +126,23 @@ bool MemTable::Get(const LookupKey& key, std::string* value, Status* s) {
         case kTypeValue: {
           Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
           value->assign(v.data(), v.size());
+          return true;
+        }
+        case kTypeValueWithTTL: {
+          ProfileScope ttl_check("ttl.check");
+          ProfileScope::Count("ttl.values_examined");
+          Slice v = GetLengthPrefixedSlice(key_ptr + key_length);
+          if (v.size() < 8) {
+            *s = Status::Corruption("TTL value is shorter than its deadline");
+          } else {
+            const uint64_t expire_time_micros = DecodeFixed64(v.data());
+            if (read_time_micros >= expire_time_micros) {
+              ProfileScope::Count("ttl.expired_read_results");
+              *s = Status::NotFound(Slice());
+            } else {
+              value->assign(v.data() + 8, v.size() - 8);
+            }
+          }
           return true;
         }
         case kTypeDeletion:

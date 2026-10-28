@@ -214,6 +214,7 @@ target_sources(leveldb
     "util/mutexlock.h"
     "util/no_destructor.h"
     "util/options.cc"
+    "util/profiler.cc"
     "util/random.h"
     "util/status.cc"
 
@@ -358,6 +359,8 @@ if(LEVELDB_BUILD_TESTS)
         "db/autocompact_test.cc"
         "db/corruption_test.cc"
         "db/db_test.cc"
+        "db/ttl_metadata_test.cc"
+        "util/profiler_test.cc"
         "db/dbformat_test.cc"
         "db/filename_test.cc"
         "db/log_test.cc"
@@ -526,6 +529,7 @@ if(LEVELDB_INSTALL)
       "${LEVELDB_PUBLIC_INCLUDE_DIR}/filter_policy.h"
       "${LEVELDB_PUBLIC_INCLUDE_DIR}/iterator.h"
       "${LEVELDB_PUBLIC_INCLUDE_DIR}/options.h"
+      "${LEVELDB_PUBLIC_INCLUDE_DIR}/profiler.h"
       "${LEVELDB_PUBLIC_INCLUDE_DIR}/slice.h"
       "${LEVELDB_PUBLIC_INCLUDE_DIR}/status.h"
       "${LEVELDB_PUBLIC_INCLUDE_DIR}/table_builder.h"
@@ -564,6 +568,16 @@ foreach(example IN ITEMS db_test1 db_test2)
 endforeach()
 
 if(LEVELDB_BUILD_TESTS)
+  if(UNIX AND NOT BUILD_SHARED_LIBS)
+    add_executable(ttl_crash_writer "test/ttl_crash_writer.cc")
+    target_include_directories(ttl_crash_writer PRIVATE "${PROJECT_SOURCE_DIR}")
+    target_compile_definitions(ttl_crash_writer PRIVATE
+      ${LEVELDB_PLATFORM_NAME}=1 LEVELDB_HAS_PORT_CONFIG_H=1)
+    target_link_libraries(ttl_crash_writer PRIVATE leveldb)
+    add_dependencies(leveldb_tests ttl_crash_writer)
+    target_compile_definitions(leveldb_tests PRIVATE
+      "LEVELDB_TTL_CRASH_WRITER_PATH=\"$<TARGET_FILE:ttl_crash_writer>\"")
+  endif()
   foreach(course_test IN ITEMS ttl_test metadata_test)
     add_executable(${course_test} "test/${course_test}.cc")
     target_link_libraries(${course_test} PRIVATE leveldb gtest)

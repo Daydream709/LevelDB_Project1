@@ -22,6 +22,7 @@
 #include "leveldb/env.h"
 #include "port/port.h"
 #include "port/thread_annotations.h"
+#include "util/profiler.h"
 
 namespace leveldb {
 
@@ -35,7 +36,8 @@ class VersionSet;
 
 class DBImpl : public DB {
  public:
-  DBImpl(const Options& options, const std::string& dbname);
+  DBImpl(const Options& options, const std::string& dbname,
+         uint64_t profiling_id = 0);
 
   DBImpl(const DBImpl&) = delete;
   DBImpl& operator=(const DBImpl&) = delete;
@@ -45,6 +47,8 @@ class DBImpl : public DB {
   // Implementations of the DB interface
   Status Put(const WriteOptions&, const Slice& key,
              const Slice& value) override;
+  Status Put(const WriteOptions&, const Slice& key, const Slice& value,
+             uint64_t ttl) override;
   Status Delete(const WriteOptions&, const Slice& key) override;
   Status Write(const WriteOptions& options, WriteBatch* updates) override;
   Status Get(const ReadOptions& options, const Slice& key,
@@ -86,6 +90,9 @@ class DBImpl : public DB {
   // bytes.
   void RecordReadSample(Slice key);
 
+  const std::shared_ptr<Profiler>& profiler() const { return profiler_; }
+  uint64_t profiling_id() const { return profiling_id_; }
+
  private:
   friend class DB;
   struct CompactionState;
@@ -118,10 +125,10 @@ class DBImpl : public DB {
 
   Iterator* NewInternalIterator(const ReadOptions&,
                                 SequenceNumber* latest_snapshot,
+                                uint64_t* read_time_micros,
                                 uint32_t* seed);
 
   Status NewDB();
-
   // Recover the descriptor from persistent storage.  May do a significant
   // amount of work to recover recently logged updates.  Any changes to
   // be made to the descriptor are added to *edit.
@@ -182,6 +189,8 @@ class DBImpl : public DB {
   void RecordBackgroundError(const Status& s);
 
   void MaybeScheduleCompaction() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status FindTTLCompactionCandidate(bool* found)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   static void BGWork(void* db);
   void BackgroundCall();
   static void MetadataBGWork(void* db);
@@ -196,12 +205,19 @@ class DBImpl : public DB {
   Status FinishCompactionOutputFile(CompactionState* compact, Iterator* input);
   Status InstallCompactionResults(CompactionState* compact)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status RewriteBottomLevelRange(const Slice* begin, const Slice* end);
+  Status RewriteBottomLevelRangeLocked(const Slice* begin, const Slice* end)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   const Comparator* user_comparator() const {
     return internal_comparator_.user_comparator();
   }
 
   // Constant after construction
+  const std::shared_ptr<Profiler> profiler_;
+  const uint64_t profiling_id_;
+  std::unique_ptr<Env> profiling_env_;
+  DBProfileMutexObserver profiling_mutex_observer_;
   Env* const env_;
   const InternalKeyComparator internal_comparator_;
   const InternalFilterPolicy internal_filter_policy_;
@@ -283,12 +299,22 @@ class DBImpl : public DB {
 
   SnapshotList snapshots_ GUARDED_BY(mutex_);
 
+
   // Set of table files to protect from deletion because they are
   // part of ongoing compactions.
   std::set<uint64_t> pending_outputs_ GUARDED_BY(mutex_);
 
   // Has a background compaction been scheduled or is running?
   bool background_compaction_scheduled_ GUARDED_BY(mutex_);
+  uint64_t profiling_schedule_time_ GUARDED_BY(mutex_) = 0;
+  uint64_t profiling_parent_job_id_ GUARDED_BY(mutex_) = 0;
+  // Callback diagnostics finish after its DB lock is released. Close waits for
+  // that publication too, so a post-close export contains no unfinished jobs.
+  unsigned profiling_callbacks_ GUARDED_BY(mutex_) = 0;
+  bool bottom_rewrite_in_progress_ GUARDED_BY(mutex_) = false;
+  int ttl_compaction_level_ GUARDED_BY(mutex_) = -1;
+  std::string ttl_compaction_begin_ GUARDED_BY(mutex_);
+  std::string ttl_compaction_end_ GUARDED_BY(mutex_);
 
   ManualCompaction* manual_compaction_ GUARDED_BY(mutex_);
 

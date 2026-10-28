@@ -1,0 +1,2 @@
+# The benchmark verifies these packaged files with byte-for-byte SHA-256 hashes.
+benchmark/regression-source/** text eol=lf

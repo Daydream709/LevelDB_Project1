@@ -3,6 +3,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/version_set.h"
+#include "util/profiler.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -250,6 +251,7 @@ enum SaverState {
   kNotFound,
   kFound,
   kDeleted,
+  kExpired,
   kCorrupt,
 };
 struct Saver {
@@ -257,6 +259,7 @@ struct Saver {
   const Comparator* ucmp;
   Slice user_key;
   std::string* value;
+  uint64_t read_time_micros;
 };
 }  // namespace
 static void SaveValue(void* arg, const Slice& ikey, const Slice& v) {
@@ -266,9 +269,26 @@ static void SaveValue(void* arg, const Slice& ikey, const Slice& v) {
     s->state = kCorrupt;
   } else {
     if (s->ucmp->Compare(parsed_key.user_key, s->user_key) == 0) {
-      s->state = (parsed_key.type == kTypeValue) ? kFound : kDeleted;
-      if (s->state == kFound) {
+      if (parsed_key.type == kTypeValue) {
+        s->state = kFound;
         s->value->assign(v.data(), v.size());
+      } else if (parsed_key.type == kTypeValueWithTTL) {
+        ProfileScope ttl_check("ttl.check");
+        ProfileScope::Count("ttl.values_examined");
+        if (v.size() < 8) {
+          s->state = kCorrupt;
+        } else {
+          const uint64_t expire_time_micros = DecodeFixed64(v.data());
+          if (s->read_time_micros >= expire_time_micros) {
+            s->state = kExpired;
+            ProfileScope::Count("ttl.expired_read_results");
+          } else {
+            s->state = kFound;
+            s->value->assign(v.data() + 8, v.size() - 8);
+          }
+        }
+      } else {
+        s->state = kDeleted;
       }
     }
   }
@@ -322,7 +342,8 @@ void Version::ForEachOverlapping(Slice user_key, Slice internal_key, void* arg,
 }
 
 Status Version::Get(const ReadOptions& options, const LookupKey& k,
-                    std::string* value, GetStats* stats) {
+                    std::string* value, uint64_t read_time_micros,
+                    GetStats* stats) {
   stats->seek_file = nullptr;
   stats->seek_file_level = -1;
 
@@ -366,6 +387,10 @@ Status Version::Get(const ReadOptions& options, const LookupKey& k,
           return false;
         case kDeleted:
           return false;
+        case kExpired:
+          state->s = Status::NotFound(Slice());
+          state->found = true;
+          return false;
         case kCorrupt:
           state->s =
               Status::Corruption("corrupted key for ", state->saver.user_key);
@@ -393,6 +418,7 @@ Status Version::Get(const ReadOptions& options, const LookupKey& k,
   state.saver.ucmp = vset_->icmp_.user_comparator();
   state.saver.user_key = k.user_key();
   state.saver.value = value;
+  state.saver.read_time_micros = read_time_micros;
 
   ForEachOverlapping(state.saver.user_key, state.ikey, &state, &State::Match);
 
@@ -781,6 +807,7 @@ void VersionSet::AppendVersion(Version* v) {
 }
 
 Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
+  ProfileScope profile("manifest.install");
   if (edit->has_log_number_) {
     assert(edit->log_number_ >= log_number_);
     assert(edit->log_number_ < next_file_number_);
@@ -911,7 +938,7 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     }
   }
 
-  return s;
+  return profile.Result(s);
 }
 
 Status VersionSet::Recover(bool* save_manifest) {

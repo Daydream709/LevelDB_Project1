@@ -13,13 +13,14 @@ namespace leveldb {
 class SnapshotList;
 
 // Snapshots are kept in a doubly-linked list in the DB.
-// Each SnapshotImpl corresponds to a particular sequence number.
+// Each SnapshotImpl corresponds to a particular sequence number and read time.
 class SnapshotImpl : public Snapshot {
  public:
-  SnapshotImpl(SequenceNumber sequence_number)
-      : sequence_number_(sequence_number) {}
+  SnapshotImpl(SequenceNumber sequence_number, uint64_t read_time_micros)
+      : sequence_number_(sequence_number), read_time_micros_(read_time_micros) {}
 
   SequenceNumber sequence_number() const { return sequence_number_; }
+  uint64_t read_time_micros() const { return read_time_micros_; }
 
  private:
   friend class SnapshotList;
@@ -30,6 +31,7 @@ class SnapshotImpl : public Snapshot {
   SnapshotImpl* next_;
 
   const SequenceNumber sequence_number_;
+  const uint64_t read_time_micros_;
 
 #if !defined(NDEBUG)
   SnapshotList* list_ = nullptr;
@@ -38,7 +40,7 @@ class SnapshotImpl : public Snapshot {
 
 class SnapshotList {
  public:
-  SnapshotList() : head_(0) {
+  SnapshotList() : head_(0, 0) {
     head_.prev_ = &head_;
     head_.next_ = &head_;
   }
@@ -57,7 +59,7 @@ class SnapshotList {
   SnapshotImpl* New(SequenceNumber sequence_number) {
     assert(empty() || newest()->sequence_number_ <= sequence_number);
 
-    SnapshotImpl* snapshot = new SnapshotImpl(sequence_number);
+    SnapshotImpl* snapshot = new SnapshotImpl(sequence_number, 0);
 
 #if !defined(NDEBUG)
     snapshot->list_ = this;
@@ -67,6 +69,29 @@ class SnapshotList {
     snapshot->prev_->next_ = snapshot;
     snapshot->next_->prev_ = snapshot;
     return snapshot;
+  }
+
+  SnapshotImpl* New(SequenceNumber sequence_number,
+                    uint64_t read_time_micros) {
+    assert(empty() || newest()->sequence_number_ <= sequence_number);
+    SnapshotImpl* snapshot =
+        new SnapshotImpl(sequence_number, read_time_micros);
+#if !defined(NDEBUG)
+    snapshot->list_ = this;
+#endif  // !defined(NDEBUG)
+    snapshot->next_ = &head_;
+    snapshot->prev_ = head_.prev_;
+    snapshot->prev_->next_ = snapshot;
+    snapshot->next_->prev_ = snapshot;
+    return snapshot;
+  }
+
+  uint64_t oldest_read_time_micros(uint64_t default_time) const {
+    uint64_t result = default_time;
+    for (const SnapshotImpl* p = head_.next_; p != &head_; p = p->next_) {
+      if (p->read_time_micros_ < result) result = p->read_time_micros_;
+    }
+    return result;
   }
 
   // Removes a SnapshotImpl from this list.

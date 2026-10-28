@@ -9,7 +9,65 @@
 #include "leveldb/env.h"
 #include "util/logging.h"
 
+#include <limits>
+
 namespace leveldb {
+
+class TTLRecordingHandler : public WriteBatch::Handler {
+ public:
+  void Put(const Slice&, const Slice&) override { ++plain_calls; }
+  void Delete(const Slice&) override { ++delete_calls; }
+  void PutWithTTL(const Slice& key, const Slice& value, uint64_t deadline) override {
+    ++ttl_calls;
+    last_key = key.ToString();
+    last_value = value.ToString();
+    last_deadline = deadline;
+  }
+  int plain_calls = 0;
+  int delete_calls = 0;
+  int ttl_calls = 0;
+  std::string last_key, last_value;
+  uint64_t last_deadline = 0;
+};
+
+TEST(WriteBatchTest, TTLDeadlineAndBinaryValueRoundTrip) {
+  for (uint64_t deadline : {uint64_t{0}, std::numeric_limits<uint64_t>::max()}) {
+    WriteBatch batch;
+    const std::string key("k\0x", 3), value("v\0\xff", 3);
+    batch.PutWithExpiration(key, value, deadline);
+    TTLRecordingHandler handler;
+    ASSERT_TRUE(batch.Iterate(&handler).ok());
+    EXPECT_EQ(1, handler.ttl_calls);
+    EXPECT_EQ(0, handler.plain_calls);
+    EXPECT_EQ(0, handler.delete_calls);
+    EXPECT_EQ(key, handler.last_key);
+    EXPECT_EQ(value, handler.last_value);
+    EXPECT_EQ(deadline, handler.last_deadline);
+  }
+}
+
+TEST(WriteBatchTest, TTLTruncationsRejectIncompleteDeadlineAndValue) {
+  WriteBatch batch;
+  batch.PutWithExpiration("key", "payload", 123456789);
+  const std::string encoded = WriteBatchInternal::Contents(&batch).ToString();
+  for (size_t size = 12; size < encoded.size(); ++size) {
+    SCOPED_TRACE(size);
+    WriteBatch truncated;
+    WriteBatchInternal::SetContents(&truncated, Slice(encoded.data(), size));
+    TTLRecordingHandler handler;
+    EXPECT_TRUE(truncated.Iterate(&handler).IsCorruption());
+    EXPECT_EQ(0, handler.ttl_calls);
+    EXPECT_EQ(0, handler.plain_calls);
+    EXPECT_EQ(0, handler.delete_calls);
+  }
+  std::string bad_tag = encoded;
+  bad_tag[12] = static_cast<char>(0xff);
+  WriteBatch invalid;
+  WriteBatchInternal::SetContents(&invalid, bad_tag);
+  TTLRecordingHandler handler;
+  EXPECT_TRUE(invalid.Iterate(&handler).IsCorruption());
+  EXPECT_EQ(0, handler.ttl_calls);
+}
 
 static std::string PrintContents(WriteBatch* b) {
   InternalKeyComparator cmp(BytewiseComparator());

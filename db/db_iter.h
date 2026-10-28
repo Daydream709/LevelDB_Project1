@@ -19,7 +19,7 @@ class DBImpl;
 // into appropriate user keys.
 Iterator* NewDBIterator(DBImpl* db, const Comparator* user_key_comparator,
                         Iterator* internal_iter, SequenceNumber sequence,
-                        uint32_t seed);
+                        uint64_t read_time_micros, uint32_t seed);
 
 }  // namespace leveldb
 

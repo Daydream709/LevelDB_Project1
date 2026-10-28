@@ -22,6 +22,15 @@ class RandomAccessFile;
 struct ReadOptions;
 class TableCache;
 
+struct TableInternalStats {
+  uint64_t total_records = 0;
+  uint64_t ttl_records = 0;
+  uint64_t min_expire_time_micros = 0;
+  uint64_t max_expire_time_micros = 0;
+  uint64_t expiration_histogram[16] = {};
+  bool valid = false;
+};
+
 // A Table is a sorted map from strings to strings.  Tables are
 // immutable and persistent.  A Table may be safely accessed from
 // multiple threads without external synchronization.
@@ -51,6 +60,12 @@ class LEVELDB_EXPORT Table {
   // The result of NewIterator() is initially invalid (caller must
   // call one of the Seek methods on the iterator before using it).
   Iterator* NewIterator(const ReadOptions&) const;
+
+  // Returns validated embedded statistics when present. Missing or invalid
+  // optional metadata is reported as OK with stats->valid == false, allowing
+  // callers to rebuild it by scanning table data.
+  Status GetInternalStats(TableInternalStats* stats) const;
+  Status GetTTLStats(TableInternalStats* stats) const;
 
   // Given a key, return an approximate byte offset in the file where
   // the data for that key begins (or would begin if the key were
@@ -86,6 +101,7 @@ class LEVELDB_EXPORT Table {
 
   void ReadMeta(const Footer& footer);
   void ReadFilter(const Slice& filter_handle_value);
+  void ReadInternalStats(const Slice& stats_handle_value);
 
   Rep* const rep_;
 };

@@ -111,6 +111,36 @@ Status TableCache::Get(const ReadOptions& options, uint64_t file_number,
   return s;
 }
 
+Status TableCache::GetInternalStats(uint64_t file_number, uint64_t file_size,
+                                    TableInternalStats* stats) {
+  if (stats == nullptr) {
+    return Status::InvalidArgument("table statistics output pointer is null");
+  }
+  stats->valid = false;
+  Cache::Handle* handle = nullptr;
+  Status s = FindTable(file_number, file_size, &handle);
+  if (!s.ok()) return s;
+  Table* table = reinterpret_cast<TableAndFile*>(cache_->Value(handle))->table;
+  s = table->GetInternalStats(stats);
+  cache_->Release(handle);
+  return s;
+}
+
+Status TableCache::GetTTLStats(uint64_t file_number, uint64_t file_size,
+                               TableInternalStats* stats) {
+  if (stats == nullptr) {
+    return Status::InvalidArgument("table statistics output pointer is null");
+  }
+  stats->valid = false;
+  Cache::Handle* handle = nullptr;
+  Status s = FindTable(file_number, file_size, &handle);
+  if (!s.ok()) return s;
+  Table* table = reinterpret_cast<TableAndFile*>(cache_->Value(handle))->table;
+  s = table->GetTTLStats(stats);
+  cache_->Release(handle);
+  return s;
+}
+
 void TableCache::Evict(uint64_t file_number) {
   char buf[sizeof(file_number)];
   EncodeFixed64(buf, file_number);

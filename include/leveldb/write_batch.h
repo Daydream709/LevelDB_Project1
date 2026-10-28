@@ -21,6 +21,7 @@
 #ifndef STORAGE_LEVELDB_INCLUDE_WRITE_BATCH_H_
 #define STORAGE_LEVELDB_INCLUDE_WRITE_BATCH_H_
 
+#include <cstdint>
 #include <string>
 
 #include "leveldb/export.h"
@@ -36,6 +37,14 @@ class LEVELDB_EXPORT WriteBatch {
    public:
     virtual ~Handler();
     virtual void Put(const Slice& key, const Slice& value) = 0;
+    // Newer batches may contain values with an absolute expiration time.
+    // Existing handlers remain source-compatible and observe such records as
+    // ordinary puts unless they override this callback.
+    virtual void PutWithTTL(const Slice& key, const Slice& value,
+                            uint64_t expire_time_micros) {
+      (void)expire_time_micros;
+      Put(key, value);
+    }
     virtual void Delete(const Slice& key) = 0;
   };
 
@@ -49,6 +58,13 @@ class LEVELDB_EXPORT WriteBatch {
 
   // Store the mapping "key->value" in the database.
   void Put(const Slice& key, const Slice& value);
+
+  // Store a TTL value with an absolute deadline in Options::env->NowMicros()
+  // units. The deadline is preserved across Write(), Append(), and recovery;
+  // it is not a relative duration. A deadline <= the read time is expired,
+  // including zero. Use Put() for a value that never expires.
+  void PutWithExpiration(const Slice& key, const Slice& value,
+                         uint64_t expire_time_micros);
 
   // If the database contains a mapping for "key", erase it.  Else do nothing.
   void Delete(const Slice& key);

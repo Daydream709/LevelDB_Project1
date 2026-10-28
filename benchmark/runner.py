@@ -477,11 +477,14 @@ def main():
     ap.add_argument('--skip-regression', action='store_true')
     ap.add_argument('--memory-mib', type=int, default=0, help='optional workload virtual address-space limit; 0 disables')
     ap.add_argument('--sanitize', action='store_true', help='ASan/UBSan diagnostic build; not comparable to Release timing')
+    ap.add_argument('--profiling', action='store_true', help='export per-case profiling JSON/JSONL')
+    ap.add_argument('--profiling-sample-interval', type=int, default=1)
     ap.add_argument('--matrix', action='store_true', help='performance at N/10,N and 1,T threads where applicable; TTL expiry 0,50,100')
     args = ap.parse_args()
     cfg = PROFILES[args.profile].copy()
     for key in cfg:
         if getattr(args,key) is not None: cfg[key] = getattr(args,key)
+    if args.profiling_sample_interval < 1: ap.error('profiling sample interval must be positive')
     if args.sanitize and args.memory_mib: ap.error('ASan reserves a large virtual address space; do not combine with --memory-mib')
     if min(cfg.values()) < 1 or args.value_bytes < 16 or args.memory_mib < 0 or not 0 <= args.expired_percent <= 100 or min(args.timeout,args.build_timeout,args.jobs)<1:
         ap.error('positive sizes/timeouts/jobs required; value-bytes >=16; expiry in [0,100]')
@@ -601,6 +604,9 @@ def main():
                         cmd=[binary,'--case',name,'--db',work/'db','--keys',n,'--threads',t,
                              '--rounds',cfg['rounds'],'--value-bytes',args.value_bytes,
                              '--seed',args.seed+repeat,'--expired-percent',expiry]
+                        if args.profiling:
+                            cmd += ['--profiling', '1', '--profiling-output', work/'profiling',
+                                    '--profiling-sample-interval', args.profiling_sample_interval]
                         is_research = name.startswith('perf_metadata_')
                         append_workload_parameters(cmd, parameters, is_research)
                         cmd.extend(['--profile-sample-rate', str(args.profile_sample_rate)])

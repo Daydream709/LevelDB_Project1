@@ -30,6 +30,7 @@
 #include "leveldb/comparator.h"
 #include "leveldb/db.h"
 #include "leveldb/env.h"
+#include "leveldb/profiler.h"
 #include "leveldb/write_batch.h"
 
 namespace hw {
@@ -67,6 +68,10 @@ struct Config {
   bool real_clock=false, enable_metadata_profiling=false, sync_writes=false;
   size_t profile_sample_rate=64;
   std::string distribution="sequential";
+  bool profiling=false;
+  uint32_t profiling_sample_interval=1;
+  std::string profiling_output;
+  std::shared_ptr<Profiler> profiler;
 };
 // Track scheduled work so a quiescent oracle cannot race Version installation.
 class TestEnv : public EnvWrapper {
@@ -212,6 +217,7 @@ struct DBState {
   explicit DBState(const Config& c, bool fresh=true, uint64_t time=kEpoch,
                    size_t metadata_budget=0, bool open_now=true):env(c.real_clock),cache(NewLRUCache(8<<20)),path(c.path) {
     env.now=time; options.env=&env; options.block_cache=cache.get();
+    options.profiler=c.profiler;
     options.create_if_missing=fresh; options.compression=kNoCompression;
     options.metadata_memtable_size=metadata_budget==0?c.metadata_memtable_bytes:metadata_budget;
     options.metadata_wal_size_limit=c.metadata_wal_bytes;

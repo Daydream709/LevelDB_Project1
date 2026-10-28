@@ -51,6 +51,11 @@ class LEVELDB_EXPORT TableBuilder {
   // REQUIRES: Finish(), Abandon() have not been called
   void Add(const Slice& key, const Slice& value);
 
+  // Enable the DB-internal TTL scheduling summary. Exact per-key statistics
+  // live in the auxiliary LSM. Generic table users must opt in because their
+  // keys need not be internal keys.
+  void EnableInternalStatsMetadata();
+
   // Advanced operation: flush any buffered key/value pairs to file.
   // Can be used to ensure that two adjacent entries never live in
   // the same data block.  Most clients should not need to use this method.

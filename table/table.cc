@@ -3,6 +3,10 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "leveldb/table.h"
+#include "util/profiler.h"
+
+#include <cstring>
+#include <memory>
 
 #include <limits>
 
@@ -16,6 +20,7 @@
 #include "table/format.h"
 #include "table/two_level_iterator.h"
 #include "util/coding.h"
+#include "util/crc32c.h"
 
 namespace leveldb {
 
@@ -35,6 +40,7 @@ struct Table::Rep {
 
   BlockHandle metaindex_handle;  // Handle to metaindex_block: saved from footer
   Block* index_block;
+  TableInternalStats internal_stats;
 };
 
 Status Table::Open(const Options& options, RandomAccessFile* file,
@@ -82,32 +88,149 @@ Status Table::Open(const Options& options, RandomAccessFile* file,
 }
 
 void Table::ReadMeta(const Footer& footer) {
-  if (rep_->options.filter_policy == nullptr) {
-    return;  // Do not need any metadata
-  }
-
-  // TODO(sanjay): Skip this if footer.metaindex_handle() size indicates
-  // it is an empty block.
   ReadOptions opt;
   if (rep_->options.paranoid_checks) {
     opt.verify_checksums = true;
   }
   BlockContents contents;
   if (!ReadBlock(rep_->file, opt, footer.metaindex_handle(), &contents).ok()) {
-    // Do not propagate errors since meta info is not needed for operation
+    // Do not propagate errors since meta info is not needed for operation.
+    ProfileScope::Count("metadata.metaindex_unreadable");
     return;
   }
   Block* meta = new Block(contents);
+  bool found_stats = false;
 
   Iterator* iter = meta->NewIterator(BytewiseComparator());
-  std::string key = "filter.";
-  key.append(rep_->options.filter_policy->Name());
-  iter->Seek(key);
-  if (iter->Valid() && iter->key() == Slice(key)) {
-    ReadFilter(iter->value());
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    if (rep_->options.filter_policy != nullptr) {
+      std::string filter_key = "filter.";
+      filter_key.append(rep_->options.filter_policy->Name());
+      if (iter->key() == Slice(filter_key)) ReadFilter(iter->value());
+    }
+    if (iter->key() == Slice("leveldb.internal-stats.v1")) {
+      found_stats = true;
+      ReadInternalStats(iter->value());
+    }
   }
+  if (!found_stats) ProfileScope::Count("metadata.index_missing");
   delete iter;
   delete meta;
+}
+
+void Table::ReadInternalStats(const Slice& stats_handle_value) {
+  ProfileScope profile("metadata.load_index");
+  const char* outcome = [&]() -> const char* {
+  rep_->internal_stats.valid = false;
+  Slice handle_input = stats_handle_value;
+  BlockHandle handle;
+  if (!handle.DecodeFrom(&handle_input).ok()) return "invalid";
+
+  ReadOptions opt;
+  opt.verify_checksums = true;
+  BlockContents contents;
+  if (!ReadBlock(rep_->file, opt, handle, &contents).ok()) return "invalid";
+  std::unique_ptr<char[]> owner;
+  if (contents.heap_allocated) {
+    owner.reset(const_cast<char*>(contents.data.data()));
+  }
+  if (contents.data.size() < 4) return "invalid";
+
+  const size_t payload_size = contents.data.size() - 4;
+  const uint32_t checksum = DecodeFixed32(contents.data.data() + payload_size);
+  if (crc32c::Value(contents.data.data(), payload_size) != checksum) return "checksum_error";
+
+  ProfileScope::Count("metadata.loaded_index_bytes", contents.data.size());
+  ProfileScope parsing("metadata.parse_index");
+  Slice input(contents.data.data(), payload_size);
+  if (input.size() < 4 || std::memcmp(input.data(), "LDS1", 4) != 0) return "invalid";
+  input.remove_prefix(4);
+  if (input.size() < 4 + 8 * 4 + 16 * 8) return "invalid";
+  const uint32_t version = DecodeFixed32(input.data());
+  input.remove_prefix(4);
+  if (version != 1 && version != 2) return "unsupported";
+
+  TableInternalStats stats;
+  stats.total_records = DecodeFixed64(input.data());
+  input.remove_prefix(8);
+  stats.ttl_records = DecodeFixed64(input.data());
+  input.remove_prefix(8);
+  stats.min_expire_time_micros = DecodeFixed64(input.data());
+  input.remove_prefix(8);
+  stats.max_expire_time_micros = DecodeFixed64(input.data());
+  input.remove_prefix(8);
+  uint64_t histogram_total = 0;
+  for (uint64_t& count : stats.expiration_histogram) {
+    count = DecodeFixed64(input.data());
+    input.remove_prefix(8);
+    histogram_total += count;
+  }
+
+  uint32_t key_count = 0;
+  if (!GetVarint32(&input, &key_count)) return "invalid";
+  if (version == 2 && key_count != 0) return "invalid";
+  uint64_t record_total = 0;
+  std::string previous_key;
+  for (uint32_t i = 0; i < key_count; ++i) {
+    Slice key;
+    if (!GetLengthPrefixedSlice(&input, &key) || input.size() < 8) return "invalid";
+    const uint64_t count = DecodeFixed64(input.data());
+    input.remove_prefix(8);
+    if (count == 0 ||
+        (i != 0 && BytewiseComparator()->Compare(previous_key, key) >= 0) ||
+        record_total > UINT64_MAX - count) {
+      return "invalid";
+    }
+    previous_key = key.ToString();
+    record_total += count;
+  }
+  if (!input.empty() || (version == 1 && record_total != stats.total_records) ||
+      stats.ttl_records > stats.total_records ||
+      histogram_total != stats.ttl_records) {
+    return "invalid";
+  }
+  if (stats.ttl_records == 0) {
+    if (stats.min_expire_time_micros != 0 ||
+        stats.max_expire_time_micros != 0) {
+      return "invalid";
+    }
+  } else if (stats.min_expire_time_micros > stats.max_expire_time_micros) {
+    return "invalid";
+  }
+  stats.valid = true;
+  rep_->internal_stats = std::move(stats);
+
+  return "valid";
+
+  }();
+  ProfileScope::Count(std::string("metadata.index_") + outcome);
+  if (!rep_->internal_stats.valid) profile.SetStatus(Status::Corruption("optional statistics index"));
+}
+
+Status Table::GetInternalStats(TableInternalStats* stats) const {
+  if (stats == nullptr) {
+    return Status::InvalidArgument("table statistics output pointer is null");
+  }
+  *stats = rep_->internal_stats;
+  return Status::OK();
+}
+
+Status Table::GetTTLStats(TableInternalStats* stats) const {
+  if (stats == nullptr) {
+    return Status::InvalidArgument("table statistics output pointer is null");
+  }
+  stats->total_records = rep_->internal_stats.total_records;
+  stats->ttl_records = rep_->internal_stats.ttl_records;
+  stats->min_expire_time_micros =
+      rep_->internal_stats.min_expire_time_micros;
+  stats->max_expire_time_micros =
+      rep_->internal_stats.max_expire_time_micros;
+  for (size_t i = 0; i < 16; ++i) {
+    stats->expiration_histogram[i] =
+        rep_->internal_stats.expiration_histogram[i];
+  }
+  stats->valid = rep_->internal_stats.valid;
+  return Status::OK();
 }
 
 void Table::ReadFilter(const Slice& filter_handle_value) {
