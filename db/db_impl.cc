@@ -735,6 +735,15 @@ void DBImpl::CompactMemTable() {
 
 void DBImpl::CompactRange(const Slice* begin, const Slice* end) {
   ProfileScope profile(profiler_, profiling_id_, "op.compact_range");
+  // Flush before choosing the levels: this call may create the first SST,
+  // and a non-overlapping memtable can be placed directly above level 0.
+  Status status = TEST_CompactMemTable();
+  if (!status.ok()) {
+    MutexLock l(&mutex_);
+    RecordBackgroundError(status);
+    profile.SetStatus(status);
+    return;
+  }
   int max_level_with_files = 1;
   {
     MutexLock l(&mutex_);
@@ -745,11 +754,52 @@ void DBImpl::CompactRange(const Slice* begin, const Slice* end) {
       }
     }
   }
-  TEST_CompactMemTable();  // TODO(sanjay): Skip if memtable does not overlap
+  // Keep the original placement policy for ordinary manual compaction.
   for (int level = 0; level < max_level_with_files; level++) {
     TEST_CompactRange(level, begin, end);
   }
-  Status status = RewriteBottomLevelRange(begin, end);
+
+  // Lower-level compactions may have moved TTL records into the highest
+  // occupied level. Rewrite that level only if expiration is possible, so
+  // ordinary files are not unnecessarily promoted. Summaries select work;
+  // DoCompactionWork still enforces all snapshot/sequence deletion rules.
+  if (max_level_with_files + 1 < config::kNumLevels) {
+    bool may_have_expired_ttl = false;
+    {
+      MutexLock l(&mutex_);
+      status = bg_error_;
+      const uint64_t now = env_->NowMicros();
+      if (status.ok()) {
+        for (FileMetaData* file : versions_->current()->files(max_level_with_files)) {
+          if ((begin != nullptr &&
+               user_comparator()->Compare(file->largest.user_key(), *begin) < 0) ||
+              (end != nullptr &&
+               user_comparator()->Compare(file->smallest.user_key(), *end) > 0)) {
+            continue;
+          }
+          TableInternalStats stats;
+          status = table_cache_->GetTTLStats(file->number, file->file_size, &stats);
+          if (!status.ok()) break;
+          // A missing/invalid optional summary cannot prove there is no TTL.
+          if (!stats.valid ||
+              (stats.ttl_records != 0 && stats.min_expire_time_micros <= now)) {
+            may_have_expired_ttl = true;
+            break;
+          }
+        }
+      }
+    }
+    if (!status.ok()) {
+      MutexLock l(&mutex_);
+      RecordBackgroundError(status);
+      profile.SetStatus(status);
+      return;
+    }
+    if (may_have_expired_ttl) {
+      TEST_CompactRange(max_level_with_files, begin, end);
+    }
+  }
+  status = RewriteBottomLevelRange(begin, end);
   if (!status.ok()) {
     MutexLock l(&mutex_);
     RecordBackgroundError(status);
@@ -790,7 +840,22 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
   bottom_rewrite_in_progress_ = true;
   const int bottom_level = config::kNumLevels - 1;
   Version* base = versions_->current();
-  const std::vector<FileMetaData*>& files = base->files(bottom_level);
+  // Bottom-level files have disjoint user-key ranges. Only rewrite files
+  // intersecting the requested range; retain boundary records inside those
+  // files below. Removing unrelated files would turn a small TTL cleanup into
+  // a rewrite of the entire bottom level.
+  std::vector<FileMetaData*> files;
+  for (FileMetaData* file : base->files(bottom_level)) {
+    if (begin != nullptr &&
+        user_comparator()->Compare(file->largest.user_key(), *begin) < 0) {
+      continue;
+    }
+    if (end != nullptr &&
+        user_comparator()->Compare(file->smallest.user_key(), *end) > 0) {
+      continue;
+    }
+    files.push_back(file);
+  }
   if (files.empty()) {
     bottom_rewrite_in_progress_ = false;
     return Status::OK();
@@ -814,6 +879,9 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
   for (FileMetaData* file : files) edit.RemoveFile(bottom_level, file->number);
 
   FileMetaData output_meta;
+  // A completely expired range produces no output file. Keep its sentinel
+  // deterministic so verification/cleanup never uses an uninitialized number.
+  output_meta.number = 0;
   WritableFile* outfile = nullptr;
   TableBuilder* builder = nullptr;
   std::map<std::string, int64_t> deltas;

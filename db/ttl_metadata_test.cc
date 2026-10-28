@@ -3,15 +3,18 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/db_impl.h"
+#include "db/write_batch_internal.h"
 #include "util/profiler.h"
 #include "table/format.h"
 #include "util/coding.h"
 #include "util/crc32c.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <map>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <random>
@@ -22,8 +25,20 @@
 
 #include "gtest/gtest.h"
 #include "leveldb/db.h"
+#include "leveldb/comparator.h"
 #include "leveldb/env.h"
+#include "leveldb/write_batch.h"
 #include "util/testutil.h"
+
+#if defined(LEVELDB_TTL_CRASH_WRITER_PATH)
+#include <cerrno>
+#include <csignal>
+#include <poll.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+extern char** environ;
+#endif
 
 namespace leveldb {
 namespace {
@@ -41,6 +56,7 @@ class FaultClockEnv : public EnvWrapper {
   void SetTime(uint64_t value) { now_.store(value); }
   void Advance(uint64_t delta) { now_.fetch_add(delta); }
   void SetFault(Fault fault) { fault_.store(static_cast<int>(fault)); }
+  unsigned FaultHits() const { return fault_hits_.load(); }
 
   void BlockNextTableSync() {
     std::lock_guard<std::mutex> lock(sync_mu_);
@@ -112,6 +128,7 @@ class FaultClockEnv : public EnvWrapper {
 
     Status Append(const Slice& data) override {
       if (env_->ShouldFailAppend(fname_)) {
+        ++env_->fault_hits_;
         return Status::IOError(fname_, "injected append failure");
       }
       return file_->Append(data);
@@ -120,6 +137,7 @@ class FaultClockEnv : public EnvWrapper {
     Status Flush() override { return file_->Flush(); }
     Status Sync() override {
       if (env_->ShouldFailSync(fname_)) {
+        ++env_->fault_hits_;
         return Status::IOError(fname_, "injected sync failure");
       }
       env_->MaybeBlockTableSync(fname_);
@@ -134,6 +152,7 @@ class FaultClockEnv : public EnvWrapper {
 
   std::atomic<uint64_t> now_;
   std::atomic<int> fault_{static_cast<int>(Fault::kNone)};
+  std::atomic<unsigned> fault_hits_{0};
   std::mutex sync_mu_;
   std::condition_variable sync_cv_;
   bool block_next_table_sync_ = false;
@@ -216,11 +235,324 @@ class TTLMetadataTest : public testing::TestWithParam<bool> {
     EXPECT_EQ(stats.seq, sequence);
   }
 
+  std::set<std::string> PhysicalKeys() {
+    std::set<std::string> keys;
+    std::unique_ptr<Iterator> iter(
+        static_cast<DBImpl*>(db_.get())->TEST_NewInternalIterator());
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      keys.insert(ExtractUserKey(iter->key()).ToString());
+    }
+    EXPECT_TRUE(iter->status().ok()) << iter->status().ToString();
+    return keys;
+  }
+
+  void PushToBottom() {
+    auto* impl = static_cast<DBImpl*>(db_.get());
+    ASSERT_LEVELDB_OK(impl->TEST_CompactMemTable());
+    for (int level = 0; level < config::kNumLevels - 1; ++level) {
+      impl->TEST_CompactRange(level, nullptr, nullptr);
+    }
+  }
+
+  void CheckPartialRange(const Comparator* comparator) {
+    options_.comparator = comparator;
+    ASSERT_LEVELDB_OK(Open(true));
+    std::vector<std::string> keys;
+    for (char key = 'a'; key <= 'p'; ++key) keys.emplace_back(1, key);
+    std::sort(keys.begin(), keys.end(), [comparator](const std::string& a,
+                                                  const std::string& b) {
+      return comparator->Compare(a, b) < 0;
+    });
+    for (size_t i = 0; i < keys.size(); ++i) {
+      // Fewer than 30% expire: opportunistic TTL scheduling must not clean
+      // the out-of-range record before we can inspect the manual rewrite.
+      Status status = (i == 4 || i == 6 || i == 10)
+          ? db_->Put(WriteOptions(), keys[i], keys[i], 2)
+          : db_->Put(WriteOptions(), keys[i], keys[i]);
+      ASSERT_LEVELDB_OK(status);
+    }
+    ASSERT_NO_FATAL_FAILURE(PushToBottom());
+    std::string file_count;
+    ASSERT_TRUE(db_->GetProperty("leveldb.num-files-at-level6", &file_count));
+    ASSERT_EQ("1", file_count);  // All keys share a single boundary SST.
+    env_.Advance(2 * kMicrosPerSecond);
+    const Slice begin(keys[4]), end(keys[6]);
+    db_->CompactRange(&begin, &end);
+    std::set<std::string> expected(keys.begin(), keys.end());
+    expected.erase(keys[4]);
+    expected.erase(keys[6]);
+    EXPECT_EQ(expected, PhysicalKeys());
+    ExpectMissing(keys[4]);
+    ExpectMissing(keys[6]);
+    ExpectMissing(keys[10]);  // Logically expired, still physically retained.
+    ExpectValue(keys[3], keys[3]);
+    ExpectValue(keys[5], keys[5]);
+    ExpectValue(keys[7], keys[7]);
+    ExpectStatsMatchPhysicalScan(16);
+    Reopen();
+    EXPECT_EQ(expected, PhysicalKeys());
+    ExpectMissing(keys[10]);
+  }
+
+  void CheckCompactionFailure(FaultClockEnv::Fault fault, bool bottom) {
+    ASSERT_LEVELDB_OK(Open(true));
+    for (int i = 0; i < 16; ++i) {
+      ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), std::to_string(i), "plain"));
+    }
+    ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "ttl", "value", 2));
+    auto* impl = static_cast<DBImpl*>(db_.get());
+    if (bottom) {
+      ASSERT_NO_FATAL_FAILURE(PushToBottom());
+    } else {
+      ASSERT_LEVELDB_OK(impl->TEST_CompactMemTable());
+    }
+    Stats before;
+    ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &before));
+    const auto keys_before = PhysicalKeys();
+    env_.Advance(2 * kMicrosPerSecond);
+    const unsigned hits = env_.FaultHits();
+    env_.SetFault(fault);
+    if (bottom) {
+      db_->CompactRange(nullptr, nullptr);
+    } else {
+      // Fresh non-overlapping flushes are placed at level 2.
+      impl->TEST_CompactRange(2, nullptr, nullptr);
+    }
+    env_.SetFault(FaultClockEnv::Fault::kNone);
+    ASSERT_GT(env_.FaultHits(), hits);  // Prove the fault was actually reached.
+    Stats after;
+    ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &after));
+    EXPECT_EQ(before.total_entries, after.total_entries);
+    EXPECT_EQ(before.distinct_keys, after.distinct_keys);
+    EXPECT_EQ(before.seq, after.seq);
+    EXPECT_EQ(keys_before, PhysicalKeys());
+    ExpectMissing("ttl");
+    ExpectValue("0", "plain");
+    Reopen();
+    ExpectMissing("ttl");
+    ExpectValue("0", "plain");
+    ExpectStatsMatchPhysicalScan(17);
+    // Retry the same operation that failed, rather than a different level.
+    if (bottom) {
+      db_->CompactRange(nullptr, nullptr);
+    } else {
+      static_cast<DBImpl*>(db_.get())->TEST_CompactRange(2, nullptr, nullptr);
+    }
+    EXPECT_EQ(0U, PhysicalKeys().count("ttl"));
+    ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &after));
+    EXPECT_EQ(16U, after.total_entries);
+    EXPECT_EQ(17U, after.seq);
+  }
+
+  void CheckKilledWriter(const char* mode) {
+#if defined(LEVELDB_TTL_CRASH_WRITER_PATH)
+    int ready[2];
+    ASSERT_EQ(0, pipe(ready));
+    posix_spawn_file_actions_t actions;
+    ASSERT_EQ(0, posix_spawn_file_actions_init(&actions));
+    posix_spawn_file_actions_adddup2(&actions, ready[1], STDOUT_FILENO);
+    posix_spawn_file_actions_addclose(&actions, ready[0]);
+    posix_spawn_file_actions_addclose(&actions, ready[1]);
+    std::string executable = LEVELDB_TTL_CRASH_WRITER_PATH;
+    std::string storage_mode = mode;
+    char* argv[] = {&executable[0], &dbname_[0], &storage_mode[0], nullptr};
+    pid_t child;
+    const int spawn_status = posix_spawn(&child, executable.c_str(), &actions,
+                                          nullptr, argv, environ);
+    posix_spawn_file_actions_destroy(&actions);
+    close(ready[1]);
+    if (spawn_status != 0) {
+      close(ready[0]);
+      FAIL() << "posix_spawn: " << spawn_status;
+    }
+    pollfd readiness{ready[0], POLLIN, 0};
+    int polled;
+    do { polled = poll(&readiness, 1, 15000); } while (polled < 0 && errno == EINTR);
+    char ack = 0;
+    const ssize_t bytes = polled > 0 ? read(ready[0], &ack, 1) : -1;
+    close(ready[0]);
+    // Always reap the owned helper, even if setup/sync acknowledgement failed.
+    const int killed = kill(child, SIGKILL);
+    int status = 0;
+    pid_t waited;
+    do { waited = waitpid(child, &status, 0); } while (waited < 0 && errno == EINTR);
+    ASSERT_EQ(1, bytes) << "writer did not acknowledge successful sync";
+    ASSERT_EQ('R', ack);
+    ASSERT_EQ(0, killed);
+    ASSERT_EQ(child, waited);
+    ASSERT_TRUE(WIFSIGNALED(status));
+    ASSERT_EQ(SIGKILL, WTERMSIG(status));
+    env_.SetTime(kTestEpochMicros + kMicrosPerSecond);
+    ASSERT_LEVELDB_OK(Open(false));
+    ExpectValue("plain", "permanent");
+    ExpectValue("victim", "ttl");
+    ExpectMissing("zero");
+    ExpectMissing("gone");
+    ExpectStatsMatchPhysicalScan(6);
+    env_.SetTime(kTestEpochMicros + 2 * kMicrosPerSecond);
+    ExpectMissing("victim");
+    Reopen();
+    ExpectMissing("victim");
+    ExpectValue("plain", "permanent");
+    ExpectStatsMatchPhysicalScan(6);
+#else
+    GTEST_SKIP() << "Requires the POSIX crash-writer test helper";
+#endif
+  }
+
   FaultClockEnv env_;
   Options options_;
   std::string dbname_;
   std::unique_ptr<DB> db_;
 };
+
+TEST_P(TTLMetadataTest, KilledWriterRecoversSyncedWALWithoutRenewal) {
+  CheckKilledWriter("wal");
+}
+
+TEST_P(TTLMetadataTest, KilledWriterRecoversFlushedSSTWithoutRenewal) {
+  CheckKilledWriter("sst");
+}
+
+TEST_P(TTLMetadataTest, PartialRangeRetainsOutsideRecordsInSameSST) {
+  CheckPartialRange(BytewiseComparator());
+}
+
+class TTLReverseComparator : public Comparator {
+ public:
+  int Compare(const Slice& a, const Slice& b) const override { return b.compare(a); }
+  const char* Name() const override { return "test.TTLReverseComparator"; }
+  void FindShortestSeparator(std::string*, const Slice&) const override {}
+  void FindShortSuccessor(std::string*) const override {}
+};
+
+TEST_P(TTLMetadataTest, PartialRangeUsesCustomComparator) {
+  // Static lifetime also covers fixture TearDown after an assertion failure.
+  static const TTLReverseComparator comparator;
+  CheckPartialRange(&comparator);
+}
+
+TEST_P(TTLMetadataTest, TTLCompactionTableSyncFailureIsNotPublished) {
+  CheckCompactionFailure(FaultClockEnv::Fault::kTableSync, false);
+}
+
+TEST_P(TTLMetadataTest, TTLCompactionManifestFailureIsNotPublished) {
+  CheckCompactionFailure(FaultClockEnv::Fault::kManifestAppend, false);
+}
+
+TEST_P(TTLMetadataTest, TTLBottomRewriteTableSyncFailureIsNotPublished) {
+  CheckCompactionFailure(FaultClockEnv::Fault::kTableSync, true);
+}
+
+TEST_P(TTLMetadataTest, TTLBottomRewriteManifestFailureIsNotPublished) {
+  CheckCompactionFailure(FaultClockEnv::Fault::kManifestAppend, true);
+}
+
+TEST_P(TTLMetadataTest, PublicCompactRangeReclaimsSparseExpiredHighestLevel) {
+  ASSERT_LEVELDB_OK(Open(true));
+  for (int i = 0; i < 16; ++i) {
+    ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), std::to_string(i), "plain"));
+  }
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "ttl", "value", 2));
+  ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+  std::string files;
+  ASSERT_TRUE(db_->GetProperty("leveldb.num-files-at-level2", &files));
+  ASSERT_EQ("1", files);
+  env_.Advance(2 * kMicrosPerSecond);
+  ExpectMissing("ttl");
+  db_->CompactRange(nullptr, nullptr);
+  // No faults, snapshots, or iterator pins. Low expiry density avoids relying
+  // on opportunistic scheduling; explicit reclamation must visit the file.
+  Stats stats;
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
+  EXPECT_EQ(16U, stats.total_entries);
+  EXPECT_EQ(0U, PhysicalKeys().count("ttl"));
+  // A direct rewrite of the occupied level distinguishes missed scheduling
+  // from a visibility, persistence, or safe-deletion failure.
+  static_cast<DBImpl*>(db_.get())->TEST_CompactRange(2, nullptr, nullptr);
+  EXPECT_EQ(0U, PhysicalKeys().count("ttl"));
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
+  EXPECT_EQ(16U, stats.total_entries);
+  EXPECT_EQ(17U, stats.seq);
+}
+
+TEST_P(TTLMetadataTest, PublicCompactRangeReclaimsTTLFlushedByTheSameCall) {
+  ASSERT_LEVELDB_OK(Open(true));
+  for (int i = 0; i < 16; ++i) {
+    ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), std::to_string(i), "plain"));
+  }
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "ttl", "value", 2));
+  env_.Advance(2 * kMicrosPerSecond);
+  // Start entirely in MemTable: CompactRange itself creates the first SST.
+  db_->CompactRange(nullptr, nullptr);
+  ExpectMissing("ttl");
+  Stats stats;
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
+  EXPECT_EQ(16U, stats.total_entries);
+  EXPECT_EQ(0U, PhysicalKeys().count("ttl"));
+  EXPECT_EQ(17U, stats.seq);
+}
+
+TEST_P(TTLMetadataTest, MultipleSnapshotTimesAndSequencesProtectVersions) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "old"));
+  const Snapshot* old = db_->GetSnapshot();
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "long", 10));
+  const Snapshot* long_early = db_->GetSnapshot();
+  env_.Advance(5 * kMicrosPerSecond);
+  const Snapshot* long_late = db_->GetSnapshot();  // Same seq, different time.
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "short", 2));
+  const Snapshot* short_live = db_->GetSnapshot();
+  env_.Advance(2 * kMicrosPerSecond);
+  const Snapshot* short_expired = db_->GetSnapshot();
+  db_->CompactRange(nullptr, nullptr);
+  ExpectMissing("key");
+  ExpectValue("key", "old", old);
+  ExpectValue("key", "long", long_early);
+  ExpectValue("key", "long", long_late);
+  ExpectValue("key", "short", short_live);
+  ExpectMissing("key", short_expired);
+  db_->ReleaseSnapshot(old);
+  db_->ReleaseSnapshot(long_early);
+  db_->ReleaseSnapshot(short_live);
+  env_.Advance(10 * kMicrosPerSecond);  // Both TTL versions now expired in real time.
+  db_->CompactRange(nullptr, nullptr);
+  ExpectValue("key", "long", long_late);
+  ExpectMissing("key", short_expired);
+  db_->ReleaseSnapshot(short_expired);
+  db_->CompactRange(nullptr, nullptr);
+  ExpectValue("key", "long", long_late);
+  db_->ReleaseSnapshot(long_late);
+  db_->CompactRange(nullptr, nullptr);
+  EXPECT_TRUE(PhysicalKeys().empty());
+  ExpectStatsMatchPhysicalScan(3);
+  Reopen();
+  ExpectMissing("key");
+  ExpectStatsMatchPhysicalScan(3);
+}
+
+TEST_P(TTLMetadataTest, TruncatedTTLBatchNeverPublishesPartialWrites) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "existing", "old"));
+  WriteBatch original;
+  original.Put("prefix", "must-not-commit");
+  const size_t prefix_size = WriteBatchInternal::Contents(&original).size();
+  original.PutWithExpiration("existing", "new", env_.NowMicros() + 1000000);
+  const std::string encoded = WriteBatchInternal::Contents(&original).ToString();
+  for (size_t length = prefix_size; length < encoded.size(); ++length) {
+    SCOPED_TRACE(length);
+    WriteBatch truncated;
+    WriteBatchInternal::SetContents(&truncated, Slice(encoded.data(), length));
+    EXPECT_TRUE(db_->Write(WriteOptions(), &truncated).IsCorruption());
+    ExpectMissing("prefix");
+    ExpectValue("existing", "old");
+    ExpectStatsMatchPhysicalScan(1);
+  }
+  Reopen();
+  ExpectMissing("prefix");
+  ExpectValue("existing", "old");
+  ExpectStatsMatchPhysicalScan(1);
+}
 
 TEST_P(TTLMetadataTest, FixedTimeSnapshotsAndBidirectionalIterator) {
   ASSERT_LEVELDB_OK(Open(true));
@@ -262,6 +594,136 @@ TEST_P(TTLMetadataTest, FixedTimeSnapshotsAndBidirectionalIterator) {
 
   db_->ReleaseSnapshot(before_ttl);
   db_->ReleaseSnapshot(after_expiry);
+}
+
+TEST_P(TTLMetadataTest, ZeroTTLAndOverflowDoNotResurrectOrConsumeSequence) {
+  env_.SetTime(0);
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "old"));
+  const Snapshot* old = db_->GetSnapshot();
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "expired", 0));
+  ExpectMissing("key");
+  ExpectValue("key", "old", old);
+  ExpectStatsMatchPhysicalScan(2);
+  EXPECT_TRUE(db_->Put(WriteOptions(), "key", "overflow",
+                      std::numeric_limits<uint64_t>::max()).IsInvalidArgument());
+  env_.SetTime(std::numeric_limits<uint64_t>::max() - 999999);
+  EXPECT_TRUE(db_->Put(WriteOptions(), "key", "overflow", 1).IsInvalidArgument());
+  ExpectStatsMatchPhysicalScan(2);
+  ExpectMissing("key");
+  db_->ReleaseSnapshot(old);
+}
+
+TEST_P(TTLMetadataTest, MixedTTLBatchSurvivesWALFlushAndReopen) {
+  ASSERT_LEVELDB_OK(Open(true));
+  const uint64_t deadline = env_.NowMicros() + 2 * kMicrosPerSecond;
+  const std::string binary("a\0b", 3);
+  WriteBatch batch, tail;
+  batch.Put("plain", "permanent");
+  batch.Put("ttl", "old");
+  tail.PutWithExpiration("ttl", binary, deadline);
+  tail.PutWithExpiration("zero", "expired", 0);
+  tail.Put("deleted", "value");
+  tail.Delete("deleted");
+  batch.Append(tail);
+  WriteOptions sync;
+  sync.sync = true;
+  ASSERT_LEVELDB_OK(db_->Write(sync, &batch));
+  ExpectStatsMatchPhysicalScan(6);
+  Reopen();  // WAL replay must preserve both the type and the absolute deadline.
+  env_.SetTime(deadline - 1);
+  ExpectValue("ttl", binary);
+  ExpectValue("plain", "permanent");
+  ExpectMissing("zero");
+  ExpectMissing("deleted");
+  ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+  Reopen();  // The same deadline must also survive SST loading.
+  ExpectValue("ttl", binary);
+  env_.SetTime(deadline);
+  ExpectMissing("ttl");
+  Reopen();
+  ExpectMissing("ttl");
+  ExpectValue("plain", "permanent");
+}
+
+TEST_P(TTLMetadataTest, SnapshotAndIteratorSurviveExpiredBottomLevelGC) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "a", "old"));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "a", "ttl", 2));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "b", "permanent"));
+  const Snapshot* snapshot = db_->GetSnapshot();
+  auto* impl = static_cast<DBImpl*>(db_.get());
+  ASSERT_LEVELDB_OK(impl->TEST_CompactMemTable());
+  for (int level = 0; level < config::kNumLevels - 1; ++level) {
+    impl->TEST_CompactRange(level, nullptr, nullptr);
+  }
+  std::unique_ptr<Iterator> pinned(db_->NewIterator(ReadOptions()));
+  env_.Advance(2 * kMicrosPerSecond);
+  db_->CompactRange(nullptr, nullptr);
+  ExpectMissing("a");
+  ExpectValue("a", "ttl", snapshot);
+  db_->ReleaseSnapshot(snapshot);
+  db_->CompactRange(nullptr, nullptr);
+  // An iterator pins the old Version even after its files leave current state.
+  pinned->Seek("a");
+  ASSERT_TRUE(pinned->Valid());
+  EXPECT_EQ("a", pinned->key().ToString());
+  EXPECT_EQ("ttl", pinned->value().ToString());
+  pinned->SeekToLast();
+  ASSERT_TRUE(pinned->Valid());
+  EXPECT_EQ("b", pinned->key().ToString());
+  pinned->Prev();
+  ASSERT_TRUE(pinned->Valid());
+  EXPECT_EQ("ttl", pinned->value().ToString());
+  ASSERT_LEVELDB_OK(pinned->status());
+  pinned.reset();
+  db_->CompactRange(nullptr, nullptr);
+  Stats stats;
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
+  EXPECT_EQ(1U, stats.total_entries);
+  EXPECT_EQ(1U, stats.distinct_keys);
+  EXPECT_EQ(3U, stats.seq);
+  ExpectStatsMatchPhysicalScan(3);
+  Reopen();
+  ExpectMissing("a");
+  ExpectValue("b", "permanent");
+}
+
+TEST_P(TTLMetadataTest, BottomRangeCleanupLeavesDisjointFilesUntouched) {
+  ASSERT_LEVELDB_OK(Open(true));
+  auto* impl = static_cast<DBImpl*>(db_.get());
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "z", "permanent"));
+  ASSERT_LEVELDB_OK(impl->TEST_CompactMemTable());
+  for (int level = 0; level < config::kNumLevels - 1; ++level) {
+    impl->TEST_CompactRange(level, nullptr, nullptr);
+  }
+  std::vector<std::string> children;
+  ASSERT_LEVELDB_OK(env_.GetChildren(dbname_, &children));
+  std::set<std::string> permanent_files;
+  for (const std::string& name : children) {
+    if (name.size() >= 4 && name.compare(name.size() - 4, 4, ".ldb") == 0) {
+      permanent_files.insert(name);
+    }
+  }
+  ASSERT_EQ(1U, permanent_files.size());
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "a", "ttl", 2));
+  ASSERT_LEVELDB_OK(impl->TEST_CompactMemTable());
+  for (int level = 0; level < config::kNumLevels - 1; ++level) {
+    impl->TEST_CompactRange(level, nullptr, nullptr);
+  }
+  env_.Advance(2 * kMicrosPerSecond);
+  const Slice key("a");
+  db_->CompactRange(&key, &key);
+  ExpectMissing("a");
+  ExpectValue("z", "permanent");
+  // Checking file identity detects an unnecessary whole-bottom-level rewrite.
+  for (const std::string& name : permanent_files) {
+    EXPECT_TRUE(env_.FileExists(dbname_ + "/" + name));
+  }
+  Stats stats;
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
+  EXPECT_EQ(1U, stats.total_entries);
+  ExpectStatsMatchPhysicalScan(2);
 }
 
 TEST_P(TTLMetadataTest, CorruptSSTIndexFallsBackToScanningData) {

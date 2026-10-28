@@ -59,6 +59,13 @@ class LEVELDB_EXPORT WriteBatch {
   // Store the mapping "key->value" in the database.
   void Put(const Slice& key, const Slice& value);
 
+  // Store a TTL value with an absolute deadline in Options::env->NowMicros()
+  // units. The deadline is preserved across Write(), Append(), and recovery;
+  // it is not a relative duration. A deadline <= the read time is expired,
+  // including zero. Use Put() for a value that never expires.
+  void PutWithExpiration(const Slice& key, const Slice& value,
+                         uint64_t expire_time_micros);
+
   // If the database contains a mapping for "key", erase it.  Else do nothing.
   void Delete(const Slice& key);
 

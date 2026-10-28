@@ -126,11 +126,16 @@ void WriteBatchInternal::PutWithExpiration(WriteBatch* batch,
                                            const Slice& key,
                                            const Slice& value,
                                            uint64_t expire_time_micros) {
-  SetCount(batch, Count(batch) + 1);
-  batch->rep_.push_back(static_cast<char>(kTypeValueWithTTL));
-  PutLengthPrefixedSlice(&batch->rep_, key);
-  PutFixed64(&batch->rep_, expire_time_micros);
-  PutLengthPrefixedSlice(&batch->rep_, value);
+  batch->PutWithExpiration(key, value, expire_time_micros);
+}
+
+void WriteBatch::PutWithExpiration(const Slice& key, const Slice& value,
+                                   uint64_t expire_time_micros) {
+  WriteBatchInternal::SetCount(this, WriteBatchInternal::Count(this) + 1);
+  rep_.push_back(static_cast<char>(kTypeValueWithTTL));
+  PutLengthPrefixedSlice(&rep_, key);
+  PutFixed64(&rep_, expire_time_micros);
+  PutLengthPrefixedSlice(&rep_, value);
 }
 
 void WriteBatch::Append(const WriteBatch& source) {

@@ -30,7 +30,7 @@ mkdir -p build/test-data
 TEST_TMPDIR="$PWD/build/test-data" ctest --test-dir build --output-on-failure
 ```
 
-TTL 接口初始返回 `NotSupported`，统计接口尚未维护计数，因此课程测试和benchmark 中的相关功能测试会失败，需要完成实验后通过。
+原始 base 的 TTL 接口返回 `NotSupported`，统计接口尚未维护计数。本分支已包含这两项功能；下面的测试命令用于验证当前实现。
 
 ### 1.2. benchmark 自测
 在仓库根目录运行统一 benchmark，检查 TTL、统计元数据及两者协同工作的正确性和性能：
@@ -80,6 +80,35 @@ Status Put(const WriteOptions& options, const Slice& key,
 新增功能应保持普通读写、删除和 WriteBatch 等原有操作正常工作。
 
 ### 2.3. 实验内容
+
+#### 本分支的 TTL 实现与验证
+
+- `DBImpl::Put(..., ttl)` 使用 `Options::env->NowMicros()` 计算绝对微秒截止时间，并在写入前检查乘法和加法溢出。`ttl=0` 表示立即过期；普通 `Put` 永久有效。
+- `WriteBatch::PutWithExpiration(key, value, deadline_micros)` 支持在同一批次混合 TTL 写入、普通写入和删除。该参数是绝对截止时间，不是秒数或相对时长；提交、复制批次和重启都不会续期。
+- WAL 中编码为 `type | key | fixed64(deadline) | value`；MemTable/SST 的 TTL value 保存 8 字节截止时间前缀。读取先按 sequence 找到最新版本，过期版本返回不存在并屏蔽旧值。
+- 快照和迭代器固定读取时间。Compaction 使用 sequence、快照时间和底层覆盖检查决定是否回收，迭代器通过持有旧 Version/MemTable 引用保护自身数据。
+- `CompactRange` 支持最底层重写，仅重写与指定范围重叠的文件，并保留边界文件中范围外的记录。全部过期时允许不产生输出 SST；统计变化在新 Version 成功安装后发布。
+- 手动回收先完成刷盘，再确定最高数据层。普通数据保留原有合并策略；最高非底层的文件可能包含已过期 TTL（或缺少有效摘要）时，追加合并，避免漏掉新刷盘 SST 或低过期比例的过期记录。摘要仅选择候选，实际删除仍检查快照和版本安全。刷盘失败时立即停止后续回收。
+- 文件过期摘要使用 SST 元数据中的时间范围和直方图，供后台候选选择使用；这与设计 PDF 的 MANIFEST 摘要方案不同。摘要不作为安全删除的依据，后台调度是机会式的；需要确定完成回收时使用 `CompactRange`。
+
+Linux / WSL 下运行新增的可控时钟测试以及课程测试：
+
+```bash
+cmake -S . -B build/debug -DCMAKE_BUILD_TYPE=Debug \
+  -DLEVELDB_BUILD_TESTS=ON -DLEVELDB_BUILD_BENCHMARKS=OFF
+cmake --build build/debug -j8
+build/debug/leveldb_tests --gtest_filter='*TTLMetadataTest*'
+build/debug/ttl_test
+build/debug/metadata_test
+ctest --test-dir build/debug --output-on-failure
+python3 benchmark/runner.py --kind combined --source . \
+  --output build/evaluation-ttl-combined --profile quick --jobs 8
+```
+
+评测输出目录必须尚不存在。`db/ttl_metadata_test.cc` 包含零时刻零 TTL、溢出不消耗序列号、混合批次 WAL/SST 恢复、最底层回收中的快照与双向迭代器保护，以及范围外 SST 文件身份保持测试。`.gitattributes` 固定公开回归测试包为 LF，以保持其 SHA-256 校验值。
+
+WSL 下若源码位于 `/mnt/c` 或 `/mnt/d`，建议将 benchmark 的 `--output` 改为 Linux 文件系统中的全新目录，例如 `/tmp/leveldb-ttl-evaluation`。评测会在输出目录创建测试数据库；Windows 挂载盘上的大量小写入可能触发默认的 300 秒回归超时。课程 `ttl_test` 也应在独立的 Linux 临时工作目录运行，避免复用 `testdb`。
+
 #### 2.3.1. TTL 功能介绍
 TTL（Time To Live，生存时间）用于限制数据的有效期。例如，会话记录和缓存数据可以在指定时间后自动失效。实现时需要同时处理读取过滤和存储回收。
 
