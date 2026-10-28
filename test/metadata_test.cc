@@ -1,14 +1,53 @@
 #include "gtest/gtest.h"
+#include "db/db_impl.h"
+#include "db/dbformat.h"
 #include "leveldb/env.h"
 #include "leveldb/db.h"
 #include "leveldb/write_batch.h"
+#include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <unistd.h>   // getpid
 #include <cstdio>     // snprintf
+#include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace leveldb;
+
+namespace {
+
+struct PhysicalStats {
+  uint64_t total_entries = 0;
+  uint64_t distinct_keys = 0;
+};
+
+PhysicalStats CountPhysicalRecords(DB* db) {
+  PhysicalStats stats;
+  std::set<std::string> keys;
+  Iterator* iter = static_cast<DBImpl*>(db)->TEST_NewInternalIterator();
+  ParsedInternalKey parsed;
+  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    EXPECT_TRUE(ParseInternalKey(iter->key(), &parsed));
+    if (!ParseInternalKey(iter->key(), &parsed)) continue;
+    ++stats.total_entries;
+    keys.insert(parsed.user_key.ToString());
+  }
+  EXPECT_TRUE(iter->status().ok());
+  delete iter;
+  stats.distinct_keys = keys.size();
+  return stats;
+}
+
+bool PropertyHas(DB* db, const std::string& property,
+                 const std::string& token) {
+  std::string value;
+  return db->GetProperty(property, &value) &&
+         value.find(token) != std::string::npos;
+}
+
+}  // namespace
 
 class StatsDBTest : public ::testing::Test {
  protected:
@@ -56,6 +95,169 @@ TEST_F(StatsDBTest, BasicCount) {
 
   ASSERT_EQ(stats.total_entries, 3);
   ASSERT_EQ(stats.distinct_keys, 2);
+}
+
+TEST_F(StatsDBTest, DefaultCheckpointCoalescesUntilOneSecond) {
+  delete db_;
+  db_ = nullptr;
+  Options options;
+  ASSERT_EQ(options.metadata_checkpoint_interval_micros, 1000000U);
+  options.create_if_missing = false;
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+  ASSERT_TRUE(db_->Put(WriteOptions(), "checkpoint-key", "value").ok());
+
+  Env::Default()->SleepForMicroseconds(200000);
+  ASSERT_TRUE(PropertyHas(db_, "leveldb.metadata-stats", "checkpoint_mseq=0"));
+
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::seconds(5);
+  while (!PropertyHas(db_, "leveldb.metadata-stats", "checkpoint_mseq=1") &&
+         std::chrono::steady_clock::now() < deadline) {
+    Env::Default()->SleepForMicroseconds(10000);
+  }
+  ASSERT_TRUE(PropertyHas(db_, "leveldb.metadata-stats", "checkpoint_mseq=1"));
+}
+
+TEST_F(StatsDBTest, LookupManyReadsCheckpointFilesAcrossBlocks) {
+  delete db_;
+  db_ = nullptr;
+  Options options;
+  options.create_if_missing = false;
+  options.metadata_workspace_size = 64 * 1024;
+  options.metadata_memtable_size = 1 * 1024 * 1024;
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+
+  WriteBatch initial;
+  const int kInitialKeys = 700;
+  for (int i = 0; i < kInitialKeys; ++i) {
+    char key[32];
+    std::snprintf(key, sizeof(key), "key-%04d", i);
+    initial.Put(key, "old");
+  }
+  const std::string binary_a("\0a", 2);
+  const std::string binary_ff("\xff", 1);
+  initial.Put(binary_a, "binary-old");
+  initial.Put(binary_ff, "ff-old");
+  ASSERT_TRUE(db_->Write(WriteOptions(), &initial).ok());
+  ASSERT_TRUE(static_cast<DBImpl*>(db_)->TEST_WaitForMetadata(
+                              1, false, 10000000)
+                  .ok());
+
+  // This write group has hundreds of sorted keys and must resolve old values
+  // from the checkpoint SST, including keys spread across multiple data
+  // blocks, while also inserting keys absent from that file.
+  WriteBatch updates;
+  const int kUpdates = 320;
+  const int kNewKeys = 120;
+  for (int i = 0; i < kUpdates; ++i) {
+    char key[32];
+    std::snprintf(key, sizeof(key), "key-%04d", i);
+    updates.Put(key, "updated");
+  }
+  for (int i = 0; i < kNewKeys; ++i) {
+    char key[32];
+    std::snprintf(key, sizeof(key), "new-%04d", i);
+    updates.Put(key, "new");
+  }
+  updates.Put(binary_a, "binary-new");
+  updates.Put(binary_ff, "ff-new");
+  ASSERT_TRUE(db_->Write(WriteOptions(), &updates).ok());
+
+  Stats stats;
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).ok());
+  ASSERT_EQ(stats.total_entries,
+            kInitialKeys + 2 + kUpdates + kNewKeys + 2);
+  ASSERT_EQ(stats.distinct_keys, kInitialKeys + 2 + kNewKeys);
+  ASSERT_EQ(stats.seq, stats.total_entries);
+  std::string value;
+  ASSERT_TRUE(db_->Get(ReadOptions(), binary_a, &value).ok());
+  ASSERT_EQ(value, "binary-new");
+  ASSERT_TRUE(db_->Get(ReadOptions(), binary_ff, &value).ok());
+  ASSERT_EQ(value, "ff-new");
+}
+
+TEST_F(StatsDBTest, PrimaryCompactionReconcilesConcurrentMetadataTail) {
+  delete db_;
+  db_ = nullptr;
+  Options options;
+  options.create_if_missing = false;
+  options.write_buffer_size = 2 * 1024 * 1024;
+  options.metadata_workspace_size = 64 * 1024;
+  options.metadata_memtable_size = 1 * 1024 * 1024;
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+
+  const int kKeys = 12000;
+  WriteBatch first;
+  for (int i = 0; i < kKeys; ++i) {
+    char key[32];
+    std::snprintf(key, sizeof(key), "key-%05d", i);
+    first.Put(key, "first");
+  }
+  ASSERT_TRUE(db_->Write(WriteOptions(), &first).ok());
+  db_->CompactRange(nullptr, nullptr);
+
+  WriteBatch second;
+  for (int i = 0; i < kKeys; ++i) {
+    char key[32];
+    std::snprintf(key, sizeof(key), "key-%05d", i);
+    second.Put(key, "second");
+  }
+  ASSERT_TRUE(db_->Write(WriteOptions(), &second).ok());
+  Stats before_tail;
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &before_tail).ok());
+  ASSERT_EQ(before_tail.total_entries, 2 * kKeys);
+  ASSERT_EQ(before_tail.distinct_keys, kKeys);
+
+  WriteBatch third;
+  for (int i = 0; i < kKeys; ++i) {
+    char key[32];
+    std::snprintf(key, sizeof(key), "key-%05d", i);
+    third.Put(key, "third");
+  }
+  ASSERT_TRUE(db_->Write(WriteOptions(), &third).ok());
+
+  std::atomic<bool> compaction_done(false);
+  std::thread compaction([&] {
+    db_->CompactRange(nullptr, nullptr);
+    compaction_done.store(true, std::memory_order_release);
+  });
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::seconds(15);
+  bool saw_prepare = false;
+  while (!compaction_done.load(std::memory_order_acquire) &&
+         std::chrono::steady_clock::now() < deadline) {
+    if (PropertyHas(db_, "leveldb.metadata-stats", "compaction_prepare=1")) {
+      saw_prepare = true;
+      break;
+    }
+    Env::Default()->SleepForMicroseconds(500);
+  }
+  if (!saw_prepare) {
+    compaction.join();
+    FAIL() << "primary compaction preparation window was not observed";
+  }
+
+  // Several hundred overlapping updates exercise both the bounded in-memory
+  // journal and the spill-file path before the final compaction gate.
+  WriteBatch tail;
+  const int kTailKeys = 400;
+  for (int i = 0; i < kTailKeys; ++i) {
+    char key[32];
+    std::snprintf(key, sizeof(key), "key-%05d", i);
+    tail.Put(key, "tail");
+  }
+  const Status tail_status = db_->Write(WriteOptions(), &tail);
+  compaction.join();
+  ASSERT_TRUE(tail_status.ok()) << tail_status.ToString();
+
+  Stats stats;
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).ok());
+  const PhysicalStats physical = CountPhysicalRecords(db_);
+  ASSERT_EQ(stats.total_entries, physical.total_entries);
+  ASSERT_EQ(stats.distinct_keys, physical.distinct_keys);
+  ASSERT_EQ(stats.total_entries, kKeys + kTailKeys);
+  ASSERT_EQ(stats.distinct_keys, kKeys);
+  ASSERT_EQ(stats.seq, 3 * kKeys + kTailKeys);
 }
 
 TEST_F(StatsDBTest, PersistAndRecover) {

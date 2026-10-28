@@ -743,6 +743,7 @@ VersionSet::VersionSet(const std::string& dbname, const Options* options,
       last_sequence_(0),
       log_number_(0),
       prev_log_number_(0),
+      metadata_file_revision_(0),
       has_metadata_checkpoint_(false),
       metadata_checkpoint_mseq_(0),
       metadata_total_entries_(0),
@@ -889,6 +890,10 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     log_number_ = edit->log_number_;
     prev_log_number_ = edit->prev_log_number_;
     metadata_files_.swap(next_metadata_files);
+    if (!edit->metadata_files_.empty() ||
+        !edit->deleted_metadata_files_.empty()) {
+      ++metadata_file_revision_;
+    }
     metadata_commits_.swap(next_metadata_commits);
     has_metadata_checkpoint_ = edit->has_metadata_checkpoint_;
     metadata_checkpoint_mseq_ = edit->metadata_checkpoint_mseq_;
@@ -972,6 +977,10 @@ Status VersionSet::Recover(bool* save_manifest) {
 
       if (s.ok()) {
         builder.Apply(&edit);
+        if (!edit.metadata_files_.empty() ||
+            !edit.deleted_metadata_files_.empty()) {
+          ++metadata_file_revision_;
+        }
         for (uint64_t number : edit.deleted_metadata_files_) {
           metadata_files_.erase(
               std::remove_if(metadata_files_.begin(), metadata_files_.end(),

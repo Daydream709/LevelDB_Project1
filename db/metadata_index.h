@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "db/version_edit.h"
+#include "db/metadata_profile.h"
 #include "leveldb/cache.h"
 #include "leveldb/options.h"
 #include "leveldb/status.h"
@@ -47,7 +48,8 @@ class MetadataIndex {
     MetadataValueMap values;
   };
 
-  MetadataIndex(Env* env, const std::string& dbname, const Options& options);
+  MetadataIndex(Env* env, const std::string& dbname, const Options& options,
+               MetadataProfile* profile = nullptr);
   ~MetadataIndex();
 
   MetadataIndex(const MetadataIndex&) = delete;
@@ -55,6 +57,13 @@ class MetadataIndex {
 
   Status Lookup(const std::vector<MetadataFileMeta>& files, const Slice& key,
                 MetadataValue* value, bool* found) const;
+  // Looks up sorted, unique raw user keys together. Callers should keep each
+  // chunk to at most 256 keys and min(64KiB, metadata_workspace_size / 4)
+  // encoded workspace; a single key larger than that budget uses Lookup().
+  Status LookupMany(const std::vector<MetadataFileMeta>& files,
+                    const std::vector<Slice>& keys,
+                    std::vector<MetadataValue>* values,
+                    std::vector<bool>* found) const;
   void Apply(const std::vector<std::pair<std::string, MetadataValue>>& values);
   void Invalidate(const Slice& key);
   void InvalidateAll();
@@ -93,6 +102,7 @@ class MetadataIndex {
   Env* const env_;
   const std::string dbname_;
   const Options& options_;
+  MetadataProfile* const profile_;
   MetadataValueMap active_;
   size_t active_memory_usage_;
   std::deque<FrozenGeneration> frozen_;
@@ -100,6 +110,7 @@ class MetadataIndex {
   uint64_t value_cache_generation_;
   Cache* const value_cache_;
   Cache* const block_cache_;
+  Cache* const block_cache_observer_;
   MetadataTableCache* const table_cache_;
 };
 

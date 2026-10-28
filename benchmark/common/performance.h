@@ -4,7 +4,7 @@ namespace hw {
 inline void AddPerformance(Cases& cases){
   cases["perf_write"] = [](const Config& c){
     DBState d(c);Measure m(d,"put");
-    for(size_t i=0;i<c.keys;++i){auto t=Clock::now();Ok(d.db->Put(WriteOptions(),Key(i),Value(i,c.value_bytes)));m.Sample(i,t);}
+    for(size_t i=0;i<c.keys;++i){auto t=m.ShouldSample(i)?Clock::now():Clock::time_point{};Ok(d.db->Put(WriteOptions(),Key(i),Value(i,c.value_bytes)));m.Sample(t);}
     m.Finish(c.keys);
     for(size_t i=0;i<c.keys;++i)ExpectValue(d.db.get(),Key(i),Value(i,c.value_bytes));
   };
@@ -13,7 +13,7 @@ inline void AddPerformance(Cases& cases){
     std::mt19937_64 rng(c.seed);std::vector<size_t>order(c.keys);for(auto& x:order)x=rng()%c.keys;
     for(const std::string phase:{"hit","miss"}){
       Measure m(d,"get_"+phase);
-      for(size_t i=0;i<c.keys;++i){std::string value;auto t=Clock::now();auto s=d.db->Get(ReadOptions(),phase=="hit"?Key(order[i]):"missing/"+Key(order[i]),&value);m.Sample(i,t);
+      for(size_t i=0;i<c.keys;++i){std::string value;auto t=m.ShouldSample(i)?Clock::now():Clock::time_point{};auto s=d.db->Get(ReadOptions(),phase=="hit"?Key(order[i]):"missing/"+Key(order[i]),&value);m.Sample(t);
         if(phase=="hit"){Ok(s);Check(value==Value(order[i],c.value_bytes),"perf get value");}else Check(s.IsNotFound(),"perf get miss");}
       m.Finish(c.keys);
     }

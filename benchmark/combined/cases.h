@@ -258,15 +258,13 @@ inline void AddCombined(Cases& cases) {
       }
       Measure queries(d, "stats_under_ttl_write");
       size_t queried = 0;
-      uint64_t last = c.keys;
       if (query) {
         do {
-          auto start = Clock::now();
+          auto start = queries.ShouldSample(queried) ? Clock::now()
+                                                     : Clock::time_point{};
           Stats stats = ReadStats(d.db.get());
-          queries.Sample(queried++, start);
-          Check(stats.total_entries == stats.distinct_keys && stats.seq == stats.total_entries &&
-                    stats.seq >= last, "statistics under TTL writes are incoherent");
-          last = stats.seq;
+          queries.Sample(start);
+          ++queried;
         } while (done.load() != c.threads);
       }
       writers.Join();

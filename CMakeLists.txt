@@ -34,11 +34,34 @@ option(LEVELDB_BUILD_TESTS "Build LevelDB's unit tests" ON)
 option(LEVELDB_BUILD_BENCHMARKS "Build LevelDB's benchmarks" ON)
 option(LEVELDB_INSTALL "Install LevelDB's header and library" ON)
 
+set(LEVELDB_CRC32C_PROVIDER "bundled" CACHE STRING
+    "CRC32C implementation: bundled, system, or portable")
+set_property(CACHE LEVELDB_CRC32C_PROVIDER PROPERTY STRINGS
+             bundled system portable)
+
 include(CheckIncludeFile)
 check_include_file("unistd.h" HAVE_UNISTD_H)
 
 include(CheckLibraryExists)
-check_library_exists(crc32c crc32c_value "" HAVE_CRC32C)
+if(LEVELDB_CRC32C_PROVIDER STREQUAL "bundled")
+  set(HAVE_CRC32C 1)
+  set(CRC32C_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(CRC32C_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+  set(CRC32C_USE_GLOG OFF CACHE BOOL "" FORCE)
+  set(CRC32C_INSTALL OFF CACHE BOOL "" FORCE)
+  add_subdirectory("third_party/crc32c" EXCLUDE_FROM_ALL)
+elseif(LEVELDB_CRC32C_PROVIDER STREQUAL "system")
+  check_library_exists(crc32c crc32c_value "" HAVE_CRC32C)
+  if(NOT HAVE_CRC32C)
+    message(FATAL_ERROR
+            "LEVELDB_CRC32C_PROVIDER=system requires libcrc32c")
+  endif()
+elseif(LEVELDB_CRC32C_PROVIDER STREQUAL "portable")
+  set(HAVE_CRC32C 0)
+else()
+  message(FATAL_ERROR
+          "Unknown LEVELDB_CRC32C_PROVIDER='${LEVELDB_CRC32C_PROVIDER}'")
+endif()
 check_library_exists(snappy snappy_compress "" HAVE_SNAPPY)
 check_library_exists(zstd zstd_compress "" HAVE_ZSTD)
 check_library_exists(tcmalloc malloc "" HAVE_TCMALLOC)
@@ -271,9 +294,11 @@ if(HAVE_CLANG_THREAD_SAFETY)
       -Werror -Wthread-safety)
 endif(HAVE_CLANG_THREAD_SAFETY)
 
-if(HAVE_CRC32C)
+if(LEVELDB_CRC32C_PROVIDER STREQUAL "bundled")
   target_link_libraries(leveldb crc32c)
-endif(HAVE_CRC32C)
+elseif(LEVELDB_CRC32C_PROVIDER STREQUAL "system")
+  target_link_libraries(leveldb crc32c)
+endif()
 if(HAVE_SNAPPY)
   target_link_libraries(leveldb snappy)
 endif(HAVE_SNAPPY)
@@ -478,6 +503,17 @@ if(LEVELDB_INSTALL)
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   )
+  if(LEVELDB_CRC32C_PROVIDER STREQUAL "bundled")
+    install(TARGETS crc32c
+      EXPORT leveldbTargets
+      RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+      LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+      ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    )
+    install(DIRECTORY "third_party/crc32c/include/crc32c"
+      DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+    )
+  endif()
   install(
     FILES
       "${LEVELDB_PUBLIC_INCLUDE_DIR}/c.h"
@@ -531,5 +567,9 @@ if(LEVELDB_BUILD_TESTS)
   foreach(course_test IN ITEMS ttl_test metadata_test)
     add_executable(${course_test} "test/${course_test}.cc")
     target_link_libraries(${course_test} PRIVATE leveldb gtest)
+    if(course_test STREQUAL "metadata_test")
+      target_compile_definitions(${course_test} PRIVATE
+        ${LEVELDB_PLATFORM_NAME}=1)
+    endif()
   endforeach()
 endif()

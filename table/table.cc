@@ -4,6 +4,8 @@
 
 #include "leveldb/table.h"
 
+#include <limits>
+
 #include "leveldb/cache.h"
 #include "leveldb/comparator.h"
 #include "leveldb/env.h"
@@ -239,6 +241,58 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k, void* arg,
   }
   delete iiter;
   return s;
+}
+
+Status Table::InternalGetMany(const ReadOptions& options,
+                              const std::vector<Slice>& keys,
+                              std::vector<GetResult>* results,
+                              size_t* data_block_probes) {
+  results->clear();
+  results->resize(keys.size());
+  *data_block_probes = 0;
+  Iterator* index_iter = rep_->index_block->NewIterator(rep_->options.comparator);
+  Iterator* data_iter = nullptr;
+  uint64_t current_block_offset = std::numeric_limits<uint64_t>::max();
+  Status status;
+  for (size_t i = 0; i < keys.size() && status.ok(); ++i) {
+    const Slice& key = keys[i];
+    index_iter->Seek(key);
+    if (!index_iter->Valid()) {
+      status = index_iter->status();
+      continue;
+    }
+
+    Slice encoded_handle = index_iter->value();
+    BlockHandle handle;
+    status = handle.DecodeFrom(&encoded_handle);
+    if (!status.ok()) break;
+    FilterBlockReader* filter = rep_->filter;
+    if (filter != nullptr && !filter->KeyMayMatch(handle.offset(), key)) {
+      continue;
+    }
+
+    if (data_iter == nullptr || current_block_offset != handle.offset()) {
+      delete data_iter;
+      data_iter = BlockReader(this, options, index_iter->value());
+      current_block_offset = handle.offset();
+      ++*data_block_probes;
+      status = data_iter->status();
+      if (!status.ok()) break;
+    }
+    data_iter->Seek(key);
+    if (data_iter->Valid() &&
+        rep_->options.comparator->Compare(data_iter->key(), key) == 0) {
+      GetResult& result = (*results)[i];
+      result.key = data_iter->key().ToString();
+      result.value = data_iter->value().ToString();
+      result.found = true;
+    }
+    status = data_iter->status();
+  }
+  if (status.ok()) status = index_iter->status();
+  delete data_iter;
+  delete index_iter;
+  return status;
 }
 
 uint64_t Table::ApproximateOffsetOf(const Slice& key) const {

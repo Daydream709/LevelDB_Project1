@@ -230,6 +230,7 @@ class VersionSet {
   const std::vector<MetadataFileMeta>& metadata_files() const {
     return metadata_files_;
   }
+  uint64_t metadata_file_revision() const { return metadata_file_revision_; }
   const std::vector<MetadataCommitMeta>& metadata_commits() const {
     return metadata_commits_;
   }
@@ -319,6 +320,7 @@ class VersionSet {
   uint64_t log_number_;
   uint64_t prev_log_number_;  // 0 or backing store for memtable being compacted
   std::vector<MetadataFileMeta> metadata_files_;
+  uint64_t metadata_file_revision_;
   std::vector<MetadataCommitMeta> metadata_commits_;
   bool has_metadata_checkpoint_;
   uint64_t metadata_checkpoint_mseq_;

@@ -6,13 +6,16 @@
 #define STORAGE_LEVELDB_DB_DB_IMPL_H_
 
 #include <atomic>
+#include <chrono>
 #include <deque>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "db/dbformat.h"
 #include "db/log_writer.h"
+#include "db/metadata_profile.h"
 #include "db/snapshot.h"
 #include "db/version_edit.h"
 #include "leveldb/db.h"
@@ -63,6 +66,11 @@ class DBImpl : public DB {
 
   // Force current memtable contents to be compacted.
   Status TEST_CompactMemTable();
+
+  // Force metadata through a checkpoint and wait for metadata maintenance.
+  // Intended for benchmarks and tests after foreground writers have stopped.
+  Status TEST_WaitForMetadata(uint64_t target_mseq, bool compact,
+                              uint64_t timeout_micros);
 
   // Return an internal iterator over the current state of the database.
   // The keys of this iterator are internal keys (see format.h).
@@ -139,7 +147,15 @@ class DBImpl : public DB {
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status SyncMetadataWALPrefix(uint64_t through_log)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  std::vector<MetadataFileMeta> MetadataLookupFiles()
+  Status ReserveMetadataMSeq(uint64_t* mseq)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  uint64_t UncheckpointedMetadataWALBytes()
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  uint64_t PendingMetadataChangeBytes()
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  size_t PendingMetadataChangeFiles()
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  const std::vector<MetadataFileMeta>& MetadataLookupFiles()
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status LoadMetadataWALFile(uint64_t number, uint64_t mseq,
                              MetadataFileMeta* file)
@@ -190,6 +206,7 @@ class DBImpl : public DB {
   const InternalKeyComparator internal_comparator_;
   const InternalFilterPolicy internal_filter_policy_;
   const Options options_;  // options_.comparator == &internal_comparator_
+  MetadataProfile metadata_profile_;
   const bool owns_info_log_;
   const bool owns_cache_;
   const std::string dbname_;
@@ -203,6 +220,9 @@ class DBImpl : public DB {
 
   // State below is protected by mutex_
   port::Mutex mutex_;
+  // Serializes WAL append/sync operations while mutex_ is released. In
+  // particular, prefix sync must not race a foreground append to logfile_.
+  port::Mutex metadata_wal_io_mutex_;
   std::atomic<bool> shutting_down_;
   port::CondVar background_work_finished_signal_ GUARDED_BY(mutex_);
   port::CondVar metadata_work_signal_ GUARDED_BY(mutex_);
@@ -218,10 +238,33 @@ class DBImpl : public DB {
   uint64_t metadata_total_entries_ GUARDED_BY(mutex_);
   uint64_t metadata_distinct_keys_ GUARDED_BY(mutex_);
   uint64_t metadata_mseq_ GUARDED_BY(mutex_);
+  uint64_t metadata_mseq_allocator_ GUARDED_BY(mutex_);
   uint64_t metadata_recovery_max_mseq_ GUARDED_BY(mutex_);
   uint64_t metadata_wal_bytes_ GUARDED_BY(mutex_);
   uint64_t metadata_wal_checkpoint_bytes_ GUARDED_BY(mutex_);
+  struct MetadataWALPosition {
+    uint64_t appended_position = 0;
+    uint64_t durable_position = 0;
+    bool durable_known = false;
+  };
+  std::map<uint64_t, MetadataWALPosition> metadata_wal_positions_
+      GUARDED_BY(mutex_);
+  std::set<uint64_t> metadata_wal_sync_pins_ GUARDED_BY(mutex_);
+  bool metadata_wal_prefix_sync_in_progress_ GUARDED_BY(mutex_);
+  bool metadata_checkpoint_pending_since_valid_ GUARDED_BY(mutex_);
+  std::chrono::steady_clock::time_point metadata_checkpoint_pending_since_
+      GUARDED_BY(mutex_);
+  bool metadata_active_pending_since_valid_ GUARDED_BY(mutex_);
+  std::chrono::steady_clock::time_point metadata_active_pending_since_
+      GUARDED_BY(mutex_);
+  uint64_t metadata_checkpoint_target_mseq_ GUARDED_BY(mutex_);
   std::vector<MetadataFileMeta> metadata_wal_files_ GUARDED_BY(mutex_);
+  uint64_t metadata_wal_files_revision_ GUARDED_BY(mutex_);
+  uint64_t metadata_lookup_files_version_revision_ GUARDED_BY(mutex_);
+  uint64_t metadata_lookup_files_wal_revision_ GUARDED_BY(mutex_);
+  bool metadata_lookup_files_cache_valid_ GUARDED_BY(mutex_);
+  std::vector<MetadataFileMeta> metadata_lookup_files_cache_
+      GUARDED_BY(mutex_);
   size_t recovery_metadata_event_index_ GUARDED_BY(mutex_);
   bool metadata_needs_rebuild_ GUARDED_BY(mutex_);
   bool metadata_rebuild_only_error_ GUARDED_BY(mutex_);
@@ -229,6 +272,8 @@ class DBImpl : public DB {
   bool metadata_commit_in_progress_ GUARDED_BY(mutex_);
   size_t metadata_commit_blockers_ GUARDED_BY(mutex_);
   bool metadata_storage_work_in_progress_ GUARDED_BY(mutex_);
+  bool metadata_compaction_prepare_in_progress_ GUARDED_BY(mutex_);
+  CompactionState* metadata_compaction_prepare_ GUARDED_BY(mutex_);
   bool manifest_commit_in_progress_ GUARDED_BY(mutex_);
   bool write_log_in_progress_ GUARDED_BY(mutex_);
 

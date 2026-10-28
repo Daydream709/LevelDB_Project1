@@ -6,6 +6,7 @@
 #define STORAGE_LEVELDB_INCLUDE_OPTIONS_H_
 
 #include <cstddef>
+#include <cstdint>
 
 #include "leveldb/export.h"
 
@@ -88,11 +89,28 @@ struct LEVELDB_EXPORT Options {
   // primary write buffer.
   size_t metadata_memtable_size = 1 * 1024 * 1024;
 
+  // Maximum WAL bytes retained for metadata recovery before the metadata
+  // checkpoint worker folds another generation. This budget is independent
+  // of metadata_memtable_size.
+  uint64_t metadata_wal_size_limit = 16 * 1024 * 1024;
+
+  // Maximum time to coalesce small metadata updates before a checkpoint.
+  // sync=true writes still sync their WAL before returning.
+  uint64_t metadata_checkpoint_interval_micros = 1000000;
+
   // Approximate budget for cached metadata table handles and lookup blocks.
   size_t metadata_cache_size = 8 * 1024 * 1024;
 
   // Workspace used by metadata compaction and rebuild merge stages.
   size_t metadata_workspace_size = 4 * 1024 * 1024;
+
+  // Collect optional metadata lookup, write, and maintenance counters and
+  // sampled timings. Disabled by default to avoid instrumentation overhead.
+  bool enable_metadata_profiling = false;
+
+  // Record a timing sample for every Nth profiled event. Exact event counters
+  // remain available for all events while profiling is enabled.
+  size_t metadata_profile_sample_rate = 64;
 
   // Number of open files that can be used by the DB.  You may need to
   // increase this if your database has a large working set (budget

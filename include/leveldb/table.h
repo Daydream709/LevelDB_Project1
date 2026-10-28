@@ -6,6 +6,8 @@
 #define STORAGE_LEVELDB_INCLUDE_TABLE_H_
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #include "leveldb/export.h"
 #include "leveldb/iterator.h"
@@ -61,6 +63,11 @@ class LEVELDB_EXPORT Table {
  private:
   friend class TableCache;
   friend class MetadataTableAccess;
+  struct GetResult {
+    std::string key;
+    std::string value;
+    bool found = false;
+  };
   struct Rep;
 
   static Iterator* BlockReader(void*, const ReadOptions&, const Slice&);
@@ -73,6 +80,9 @@ class LEVELDB_EXPORT Table {
   Status InternalGet(const ReadOptions&, const Slice& key, void* arg,
                      void (*handle_result)(void* arg, const Slice& k,
                                            const Slice& v));
+  Status InternalGetMany(const ReadOptions&, const std::vector<Slice>& keys,
+                         std::vector<GetResult>* results,
+                         size_t* data_block_probes);
 
   void ReadMeta(const Footer& footer);
   void ReadFilter(const Slice& filter_handle_value);

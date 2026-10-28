@@ -34,6 +34,7 @@
 #endif  // HAVE_ZSTD
 
 #include <cassert>
+#include <chrono>
 #include <condition_variable>  // NOLINT
 #include <cstddef>
 #include <cstdint>
@@ -78,6 +79,14 @@ class CondVar {
     std::unique_lock<std::mutex> lock(mu_->mu_, std::adopt_lock);
     cv_.wait(lock);
     lock.release();
+  }
+  bool TimedWait(uint64_t micros) {
+    std::unique_lock<std::mutex> lock(mu_->mu_, std::adopt_lock);
+    const bool notified =
+        cv_.wait_for(lock, std::chrono::microseconds(micros)) !=
+        std::cv_status::timeout;
+    lock.release();
+    return notified;
   }
   void Signal() { cv_.notify_one(); }
   void SignalAll() { cv_.notify_all(); }

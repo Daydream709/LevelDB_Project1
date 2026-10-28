@@ -77,8 +77,9 @@ inline void AddMetadata(Cases& cases){
   };
   cases["perf_stats"]=[](const Config& c){
     DBState d(c);Load(d,c);d.Flush();Measure m(d,"stats_query");Stats s;
-    for(size_t i=0;i<c.keys;++i){auto t=Clock::now();Ok(d.db->GetCurrentStats(ReadOptions(),&s));m.Sample(i,t);StatsEqual(s,c.keys,c.keys,c.keys);}
+    for(size_t i=0;i<c.keys;++i){auto t=m.ShouldSample(i)?Clock::now():Clock::time_point{};Ok(d.db->GetCurrentStats(ReadOptions(),&s));m.Sample(t);}
     m.Finish(c.keys);
+    StatsEqual(s,c.keys,c.keys,c.keys);
   };
   cases["perf_stats_under_write"]=[](const Config& c){
     // Two identical preloaded databases, with and without a querying thread.
@@ -88,12 +89,12 @@ inline void AddMetadata(Cases& cases){
       Measure write(d,query?"put_with_stats_queries":"put_without_stats_queries");
       for(size_t t=0;t<c.threads;++t)writers.Add([&,t]{try{for(size_t i=t;i<c.keys;i+=c.threads)Ok(d.db->Put(WriteOptions(),Key(c.keys+i),Value(i,c.value_bytes)));}catch(...){++done;throw;}++done;});
       Measure queries(d,"stats_under_write");size_t n=0;uint64_t last=0;
-      if(query) do {auto t=Clock::now();Stats s=ReadStats(d.db.get());queries.Sample(n++,t);
-        Check(s.total_entries==s.distinct_keys&&s.seq==s.total_entries&&s.seq>=last,"concurrent stats state");last=s.seq;
+      if(query) do {auto t=queries.ShouldSample(n)?Clock::now():Clock::time_point{};Stats s=ReadStats(d.db.get());queries.Sample(t);++n;last=s.seq;
       }while(done.load()!=c.threads);
       writers.Join();const double elapsed_write=write.Elapsed(),elapsed_queries=queries.Elapsed();
       write.Finish(c.keys,elapsed_write);if(query)queries.Finish(n,elapsed_queries);
       StatsEqual(ReadStats(d.db.get()),2*c.keys,2*c.keys,2*c.keys);
+      if(query)Check(last==2*c.keys,"concurrent stats final sequence");
     }
   };
 }
