@@ -23,7 +23,7 @@ inline void AddTTL(Cases& cases){
   };
   cases["perf_ttl_write"]=[](const Config& c){
     DBState d(c);Measure m(d,"ttl_put");
-    for(size_t i=0;i<c.keys;++i){auto t=m.ShouldSample(i)?Clock::now():Clock::time_point{};Ok(d.db->Put(WriteOptions(),Key(i),Value(i,c.value_bytes),3600));m.Sample(t);}
+    for(size_t i=0;i<c.keys;++i){auto t=Clock::now();Ok(d.db->Put(WriteOptions(),Key(i),Value(i,c.value_bytes),3600));m.Sample(i,t);}
     m.Finish(c.keys);for(size_t i=0;i<c.keys;++i)ExpectValue(d.db.get(),Key(i),Value(i,c.value_bytes));
   };
   cases["perf_ttl_mixed"]=[](const Config& c){
@@ -31,7 +31,7 @@ inline void AddTTL(Cases& cases){
     for(size_t i=0;i<c.keys;++i)Ok(d.db->Put(WriteOptions(),Key(i),Value(i,c.value_bytes),i%100<c.expired_percent?1:3600));
     d.Flush();d.env.now+=2*kSecond;
     std::mt19937_64 rng(c.seed);Measure m(d,"ttl_mixed_get");
-    for(size_t i=0;i<c.keys;++i){size_t key=rng()%c.keys;std::string v;auto t=m.ShouldSample(i)?Clock::now():Clock::time_point{};auto s=d.db->Get(ReadOptions(),Key(key),&v);m.Sample(t);
+    for(size_t i=0;i<c.keys;++i){size_t key=rng()%c.keys;std::string v;auto t=Clock::now();auto s=d.db->Get(ReadOptions(),Key(key),&v);m.Sample(i,t);
       if(key%100<c.expired_percent)Check(s.IsNotFound(),"expired read");else{Ok(s);Check(v==Value(key,c.value_bytes),"live TTL read");}}
     m.Finish(c.keys);
   };

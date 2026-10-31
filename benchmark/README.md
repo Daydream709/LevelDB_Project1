@@ -36,43 +36,6 @@ python3 benchmark/runner.py --kind combined --source "$PWD" \
 | `perf_combined_stats_under_write` | 场景测量 TTL 写入期间的统计查询开销及其对写入吞吐的影响。 |
 | `perf_combined_gc` | 场景测量不同过期比例下的回收开销，并核对回收后的统计。 |
 
-## 元数据性能研究
-
-`--kind metadata-research` 提供面向元数据索引的独立性能场景。该 kind 不运行课程回归；其他 kind 默认包含回归阶段，可用 `--skip-regression` 将其关闭。建议先用小规模确认环境，再扩大数据量和重复次数：
-
-```bash
-python3 benchmark/runner.py --kind metadata-research --source "$PWD" \
-  --output "$PWD/build/metadata-research-quick" --profile quick \
-  --keys 10000 --repeat 3 --cases perf_metadata_lookup,perf_metadata_batch \
-  --skip-regression
-```
-
-研究场景覆盖以下工作：
-
-| 场景 | 测量内容 |
-| --- | --- |
-| `perf_metadata_lookup` | 活动/持久计数查找、热点/均匀/顺序/Zipf 分布和不同缓存大小。 |
-| `perf_metadata_batch` | 不同 batch 大小、键重复率、分布，以及超大 batch 的工作区溢写。 |
-| `perf_metadata_contention` | 并发写入与 `GetCurrentStats` 查询的吞吐和采样延迟。 |
-| `perf_metadata_steady` | 固定时长的持续写入与统计查询，含预热、写线程和查询线程参数。 |
-| `perf_metadata_maintenance` | 元数据代生成、Flush/Compaction 排空及主数据 Compaction 提交。 |
-| `perf_metadata_recovery` | `.mchg` 与 WAL 恢复、缺失变更文件后的全量重建。 |
-
-`--matrix` 对每个研究场景做单因素参数扫描；键数/线程数由通用矩阵决定，缓存、分布、batch、工作区等由场景参数矩阵决定。`--batch-size`、`--query-threads`、`--distinct-percent`、`--distribution`、`--metadata-memtable-bytes`、`--metadata-cache-bytes`、`--metadata-workspace-bytes`、`--write-buffer-bytes`、`--warmup-seconds` 和 `--duration-seconds` 可用于控制单次运行。运行器记录实际参数，避免矩阵结果只靠目录名识别。
-
-研究 kind 默认启用引擎内元数据 profiling，可用 `--profile-sample-rate N` 调整阶段耗时采样率，或用 `--no-profile-metadata` 测量关闭该观测器的开销对照。profiling 统计固定内存的事件计数器和阶段延迟直方图；操作延迟按 64 次操作采一个样本。`metrics.csv` 和 `aggregate.json` 除阶段均值外，还包含按 32 桶直方图估算的阶段 p50/p95/p99 上界，适合定位 Compaction gate、WAL 同步等待等长尾阶段。引擎计时、阶段与排空阶段 I/O、元数据 WAL/Flush/Compaction 计数、元数据内存估值，以及各类文件读写和 Sync 会写入结果文件。
-
-外部 profiler 可选 `--profiler perf-stat|perf-record|perf-sched|heaptrack`。工具不存在或权限不允许时，运行器在 `summary.json` 中记录跳过原因，并仍可完成内部 benchmark；加 `--require-profiler` 会在缺少外部 profiler 能力时停止。带外部 profiler 的构建使用 `RelWithDebInfo` 和 frame pointer，运行结果适合定位热点，不用于直接对比吞吐。可用同一种场景和参数比较两次未套外部 profiler 的元数据研究：
-
-```bash
-python3 benchmark/runner.py --kind metadata-research --source "$PWD" \
-  --output "$PWD/build/metadata-research-a" --profile quick --keys 10000 \
-  --repeat 3 --cases perf_metadata_lookup --skip-regression
-python3 benchmark/compare.py build/metadata-research-a build/metadata-research-b
-```
-
-研究结果除 `summary.json`、`metrics.csv` 和 `aggregate.json` 外，还生成 `report.md`。CSV 中的 `profile_counter_*` 和 `profile_stage_*` 列用于按 workload/repeat 观察内部路径；聚合 JSON 给出中位数、波动、尾延迟、RSS、排空时间和分类 I/O。外部 profiler 的原始数据及文本报告保存在各次运行目录中。
-
 | 档位 | 规模参数 N | 写线程数 | 重复次数 |
 | --- | ---: | ---: | ---: |
 | quick | 10,000 | 4 | 1 |
