@@ -71,6 +71,10 @@ class DBImpl : public DB {
   // Force current memtable contents to be compacted.
   Status TEST_CompactMemTable();
 
+  uint64_t TEST_MetadataRebuildCount() const {
+    return metadata_profile_.CounterValue(MetadataProfileCounter::kRebuilds);
+  }
+
   // Force metadata through a checkpoint and wait for metadata maintenance.
   // Intended for benchmarks and tests after foreground writers have stopped.
   Status TEST_WaitForMetadata(uint64_t target_mseq, bool compact,
@@ -174,6 +178,10 @@ class DBImpl : public DB {
   Status CompactMetadata() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void MaybeFreezeMetadata() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status RebuildMetadata() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status PersistPrimaryMetadataCheckpoint()
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status CountPrimaryRecordsForKey(const Slice& key, uint64_t* count)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status LogAndApply(VersionEdit* edit) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   Status WriteLevel0Table(MemTable* mem, VersionEdit* edit, Version* base,

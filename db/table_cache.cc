@@ -111,6 +111,42 @@ Status TableCache::Get(const ReadOptions& options, uint64_t file_number,
   return s;
 }
 
+Status TableCache::CountUserKeyRecords(uint64_t file_number,
+                                       uint64_t file_size,
+                                       const Slice& user_key,
+                                       uint64_t* count) {
+  if (count == nullptr) {
+    return Status::InvalidArgument("record count output pointer is null");
+  }
+  *count = 0;
+  Iterator* iter = NewIterator(ReadOptions(), file_number, file_size);
+  InternalKey seek(user_key, kMaxSequenceNumber, kValueTypeForSeek);
+  iter->Seek(seek.Encode());
+  const Comparator* user_comparator =
+      static_cast<const InternalKeyComparator*>(options_.comparator)
+          ->user_comparator();
+  Status s;
+  while (iter->Valid()) {
+    ParsedInternalKey parsed;
+    if (!ParseInternalKey(iter->key(), &parsed)) {
+      s = Status::Corruption("invalid internal key while counting SST records");
+      break;
+    }
+    if (user_comparator->Compare(parsed.user_key, user_key) != 0) break;
+    if (parsed.user_key == user_key) {
+      if (*count == std::numeric_limits<uint64_t>::max()) {
+        s = Status::Corruption("SST user key record count overflow");
+        break;
+      }
+      ++*count;
+    }
+    iter->Next();
+  }
+  if (s.ok()) s = iter->status();
+  delete iter;
+  return s;
+}
+
 Status TableCache::GetInternalStats(uint64_t file_number, uint64_t file_size,
                                     TableInternalStats* stats) {
   if (stats == nullptr) {

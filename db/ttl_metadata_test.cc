@@ -815,7 +815,7 @@ TEST_P(TTLMetadataTest, SuccessfulGCCountsOnlyInstalledRecordRemoval) {
   EXPECT_GT(ProfilerTestPeer::Counter(*options_.profiler, "gc.installed_input_sst_bytes"), 0U);
 }
 
-TEST_P(TTLMetadataTest, UnreadableSSTDataFailsAuxiliaryRebuild) {
+TEST_P(TTLMetadataTest, UnreadableSSTDataFailsPrimaryStatsRebuild) {
   ASSERT_LEVELDB_OK(Open(true));
   ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "a", "one"));
   ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
@@ -838,27 +838,11 @@ TEST_P(TTLMetadataTest, UnreadableSSTDataFailsAuxiliaryRebuild) {
   contents[0] ^= 1;  // Damage the first data block checksum as well.
   ASSERT_LEVELDB_OK(WriteStringToFile(&env_, contents, table_file));
 
-  // Force an auxiliary checkpoint, then remove its run. A damaged primary
-  // block must fail rebuilding; ordinary trusted-checkpoint opens do not scan
-  // all primary data just to recover statistics.
-  std::string metadata_state;
-  ASSERT_TRUE(db_->GetProperty("leveldb.metadata-stats", &metadata_state));
-  const std::string marker = "published_mseq=";
-  const auto boundary = metadata_state.find(marker);
-  ASSERT_NE(boundary, std::string::npos);
-  ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_WaitForMetadata(
-      std::stoull(metadata_state.substr(boundary + marker.size())), false, 10000000));
+  // Reopening rebuilds the in-memory scalars from primary internal records,
+  // so the damaged data block must prevent publishing a partial count.
   db_.reset();
-  ASSERT_LEVELDB_OK(env_.GetChildren(dbname_, &children));
-  unsigned removed = 0;
-  for (const auto& child : children) {
-    if (child.size() > 5 && child.substr(child.size() - 5) == ".midx") {
-      ASSERT_LEVELDB_OK(env_.RemoveFile(dbname_ + "/" + child));
-      ++removed;
-    }
-  }
-  ASSERT_GT(removed, 0U);
   options_.create_if_missing = false;
+  options_.paranoid_checks = true;
   DB* reopened = nullptr;
   const Status status = DB::Open(options_, dbname_, &reopened);
   EXPECT_FALSE(status.ok());

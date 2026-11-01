@@ -425,6 +425,36 @@ Status Version::Get(const ReadOptions& options, const LookupKey& k,
   return state.found ? state.s : Status::NotFound(Slice());
 }
 
+Status Version::CountUserKeyRecords(const Slice& user_key,
+                                    const std::set<uint64_t>* exclude,
+                                    uint64_t* count) const {
+  if (count == nullptr) {
+    return Status::InvalidArgument("record count output pointer is null");
+  }
+  *count = 0;
+  const Comparator* user_comparator = vset_->icmp_.user_comparator();
+  for (int level = 0; level < config::kNumLevels; ++level) {
+    for (FileMetaData* file : files_[level]) {
+      if (exclude != nullptr && exclude->find(file->number) != exclude->end()) {
+        continue;
+      }
+      if (user_comparator->Compare(user_key, file->smallest.user_key()) < 0 ||
+          user_comparator->Compare(user_key, file->largest.user_key()) > 0) {
+        continue;
+      }
+      uint64_t file_count = 0;
+      Status s = vset_->table_cache_->CountUserKeyRecords(
+          file->number, file->file_size, user_key, &file_count);
+      if (!s.ok()) return s;
+      if (std::numeric_limits<uint64_t>::max() - *count < file_count) {
+        return Status::Corruption("user key record count overflow");
+      }
+      *count += file_count;
+    }
+  }
+  return Status::OK();
+}
+
 bool Version::UpdateStats(const GetStats& stats) {
   FileMetaData* f = stats.seek_file;
   if (f != nullptr) {
@@ -775,6 +805,10 @@ VersionSet::VersionSet(const std::string& dbname, const Options* options,
       metadata_total_entries_(0),
       metadata_distinct_keys_(0),
       metadata_wal_number_(0),
+      has_primary_metadata_checkpoint_(false),
+      primary_metadata_checkpoint_sequence_(0),
+      primary_metadata_total_entries_(0),
+      primary_metadata_distinct_keys_(0),
       descriptor_file_(nullptr),
       descriptor_log_(nullptr),
       dummy_versions_(this),
@@ -826,6 +860,12 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
                                 metadata_total_entries_,
                                 metadata_distinct_keys_,
                                 metadata_wal_number_);
+  }
+  if (!edit->has_primary_metadata_checkpoint_ &&
+      has_primary_metadata_checkpoint_) {
+    edit->SetPrimaryMetadataCheckpoint(
+        primary_metadata_checkpoint_sequence_,
+        primary_metadata_total_entries_, primary_metadata_distinct_keys_);
   }
 
   std::vector<MetadataFileMeta> next_metadata_files = metadata_files_;
@@ -927,6 +967,14 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     metadata_total_entries_ = edit->metadata_total_entries_;
     metadata_distinct_keys_ = edit->metadata_distinct_keys_;
     metadata_wal_number_ = edit->metadata_wal_number_;
+    has_primary_metadata_checkpoint_ =
+        edit->has_primary_metadata_checkpoint_;
+    primary_metadata_checkpoint_sequence_ =
+        edit->primary_metadata_checkpoint_sequence_;
+    primary_metadata_total_entries_ =
+        edit->primary_metadata_total_entries_;
+    primary_metadata_distinct_keys_ =
+        edit->primary_metadata_distinct_keys_;
   } else {
     delete v;
     if (!new_manifest_file.empty()) {
@@ -1043,6 +1091,15 @@ Status VersionSet::Recover(bool* save_manifest) {
                        const MetadataCommitMeta& b) {
                       return a.mseq < b.mseq;
                     });
+        }
+        if (edit.has_primary_metadata_checkpoint_) {
+          has_primary_metadata_checkpoint_ = true;
+          primary_metadata_checkpoint_sequence_ =
+              edit.primary_metadata_checkpoint_sequence_;
+          primary_metadata_total_entries_ =
+              edit.primary_metadata_total_entries_;
+          primary_metadata_distinct_keys_ =
+              edit.primary_metadata_distinct_keys_;
         }
       }
 
@@ -1216,6 +1273,11 @@ Status VersionSet::WriteSnapshot(log::Writer* log) {
                                metadata_total_entries_,
                                metadata_distinct_keys_,
                                metadata_wal_number_);
+  }
+  if (has_primary_metadata_checkpoint_) {
+    edit.SetPrimaryMetadataCheckpoint(
+        primary_metadata_checkpoint_sequence_,
+        primary_metadata_total_entries_, primary_metadata_distinct_keys_);
   }
 
   // Save files

@@ -42,6 +42,13 @@ class MemTable {
   // data structure. It is safe to call when MemTable is being modified.
   size_t ApproximateMemoryUsage();
 
+  // Number of physical records stored in this primary memtable.
+  uint64_t NumEntries() const { return num_entries_; }
+
+  // Count records for the exact raw user key. Tombstones and expired TTL
+  // values are included because both remain physical records.
+  uint64_t CountUserKeyRecords(const Slice& key) const;
+
   // Return an iterator that yields the contents of the memtable.
   //
   // The caller must ensure that the underlying MemTable remains live
@@ -79,6 +86,7 @@ class MemTable {
 
   KeyComparator comparator_;
   int refs_;
+  uint64_t num_entries_;
   Arena arena_;
   Table table_;
 };

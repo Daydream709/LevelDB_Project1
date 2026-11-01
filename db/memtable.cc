@@ -20,7 +20,8 @@ static Slice GetLengthPrefixedSlice(const char* data) {
 }
 
 MemTable::MemTable(const InternalKeyComparator& comparator)
-    : comparator_(comparator), refs_(0), table_(comparator_, &arena_) {}
+    : comparator_(comparator), refs_(0), num_entries_(0),
+      table_(comparator_, &arena_) {}
 
 MemTable::~MemTable() { assert(refs_ == 0); }
 
@@ -98,6 +99,30 @@ void MemTable::Add(SequenceNumber s, ValueType type, const Slice& key,
   std::memcpy(p, value.data(), val_size);
   assert(p + val_size == buf + encoded_len);
   table_.Insert(buf);
+  ++num_entries_;
+}
+
+uint64_t MemTable::CountUserKeyRecords(const Slice& key) const {
+  uint64_t result = 0;
+  InternalKey seek(key, kMaxSequenceNumber, kValueTypeForSeek);
+  Iterator* iter = const_cast<MemTable*>(this)->NewIterator();
+  iter->Seek(seek.Encode());
+  const Comparator* user_comparator =
+      comparator_.comparator.user_comparator();
+  while (iter->Valid()) {
+    ParsedInternalKey parsed;
+    if (!ParseInternalKey(iter->key(), &parsed) ||
+        user_comparator->Compare(parsed.user_key, key) != 0) {
+      break;
+    }
+    if (parsed.user_key == key) {
+      if (result == std::numeric_limits<uint64_t>::max()) break;
+      ++result;
+    }
+    iter->Next();
+  }
+  delete iter;
+  return result;
 }
 
 bool MemTable::Get(const LookupKey& key, uint64_t read_time_micros,

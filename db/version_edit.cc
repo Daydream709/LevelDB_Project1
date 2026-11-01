@@ -25,7 +25,8 @@ enum Tag {
   kDeletedMetadataFile = 11,
   kMetadataCheckpoint = 12,
   kMetadataCommit = 13,
-  kMetadataLsmFile = 14
+  kMetadataLsmFile = 14,
+  kPrimaryMetadataCheckpoint = 15
 };
 
 void VersionEdit::Clear() {
@@ -44,6 +45,10 @@ void VersionEdit::Clear() {
   metadata_distinct_keys_ = 0;
   metadata_wal_number_ = 0;
   has_metadata_checkpoint_ = false;
+  primary_metadata_checkpoint_sequence_ = 0;
+  primary_metadata_total_entries_ = 0;
+  primary_metadata_distinct_keys_ = 0;
+  has_primary_metadata_checkpoint_ = false;
   compact_pointers_.clear();
   deleted_files_.clear();
   new_files_.clear();
@@ -126,6 +131,12 @@ void VersionEdit::EncodeTo(std::string* dst) const {
     PutVarint64(dst, metadata_total_entries_);
     PutVarint64(dst, metadata_distinct_keys_);
     PutVarint64(dst, metadata_wal_number_);
+  }
+  if (has_primary_metadata_checkpoint_) {
+    PutVarint32(dst, kPrimaryMetadataCheckpoint);
+    PutVarint64(dst, primary_metadata_checkpoint_sequence_);
+    PutVarint64(dst, primary_metadata_total_entries_);
+    PutVarint64(dst, primary_metadata_distinct_keys_);
   }
 }
 
@@ -314,6 +325,16 @@ Status VersionEdit::DecodeFrom(const Slice& src) {
           has_metadata_checkpoint_ = true;
         } else {
           msg = "metadata checkpoint";
+        }
+        break;
+
+      case kPrimaryMetadataCheckpoint:
+        if (GetVarint64(&input, &primary_metadata_checkpoint_sequence_) &&
+            GetVarint64(&input, &primary_metadata_total_entries_) &&
+            GetVarint64(&input, &primary_metadata_distinct_keys_)) {
+          has_primary_metadata_checkpoint_ = true;
+        } else {
+          msg = "primary metadata checkpoint";
         }
         break;
 

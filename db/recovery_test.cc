@@ -235,7 +235,7 @@ TEST_F(RecoveryTest, LogFileReuse) {
       CompactMemTable();
     }
     Close();
-    ASSERT_EQ(2, NumLogs());
+    ASSERT_EQ(1, NumLogs());
     uint64_t number = LastLogFile();
     if (i == 0) {
       ASSERT_EQ(0, FileSize(LogName(number)));
@@ -243,11 +243,11 @@ TEST_F(RecoveryTest, LogFileReuse) {
       ASSERT_LT(0, FileSize(LogName(number)));
     }
     Open();
-    ASSERT_EQ(2, NumLogs());
+    ASSERT_EQ(1, NumLogs());
     ASSERT_EQ(number, LastLogFile()) << "did not reuse active log file";
     ASSERT_EQ("bar", Get("foo"));
     Open();
-    ASSERT_EQ(2, NumLogs());
+    ASSERT_EQ(1, NumLogs());
     ASSERT_EQ(number, LastLogFile()) << "did not reuse active log file";
     ASSERT_EQ("bar", Get("foo"));
   }
@@ -273,8 +273,7 @@ TEST_F(RecoveryTest, MultipleMemTables) {
   opt.write_buffer_size = (kNum * 100) / 2;
   Open(&opt);
   ASSERT_LE(2, NumTables());
-  ASSERT_EQ(2, NumLogs());
-  ASSERT_EQ(old_log_file, FirstLogFile());
+  ASSERT_EQ(1, NumLogs());
   ASSERT_NE(old_log_file, LastLogFile()) << "must create a new active log";
   for (int i = 0; i < kNum; i++) {
     char buf[100];

@@ -4,11 +4,13 @@
 #include "leveldb/env.h"
 #include "leveldb/db.h"
 #include "leveldb/write_batch.h"
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <unistd.h>   // getpid
 #include <cstdio>     // snprintf
+#include <cctype>
 #include <set>
 #include <string>
 #include <thread>
@@ -17,6 +19,26 @@
 using namespace leveldb;
 
 namespace {
+
+class CaseInsensitiveComparator final : public Comparator {
+ public:
+  int Compare(const Slice& a, const Slice& b) const override {
+    const size_t common = std::min(a.size(), b.size());
+    for (size_t i = 0; i < common; ++i) {
+      const unsigned char ac = static_cast<unsigned char>(a[i]);
+      const unsigned char bc = static_cast<unsigned char>(b[i]);
+      const int al = std::tolower(ac);
+      const int bl = std::tolower(bc);
+      if (al != bl) return al < bl ? -1 : 1;
+    }
+    if (a.size() == b.size()) return 0;
+    return a.size() < b.size() ? -1 : 1;
+  }
+
+  const char* Name() const override { return "test.CaseInsensitiveComparator"; }
+  void FindShortestSeparator(std::string*, const Slice&) const override {}
+  void FindShortSuccessor(std::string*) const override {}
+};
 
 struct PhysicalStats {
   uint64_t total_entries = 0;
@@ -97,7 +119,7 @@ TEST_F(StatsDBTest, BasicCount) {
   ASSERT_EQ(stats.distinct_keys, 2);
 }
 
-TEST_F(StatsDBTest, DefaultCheckpointCoalescesUntilOneSecond) {
+TEST_F(StatsDBTest, StatsStayInPrimaryStateWithoutAuxiliaryCheckpoint) {
   delete db_;
   db_ = nullptr;
   Options options;
@@ -106,19 +128,17 @@ TEST_F(StatsDBTest, DefaultCheckpointCoalescesUntilOneSecond) {
   ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
   ASSERT_TRUE(db_->Put(WriteOptions(), "checkpoint-key", "value").ok());
 
+  Stats stats;
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).ok());
+  ASSERT_EQ(stats.total_entries, 1);
+  ASSERT_EQ(stats.distinct_keys, 1);
+  ASSERT_EQ(stats.seq, 1);
+  ASSERT_TRUE(PropertyHas(db_, "leveldb.metadata-stats", "metadata_files=0"));
   Env::Default()->SleepForMicroseconds(200000);
-  ASSERT_TRUE(PropertyHas(db_, "leveldb.metadata-stats", "checkpoint_mseq=0"));
-
-  const auto deadline = std::chrono::steady_clock::now() +
-                        std::chrono::seconds(5);
-  while (!PropertyHas(db_, "leveldb.metadata-stats", "checkpoint_mseq=1") &&
-         std::chrono::steady_clock::now() < deadline) {
-    Env::Default()->SleepForMicroseconds(10000);
-  }
-  ASSERT_TRUE(PropertyHas(db_, "leveldb.metadata-stats", "checkpoint_mseq=1"));
+  ASSERT_TRUE(PropertyHas(db_, "leveldb.metadata-stats", "metadata_files=0"));
 }
 
-TEST_F(StatsDBTest, LookupManyReadsCheckpointFilesAcrossBlocks) {
+TEST_F(StatsDBTest, BatchUpdatesProbePrimarySSTBlocks) {
   delete db_;
   db_ = nullptr;
   Options options;
@@ -139,13 +159,10 @@ TEST_F(StatsDBTest, LookupManyReadsCheckpointFilesAcrossBlocks) {
   initial.Put(binary_a, "binary-old");
   initial.Put(binary_ff, "ff-old");
   ASSERT_TRUE(db_->Write(WriteOptions(), &initial).ok());
-  ASSERT_TRUE(static_cast<DBImpl*>(db_)->TEST_WaitForMetadata(
-                              1, false, 10000000)
-                  .ok());
+  db_->CompactRange(nullptr, nullptr);
 
-  // This write group has hundreds of sorted keys and must resolve old values
-  // from the checkpoint SST, including keys spread across multiple data
-  // blocks, while also inserting keys absent from that file.
+  // This write group has hundreds of sorted keys and resolves existing
+  // physical keys through primary SST blocks while also inserting new keys.
   WriteBatch updates;
   const int kUpdates = 320;
   const int kNewKeys = 120;
@@ -216,29 +233,11 @@ TEST_F(StatsDBTest, PrimaryCompactionReconcilesConcurrentMetadataTail) {
   }
   ASSERT_TRUE(db_->Write(WriteOptions(), &third).ok());
 
-  std::atomic<bool> compaction_done(false);
   std::thread compaction([&] {
     db_->CompactRange(nullptr, nullptr);
-    compaction_done.store(true, std::memory_order_release);
   });
-  const auto deadline = std::chrono::steady_clock::now() +
-                        std::chrono::seconds(15);
-  bool saw_prepare = false;
-  while (!compaction_done.load(std::memory_order_acquire) &&
-         std::chrono::steady_clock::now() < deadline) {
-    if (PropertyHas(db_, "leveldb.metadata-stats", "compaction_prepare=1")) {
-      saw_prepare = true;
-      break;
-    }
-    Env::Default()->SleepForMicroseconds(500);
-  }
-  if (!saw_prepare) {
-    compaction.join();
-    FAIL() << "primary compaction preparation window was not observed";
-  }
-
-  // Several hundred overlapping updates exercise both the bounded in-memory
-  // journal and the spill-file path before the final compaction gate.
+  // Overlap a foreground tail with primary compaction and compare published
+  // statistics with the physical internal-record oracle after both finish.
   WriteBatch tail;
   const int kTailKeys = 400;
   for (int i = 0; i < kTailKeys; ++i) {
@@ -364,12 +363,40 @@ TEST_F(StatsDBTest, ManifestTailCompactionRecovery) {
   ASSERT_EQ(recovered.seq, compacted.seq);
 }
 
-TEST_F(StatsDBTest, MissingMetadataRunRebuildsFromPrimary) {
+TEST_F(StatsDBTest, ReopenUsesPrimaryManifestCheckpoint) {
+  ASSERT_TRUE(db_->Put(WriteOptions(), "hot", "first").ok());
+  ASSERT_TRUE(db_->Put(WriteOptions(), "hot", "second").ok());
+  ASSERT_TRUE(db_->Put(WriteOptions(), "stable", "value").ok());
+  db_->CompactRange(nullptr, nullptr);
+
+  Stats before;
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &before).ok());
+  ASSERT_EQ(before.total_entries, 3);
+  ASSERT_EQ(before.distinct_keys, 2);
+  ASSERT_EQ(before.seq, 3);
+
+  delete db_;
+  db_ = nullptr;
+  Options options;
+  options.create_if_missing = false;
+  options.enable_metadata_profiling = true;
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+
+  Stats after;
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &after).ok());
+  ASSERT_EQ(after.total_entries, before.total_entries);
+  ASSERT_EQ(after.distinct_keys, before.distinct_keys);
+  ASSERT_EQ(after.seq, before.seq);
+  ASSERT_EQ(static_cast<DBImpl*>(db_)->TEST_MetadataRebuildCount(), 0);
+}
+
+TEST_F(StatsDBTest, ReopenRebuildsStatsFromPrimaryRecords) {
   delete db_;
   db_ = nullptr;
   Options options;
   options.create_if_missing = false;
   options.metadata_memtable_size = 64 * 1024;
+  options.enable_metadata_profiling = true;
   ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
 
   const int kEntries = 1600;
@@ -377,39 +404,17 @@ TEST_F(StatsDBTest, MissingMetadataRunRebuildsFromPrimary) {
     ASSERT_TRUE(db_->Put(WriteOptions(), "key-" + std::to_string(i), "v").ok());
   }
 
-  auto metadata_field = [this](const std::string& field) -> unsigned long long {
-    std::string property;
-    EXPECT_TRUE(db_->GetProperty("leveldb.metadata-stats", &property));
-    const std::string key = field + "=";
-    const size_t offset = property.find(key);
-    EXPECT_NE(offset, std::string::npos) << property;
-    if (offset == std::string::npos) return 0;
-    return std::strtoull(property.c_str() + offset + key.size(), nullptr, 10);
-  };
-  bool checkpointed = false;
-  for (int i = 0; i < 500; ++i) {
-    if (metadata_field("metadata_files") > 0 &&
-        metadata_field("checkpoint_mseq") > 0) {
-      checkpointed = true;
-      break;
-    }
-    Env::Default()->SleepForMicroseconds(10000);
-  }
-  ASSERT_TRUE(checkpointed);
   delete db_;
   db_ = nullptr;
 
   std::vector<std::string> children;
   ASSERT_TRUE(Env::Default()->GetChildren(dbname_, &children).ok());
-  std::string metadata_file;
   for (const std::string& child : children) {
-    if (child.size() >= 5 && child.compare(child.size() - 5, 5, ".midx") == 0) {
-      metadata_file = child;
-      break;
-    }
+    EXPECT_FALSE(child.size() >= 5 &&
+                 (child.compare(child.size() - 5, 5, ".midx") == 0 ||
+                  child.compare(child.size() - 5, 5, ".mchg") == 0))
+        << "temporary metadata file survived close: " << child;
   }
-  ASSERT_FALSE(metadata_file.empty());
-  ASSERT_TRUE(Env::Default()->RemoveFile(dbname_ + "/" + metadata_file).ok());
 
   options.metadata_memtable_size = 1 * 1024 * 1024;
   ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
@@ -417,9 +422,10 @@ TEST_F(StatsDBTest, MissingMetadataRunRebuildsFromPrimary) {
   ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).ok());
   ASSERT_EQ(stats.total_entries, kEntries);
   ASSERT_EQ(stats.distinct_keys, kEntries);
+  ASSERT_GT(static_cast<DBImpl*>(db_)->TEST_MetadataRebuildCount(), 0);
 }
 
-TEST_F(StatsDBTest, LargeWriteBatchSpillsAndRecoversMetadata) {
+TEST_F(StatsDBTest, LargeWriteBatchSpillsAndRecoversPrimaryStats) {
   delete db_;
   db_ = nullptr;
   Options options;
@@ -463,8 +469,8 @@ TEST_F(StatsDBTest, LargeWriteBatchSpillsAndRecoversMetadata) {
   ASSERT_EQ(stats.distinct_keys, kKeys);
   ASSERT_EQ(stats.seq, 2 * kKeys + 1);
 
-  // A smaller budget makes the next commit freeze and checkpoint the WAL
-  // referenced .mchg file together with the active generation.
+  // A large second batch also exercises bounded temporary workspaces. Its
+  // scratch files must be removed before commit and never become DB files.
   delete db_;
   db_ = nullptr;
   options.metadata_memtable_size = 32 * 1024;
@@ -477,32 +483,16 @@ TEST_F(StatsDBTest, LargeWriteBatchSpillsAndRecoversMetadata) {
     checkpoint_batch.Put(key, "value");
   }
   ASSERT_TRUE(db_->Write(WriteOptions(), &checkpoint_batch).ok());
-  auto checkpoint_mseq = [this]() -> unsigned long long {
-    std::string property;
-    EXPECT_TRUE(db_->GetProperty("leveldb.metadata-stats", &property));
-    const std::string key = "checkpoint_mseq=";
-    const size_t offset = property.find(key);
-    EXPECT_NE(offset, std::string::npos) << property;
-    if (offset == std::string::npos) return 0;
-    return std::strtoull(property.c_str() + offset + key.size(), nullptr, 10);
-  };
-  bool checkpointed = false;
-  for (int i = 0; i < 500; ++i) {
-    if (checkpoint_mseq() >= 3) {
-      checkpointed = true;
-      break;
-    }
-    Env::Default()->SleepForMicroseconds(10000);
-  }
-  if (!checkpointed) {
-    std::string property;
-    db_->GetProperty("leveldb.metadata-stats", &property);
-    ADD_FAILURE() << "metadata checkpoint did not advance: " << property;
-  }
-  ASSERT_TRUE(checkpointed);
-
   delete db_;
   db_ = nullptr;
+  std::vector<std::string> children;
+  ASSERT_TRUE(Env::Default()->GetChildren(dbname_, &children).ok());
+  for (const std::string& child : children) {
+    EXPECT_FALSE(child.size() >= 5 &&
+                 (child.compare(child.size() - 5, 5, ".midx") == 0 ||
+                  child.compare(child.size() - 5, 5, ".mchg") == 0))
+        << "temporary metadata file survived close: " << child;
+  }
   ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
   ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).ok());
   ASSERT_EQ(stats.total_entries, 2 * kKeys + 1 + kAdditionalKeys);
@@ -513,7 +503,7 @@ TEST_F(StatsDBTest, LargeWriteBatchSpillsAndRecoversMetadata) {
   ASSERT_EQ(value, "third");
 }
 
-TEST_F(StatsDBTest, MissingLargeBatchChangeFileRebuildsFromPrimary) {
+TEST_F(StatsDBTest, LargeBatchRecoversFromPrimaryWAL) {
   delete db_;
   db_ = nullptr;
   Options options;
@@ -537,15 +527,12 @@ TEST_F(StatsDBTest, MissingLargeBatchChangeFileRebuildsFromPrimary) {
   db_ = nullptr;
   std::vector<std::string> children;
   ASSERT_TRUE(Env::Default()->GetChildren(dbname_, &children).ok());
-  std::string change_file;
   for (const std::string& child : children) {
-    if (child.size() >= 5 && child.compare(child.size() - 5, 5, ".mchg") == 0) {
-      change_file = child;
-      break;
-    }
+    EXPECT_FALSE(child.size() >= 5 &&
+                 (child.compare(child.size() - 5, 5, ".midx") == 0 ||
+                  child.compare(child.size() - 5, 5, ".mchg") == 0))
+        << "temporary metadata file survived close: " << child;
   }
-  ASSERT_FALSE(change_file.empty());
-  ASSERT_TRUE(Env::Default()->RemoveFile(dbname_ + "/" + change_file).ok());
 
   ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
   Stats stats;
@@ -556,6 +543,51 @@ TEST_F(StatsDBTest, MissingLargeBatchChangeFileRebuildsFromPrimary) {
   std::string value;
   ASSERT_TRUE(db_->Get(ReadOptions(), "key-00001", &value).ok());
   ASSERT_EQ(value, "second");
+}
+
+TEST_F(StatsDBTest, RawByteDistinctKeysSurviveComparatorEquivalence) {
+  delete db_;
+  db_ = nullptr;
+  Options defaults;
+  ASSERT_TRUE(DestroyDB(dbname_, defaults).ok());
+
+  static const CaseInsensitiveComparator comparator;
+  Options options;
+  options.create_if_missing = true;
+  options.comparator = &comparator;
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+
+  WriteBatch batch;
+  batch.Put("A", "upper-1");
+  batch.Put("a", "lower-1");
+  batch.Put("A", "upper-2");
+  batch.Put("a", "lower-2");
+  ASSERT_TRUE(db_->Write(WriteOptions(), &batch).ok());
+  Stats stats;
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).ok());
+  ASSERT_EQ(stats.total_entries, 4);
+  ASSERT_EQ(stats.distinct_keys, 2);
+
+  delete db_;
+  db_ = nullptr;
+  options.create_if_missing = false;
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).ok());
+  ASSERT_EQ(stats.total_entries, 4);
+  ASSERT_EQ(stats.distinct_keys, 2);
+
+  db_->CompactRange(nullptr, nullptr);
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).ok());
+  ASSERT_EQ(stats.total_entries, 1);
+  ASSERT_EQ(stats.distinct_keys, 1);
+
+  delete db_;
+  db_ = nullptr;
+  ASSERT_TRUE(DB::Open(options, dbname_, &db_).ok());
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).ok());
+  ASSERT_EQ(stats.total_entries, 1);
+  ASSERT_EQ(stats.distinct_keys, 1);
+  ASSERT_EQ(stats.seq, 4);
 }
 
 int main(int argc, char** argv) {

@@ -237,21 +237,26 @@ class BatchMetadataCounter final : public WriteBatch::Handler {
   Status status_;
 };
 
-std::string EncodeMetadataDelta(int64_t delta) {
-  uint64_t bits;
-  std::memcpy(&bits, &delta, sizeof(bits));
+struct PrimaryMetadataDelta {
+  int64_t net_records = 0;
+  uint64_t output_records = 0;
+};
+
+std::string EncodeMetadataDelta(int64_t delta, uint64_t output_records) {
   MetadataValue value;
-  value.mseq = 0;
-  value.count = bits;
+  value.mseq = output_records;
+  std::memcpy(&value.count, &delta, sizeof(delta));
   return MetadataIndex::EncodeValue(value);
 }
 
-bool DecodeMetadataDelta(const Slice& encoded, int64_t* delta) {
+bool DecodeMetadataDelta(const Slice& encoded, int64_t* delta,
+                         uint64_t* output_records) {
   MetadataValue value;
-  if (!MetadataIndex::DecodeValue(encoded, &value) || value.mseq != 0) {
+  if (!MetadataIndex::DecodeValue(encoded, &value)) {
     return false;
   }
   std::memcpy(delta, &value.count, sizeof(*delta));
+  *output_records = value.mseq;
   return true;
 }
 
@@ -319,7 +324,7 @@ struct DBImpl::CompactionState {
   TableBuilder* builder;
 
   uint64_t total_bytes;
-  std::map<std::string, int64_t, MetadataKeyLess> metadata_deltas;
+  std::map<std::string, PrimaryMetadataDelta, MetadataKeyLess> metadata_deltas;
   size_t metadata_delta_bytes = 0;
   std::vector<MetadataFileMeta> metadata_delta_runs;
   std::vector<uint64_t> metadata_delta_output_numbers;
@@ -436,7 +441,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname,
       background_work_finished_signal_(&mutex_),
       metadata_work_signal_(&mutex_),
       metadata_worker_finished_signal_(&mutex_),
-      metadata_worker_exited_(false),
+      metadata_worker_exited_(true),
       mem_(nullptr),
       imm_(nullptr),
       has_imm_(false),
@@ -476,7 +481,6 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname,
       versions_(new VersionSet(dbname_, &options_, table_cache_,
                                &internal_comparator_)) {
   if (profiler_) mutex_.SetObserver(&profiling_mutex_observer_);
-  env_->StartThread(&DBImpl::MetadataBGWork, this);
 }
 
 DBImpl::~DBImpl() {
@@ -581,8 +585,9 @@ void DBImpl::RemoveObsoleteFiles() {
       bool keep = true;
       switch (type) {
         case kLogFile:
-          keep = ((number >= std::min(versions_->LogNumber(),
-                                      versions_->metadata_wal_number())) ||
+          keep = ((number >= versions_->LogNumber()) ||
+                  (versions_->metadata_wal_number() != 0 &&
+                   number >= versions_->metadata_wal_number()) ||
                   (number == versions_->PrevLogNumber()) ||
                   metadata_wal_sync_pins_.find(number) !=
                       metadata_wal_sync_pins_.end());
@@ -683,12 +688,54 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
   if (!s.ok()) {
     return s;
   }
-  if (versions_->has_metadata_checkpoint()) {
-    metadata_mseq_ = versions_->metadata_checkpoint_mseq();
-    metadata_total_entries_ = versions_->metadata_total_entries();
-    metadata_distinct_keys_ = versions_->metadata_distinct_keys();
-  } else {
-    metadata_needs_rebuild_ = true;
+  if (versions_->has_metadata_checkpoint() ||
+      !versions_->metadata_files().empty() ||
+      !versions_->metadata_commits().empty()) {
+    return Status::NotSupported(
+        "database uses the auxiliary metadata LSM format; this prototype "
+        "supports databases created with primary-attached metadata only");
+  }
+  metadata_needs_rebuild_ = true;
+  if (versions_->has_primary_metadata_checkpoint() &&
+      versions_->primary_metadata_checkpoint_sequence() <=
+          versions_->LastSequence() &&
+      versions_->primary_metadata_total_entries() >=
+          versions_->primary_metadata_distinct_keys()) {
+    metadata_total_entries_ = versions_->primary_metadata_total_entries();
+    metadata_distinct_keys_ = versions_->primary_metadata_distinct_keys();
+    metadata_needs_rebuild_ = false;
+
+    // A scalar checkpoint is usable only when the attached per-table count
+    // metadata it depends on is intact. In paranoid mode, also verify all data
+    // blocks before accepting the checkpoint, matching the full-rebuild path's
+    // checksum guarantee.
+    for (int level = 0; level < config::kNumLevels &&
+                        !metadata_needs_rebuild_;
+         ++level) {
+      for (FileMetaData* file : versions_->current()->files(level)) {
+        TableInternalStats table_stats;
+        Status table_status = table_cache_->GetInternalStats(
+            file->number, file->file_size, &table_stats);
+        if (!table_status.ok() || !table_stats.valid) {
+          metadata_needs_rebuild_ = true;
+          break;
+        }
+        if (options_.paranoid_checks) {
+          ReadOptions verify_options;
+          verify_options.verify_checksums = true;
+          Iterator* table = table_cache_->NewIterator(
+              verify_options, file->number, file->file_size);
+          table->SeekToFirst();
+          while (table->Valid()) table->Next();
+          table_status = table->status();
+          delete table;
+          if (!table_status.ok()) {
+            metadata_needs_rebuild_ = true;
+            break;
+          }
+        }
+      }
+    }
   }
   recovery_metadata_event_index_ = 0;
   metadata_recovery_max_mseq_ = metadata_mseq_;
@@ -810,6 +857,13 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
 
   if (versions_->LastSequence() < max_sequence) {
     versions_->SetLastSequence(max_sequence);
+  }
+  if (!versions_->has_primary_metadata_checkpoint() ||
+      versions_->primary_metadata_checkpoint_sequence() !=
+          versions_->LastSequence() ||
+      versions_->primary_metadata_total_entries() <
+          versions_->primary_metadata_distinct_keys()) {
+    metadata_needs_rebuild_ = true;
   }
 
   return Status::OK();
@@ -1162,7 +1216,9 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
       }
       WriteBatchInternal::SetContents(&batch, metadata_record.batch);
     } else {
-      if (replay_metadata || !versions_->has_metadata_checkpoint()) {
+      if (replay_metadata ||
+          (!versions_->has_metadata_checkpoint() &&
+           !versions_->has_primary_metadata_checkpoint())) {
         metadata_needs_rebuild_ = true;
       }
       if (record.size() < 12) {
@@ -1171,6 +1227,16 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
       continue;
       }
       WriteBatchInternal::SetContents(&batch, record);
+      if (versions_->has_primary_metadata_checkpoint() &&
+          WriteBatchInternal::Count(&batch) > 0) {
+        const uint64_t batch_last_sequence =
+            WriteBatchInternal::Sequence(&batch) +
+            WriteBatchInternal::Count(&batch) - 1;
+        if (batch_last_sequence >
+            versions_->primary_metadata_checkpoint_sequence()) {
+          metadata_needs_rebuild_ = true;
+        }
+      }
     }
 
     if (has_metadata && replay_metadata && !metadata_needs_rebuild_) {
@@ -1302,10 +1368,46 @@ Status DBImpl::GetCurrentStats(const ReadOptions& options, Stats* stats) {
   return Status::OK();
 }
 
+Status DBImpl::CountPrimaryRecordsForKey(const Slice& key, uint64_t* count) {
+  mutex_.AssertHeld();
+  if (count == nullptr) {
+    return Status::InvalidArgument("record count output pointer is null");
+  }
+  uint64_t result = 0;
+  if (mem_ != nullptr) result = mem_->CountUserKeyRecords(key);
+  if (imm_ != nullptr) {
+    const uint64_t immutable_count = imm_->CountUserKeyRecords(key);
+    if (std::numeric_limits<uint64_t>::max() - result < immutable_count) {
+      return Status::Corruption("user key record count overflow");
+    }
+    result += immutable_count;
+  }
+  uint64_t table_count = 0;
+  Status s = versions_->current()->CountUserKeyRecords(key, nullptr,
+                                                        &table_count);
+  if (!s.ok()) return s;
+  if (std::numeric_limits<uint64_t>::max() - result < table_count) {
+    return Status::Corruption("user key record count overflow");
+  }
+  *count = result + table_count;
+  return Status::OK();
+}
+
 Status DBImpl::LogAndApply(VersionEdit* edit) {
   mutex_.AssertHeld();
   while (manifest_commit_in_progress_) {
     background_work_finished_signal_.Wait();
+  }
+  if (!edit->has_primary_metadata_checkpoint() &&
+      !metadata_needs_rebuild_ && imm_ == nullptr &&
+      (mem_ == nullptr || mem_->NumEntries() == 0)) {
+    edit->SetPrimaryMetadataCheckpoint(
+        versions_->LastSequence(), metadata_total_entries_,
+        metadata_distinct_keys_);
+  }
+  if (edit->has_primary_metadata_checkpoint()) {
+    Status sync_status = SyncMetadataWALPrefix(logfile_number_);
+    if (!sync_status.ok()) return sync_status;
   }
   manifest_commit_in_progress_ = true;
   Status s = versions_->LogAndApply(edit, &mutex_);
@@ -1817,302 +1919,251 @@ void DBImpl::MaybeFreezeMetadata() {
 
 Status DBImpl::RebuildMetadata() {
   mutex_.AssertHeld();
-  if (!metadata_needs_rebuild_) return Status::OK();
   MetadataProfile::Timer timer(&metadata_profile_,
                                MetadataProfileStage::kRebuild, true);
   metadata_profile_.Count(MetadataProfileCounter::kRebuilds);
 
-  // Rebuild using bounded sorted runs. The primary iterator exposes every
-  // physical internal record, including overwritten values and tombstones.
-  const std::vector<MetadataFileMeta> old_files = versions_->metadata_files();
-  const std::vector<MetadataFileMeta> old_wal_files = metadata_wal_files_;
-  uint64_t rebuilt_mseq =
-      std::max(metadata_mseq_, metadata_recovery_max_mseq_);
-  for (const MetadataCommitMeta& commit : versions_->metadata_commits()) {
-    rebuilt_mseq = std::max(rebuilt_mseq, commit.mseq);
-  }
-  const size_t run_budget = options_.metadata_workspace_size;
-  Options table_options = metadata_index_->TableOptions();
-  std::vector<MetadataFileMeta> runs;
-  std::vector<uint64_t> output_numbers;
-  std::map<std::string, uint64_t, MetadataKeyLess> chunk;
-  size_t chunk_bytes = 0;
+  // Rebuild reads every physical internal record, including shadowed values,
+  // tombstones, and expired TTL records. The SST internal-statistics block and
+  // MemTable entry counter are attached to the primary data path; this scan is
+  // needed only to reconstruct the global raw-byte distinct-key count.
+  const Comparator* comparator = user_comparator();
+  const bool bytewise = comparator == BytewiseComparator();
+  const size_t workspace = std::max<size_t>(1, options_.metadata_workspace_size);
+  MetadataValueMap distinct_keys;
+  size_t distinct_memory = 0;
+  std::vector<MetadataFileMeta> distinct_runs;
+  std::vector<uint64_t> scratch_numbers;
+  uint64_t total = 0;
+  uint64_t distinct = 0;
+  std::string previous_key;
+  bool have_previous_key = false;
+  Status status;
 
-  auto allocate_output_number = [&]() {
+  auto allocate_scratch = [&]() -> uint64_t {
     mutex_.Lock();
     const uint64_t number = versions_->NewFileNumber();
     pending_outputs_.insert(number);
+    scratch_numbers.push_back(number);
     mutex_.Unlock();
     return number;
   };
-
-  mutex_.Unlock();
-  Iterator* primary = TEST_NewInternalIterator();
-  Status s;
-
-  auto write_run = [&]() -> Status {
-    if (chunk.empty()) return Status::OK();
-    const uint64_t number = allocate_output_number();
-    output_numbers.push_back(number);
+  auto write_distinct_run = [&](MetadataFileMeta* run) -> Status {
+    if (distinct_keys.empty()) return Status::OK();
+    const uint64_t number = allocate_scratch();
+    const std::string filename = MetadataFileName(dbname_, number);
     WritableFile* output = nullptr;
-    Status run_status =
-        env_->NewWritableFile(MetadataFileName(dbname_, number), &output);
-    MetadataFileMeta run;
-    run.kind = kMetadataIndex;
-    run.number = number;
-    run.min_mseq = rebuilt_mseq;
-    run.max_mseq = rebuilt_mseq;
-    bool first = true;
-    if (run_status.ok()) {
-      TableBuilder builder(table_options, output);
-      for (const auto& entry : chunk) {
-        MetadataValue value;
-        value.mseq = rebuilt_mseq;
-        value.count = entry.second;
-        builder.Add(entry.first, MetadataIndex::EncodeValue(value));
-        if (first) {
-          run.smallest = entry.first;
-          first = false;
-        }
-        run.largest = entry.first;
-      }
-      run_status = builder.Finish();
-      run.file_size = builder.FileSize();
-      if (run_status.ok()) run_status = output->Sync();
-      if (run_status.ok()) run_status = output->Close();
-      if (!run_status.ok()) builder.Abandon();
-    }
-    delete output;
-    if (run_status.ok()) {
-      runs.push_back(run);
-      chunk.clear();
-      chunk_bytes = 0;
-    }
-    return run_status;
-  };
-
-  // Keep recovery's merge workspace and number of open metadata tables
-  // bounded even when a small memory budget produces many sorted runs.
-  auto merge_run_group = [&](const std::vector<MetadataFileMeta>& inputs,
-                             MetadataFileMeta* merged_file) -> Status {
-    const uint64_t number = allocate_output_number();
-    output_numbers.push_back(number);
-    WritableFile* output = nullptr;
-    Status merge_status =
-        env_->NewWritableFile(MetadataFileName(dbname_, number), &output);
-    Iterator* merged = metadata_index_->NewIterator(inputs, false);
-    merged_file->kind = kMetadataIndex;
-    merged_file->number = number;
-    merged_file->min_mseq = rebuilt_mseq;
-    merged_file->max_mseq = rebuilt_mseq;
-    bool have_key = false;
-    if (merge_status.ok()) {
-      TableBuilder builder(table_options, output);
-      merged->SeekToFirst();
-      while (merged->Valid() && merge_status.ok()) {
-        const std::string key = merged->key().ToString();
-        uint64_t count = 0;
-        while (merged->Valid() && merged->key() == Slice(key)) {
-          MetadataValue value;
-          if (!MetadataIndex::DecodeValue(merged->value(), &value) ||
-              std::numeric_limits<uint64_t>::max() - count < value.count) {
-            merge_status =
-                Status::Corruption("invalid metadata rebuild run group");
-            break;
-          }
-          count += value.count;
-          merged->Next();
-        }
-        if (!merge_status.ok()) break;
-        MetadataValue value;
-        value.mseq = rebuilt_mseq;
-        value.count = count;
-        builder.Add(key, MetadataIndex::EncodeValue(value));
-        if (!have_key) {
-          merged_file->smallest = key;
-          have_key = true;
-        }
-        merged_file->largest = key;
-      }
-      if (merge_status.ok()) merge_status = merged->status();
-      if (merge_status.ok()) merge_status = builder.Finish();
-      merged_file->file_size = builder.FileSize();
-      if (merge_status.ok()) merge_status = output->Sync();
-      if (merge_status.ok()) merge_status = output->Close();
-      if (!merge_status.ok()) builder.Abandon();
-    }
-    delete output;
-    delete merged;
-    return merge_status;
-  };
-
-  uint64_t rebuilt_records = 0;
-  primary->SeekToFirst();
-  while (primary->Valid() && s.ok()) {
-    ++rebuilt_records;
-    ParsedInternalKey parsed;
-    if (!ParseInternalKey(primary->key(), &parsed)) {
-      s = Status::Corruption("invalid internal key during metadata rebuild");
-      break;
-    }
-    std::string key(parsed.user_key.data(), parsed.user_key.size());
-    auto iter = chunk.find(key);
-    if (iter == chunk.end()) {
-      chunk_bytes += key.size() + sizeof(uint64_t) + 64;
-      iter = chunk.emplace(std::move(key), 0).first;
-    }
-    if (iter->second == std::numeric_limits<uint64_t>::max()) {
-      s = Status::Corruption("per-key metadata count overflow during rebuild");
-      break;
-    }
-    ++iter->second;
-    primary->Next();
-    if (chunk_bytes >= run_budget) s = write_run();
-  }
-  if (s.ok()) s = primary->status();
-  if (s.ok()) s = write_run();
-  delete primary;
-
-  const size_t kMetadataMergeFanIn = 8;
-  while (s.ok() && runs.size() > kMetadataMergeFanIn) {
-    std::vector<MetadataFileMeta> next_runs;
-    next_runs.reserve((runs.size() + kMetadataMergeFanIn - 1) /
-                      kMetadataMergeFanIn);
-    for (size_t begin = 0; begin < runs.size() && s.ok();
-         begin += kMetadataMergeFanIn) {
-      const size_t end =
-          std::min(runs.size(), begin + kMetadataMergeFanIn);
-      if (end - begin == 1) {
-        next_runs.push_back(runs[begin]);
-        continue;
-      }
-      std::vector<MetadataFileMeta> group(runs.begin() + begin,
-                                          runs.begin() + end);
-      MetadataFileMeta merged_file;
-      s = merge_run_group(group, &merged_file);
-      if (!s.ok()) break;
-      next_runs.push_back(merged_file);
-      for (const MetadataFileMeta& old_file : group) {
-        metadata_index_->Evict(old_file.number);
-        env_->RemoveFile(MetadataFileName(dbname_, old_file.number));
-        mutex_.Lock();
-        pending_outputs_.erase(old_file.number);
-        mutex_.Unlock();
-      }
-    }
-    if (s.ok()) runs.swap(next_runs);
-  }
-
-  MetadataFileMeta rebuilt_file;
-  bool have_rebuilt_file = false;
-  uint64_t rebuilt_total = 0;
-  uint64_t rebuilt_distinct = 0;
-  uint64_t final_number = 0;
-  if (s.ok() && !runs.empty()) {
-    final_number = allocate_output_number();
-    output_numbers.push_back(final_number);
-    WritableFile* output = nullptr;
-    s = env_->NewWritableFile(MetadataFileName(dbname_, final_number), &output);
-    Iterator* merged = metadata_index_->NewIterator(runs, false);
-    rebuilt_file.kind = kMetadataIndex;
-    rebuilt_file.number = final_number;
-    rebuilt_file.min_mseq = std::numeric_limits<uint64_t>::max();
-    rebuilt_file.max_mseq = 0;
+    Status s = env_->NewWritableFile(filename, &output);
     bool have_key = false;
     if (s.ok()) {
-      TableBuilder builder(table_options, output);
-      merged->SeekToFirst();
-      while (merged->Valid() && s.ok()) {
-        const std::string key = merged->key().ToString();
-        uint64_t count = 0;
-        uint64_t value_mseq = 0;
-        while (merged->Valid() && merged->key() == Slice(key)) {
-          MetadataValue value;
-          if (!MetadataIndex::DecodeValue(merged->value(), &value)) {
-            s = Status::Corruption("invalid metadata rebuild run");
-            break;
-          }
-          if (std::numeric_limits<uint64_t>::max() - count < value.count) {
-            s = Status::Corruption("per-key metadata count overflow in merge");
-            break;
-          }
-          count += value.count;
-          value_mseq = std::max(value_mseq, value.mseq);
-          merged->Next();
-        }
-        if (!s.ok()) break;
-        if (std::numeric_limits<uint64_t>::max() - rebuilt_total < count ||
-            rebuilt_distinct == std::numeric_limits<uint64_t>::max()) {
-          s = Status::Corruption("metadata totals overflow during rebuild");
-          break;
-        }
-        rebuilt_total += count;
-        ++rebuilt_distinct;
-        MetadataValue latest;
-        latest.mseq = value_mseq;
-        latest.count = count;
-        builder.Add(key, MetadataIndex::EncodeValue(latest));
+      TableBuilder builder(metadata_index_->TableOptions(), output);
+      MetadataValue value;
+      for (const auto& entry : distinct_keys) {
+        builder.Add(entry.first, MetadataIndex::EncodeValue(value));
         if (!have_key) {
-          rebuilt_file.smallest = key;
+          run->smallest = entry.first;
           have_key = true;
         }
-        rebuilt_file.largest = key;
-        rebuilt_file.min_mseq = std::min(rebuilt_file.min_mseq, value_mseq);
-        rebuilt_file.max_mseq = std::max(rebuilt_file.max_mseq, value_mseq);
+        run->largest = entry.first;
       }
-      if (s.ok()) s = merged->status();
-      if (s.ok()) s = builder.Finish();
-      rebuilt_file.file_size = builder.FileSize();
-      if (s.ok()) s = output->Sync();
+      s = builder.Finish();
+      run->file_size = builder.FileSize();
       if (s.ok()) s = output->Close();
       if (!s.ok()) builder.Abandon();
-      have_rebuilt_file = have_key && s.ok();
     }
     delete output;
-    delete merged;
+    if (s.ok()) {
+      run->kind = kMetadataIndex;
+      run->number = number;
+      distinct_runs.push_back(*run);
+      *run = MetadataFileMeta();
+      distinct_keys.clear();
+      distinct_memory = 0;
+    } else {
+      env_->RemoveFile(filename);
+    }
+    return s;
+  };
+  auto merge_distinct_group = [&](const std::vector<MetadataFileMeta>& sources,
+                                  MetadataFileMeta* output_meta,
+                                  uint64_t* unique_keys) -> Status {
+    const uint64_t number = allocate_scratch();
+    const std::string filename = MetadataFileName(dbname_, number);
+    Iterator* input = metadata_index_->NewIterator(sources, false);
+    WritableFile* output = nullptr;
+    Status s = env_->NewWritableFile(filename, &output);
+    bool have_key = false;
+    if (s.ok()) {
+      TableBuilder builder(metadata_index_->TableOptions(), output);
+      input->SeekToFirst();
+      while (input->Valid() && s.ok()) {
+        const std::string key = input->key().ToString();
+        MetadataValue value;
+        if (unique_keys != nullptr) {
+          if (*unique_keys == std::numeric_limits<uint64_t>::max()) {
+            s = Status::Corruption("distinct key count overflow during rebuild");
+            break;
+          }
+          ++*unique_keys;
+        }
+        builder.Add(key, MetadataIndex::EncodeValue(value));
+        if (!have_key) {
+          output_meta->smallest = key;
+          have_key = true;
+        }
+        output_meta->largest = key;
+        while (input->Valid() && input->key() == Slice(key)) input->Next();
+      }
+      if (s.ok()) s = input->status();
+      if (s.ok()) s = builder.Finish();
+      output_meta->file_size = builder.FileSize();
+      if (s.ok()) s = output->Close();
+      if (!s.ok()) builder.Abandon();
+    }
+    delete output;
+    delete input;
+    if (s.ok() && have_key) {
+      output_meta->kind = kMetadataIndex;
+      output_meta->number = number;
+      mutex_.Lock();
+      for (const MetadataFileMeta& source : sources) {
+        metadata_index_->Evict(source.number);
+        pending_outputs_.erase(source.number);
+      }
+      mutex_.Unlock();
+      for (const MetadataFileMeta& source : sources) {
+        env_->RemoveFile(MetadataFileName(dbname_, source.number));
+      }
+    } else {
+      env_->RemoveFile(filename);
+      mutex_.Lock();
+      pending_outputs_.erase(number);
+      mutex_.Unlock();
+    }
+    return s;
+  };
+
+  mutex_.Unlock();
+  ReadOptions rebuild_read_options;
+  rebuild_read_options.verify_checksums = true;
+  SequenceNumber ignored_sequence;
+  uint64_t ignored_read_time;
+  uint32_t ignored_seed;
+  Iterator* primary = NewInternalIterator(rebuild_read_options,
+                                          &ignored_sequence,
+                                          &ignored_read_time, &ignored_seed);
+  primary->SeekToFirst();
+  while (primary->Valid() && status.ok()) {
+    if (total == std::numeric_limits<uint64_t>::max()) {
+      status = Status::Corruption("total entry count overflow during rebuild");
+      break;
+    }
+    ++total;
+    ParsedInternalKey parsed;
+    if (!ParseInternalKey(primary->key(), &parsed)) {
+      status = Status::Corruption("invalid internal key during metadata rebuild");
+      break;
+    }
+    if (bytewise) {
+      if (!have_previous_key ||
+          !(Slice(previous_key) == parsed.user_key)) {
+        if (distinct == std::numeric_limits<uint64_t>::max()) {
+          status = Status::Corruption("distinct key count overflow during rebuild");
+          break;
+        }
+        ++distinct;
+        previous_key.assign(parsed.user_key.data(), parsed.user_key.size());
+        have_previous_key = true;
+      }
+    } else {
+      const std::string key = parsed.user_key.ToString();
+      if (distinct_keys.emplace(key, MetadataValue()).second) {
+        const size_t charge = key.size() + sizeof(MetadataValue) + 48;
+        distinct_memory = charge > std::numeric_limits<size_t>::max() - distinct_memory
+                              ? std::numeric_limits<size_t>::max()
+                              : distinct_memory + charge;
+        if (distinct_memory >= workspace) {
+          MetadataFileMeta run;
+          status = write_distinct_run(&run);
+        }
+      }
+    }
+    primary->Next();
+  }
+  if (status.ok()) status = primary->status();
+  delete primary;
+  if (status.ok() && !bytewise) {
+    if (distinct_runs.empty()) {
+      distinct = static_cast<uint64_t>(distinct_keys.size());
+    } else {
+      MetadataFileMeta run;
+      status = write_distinct_run(&run);
+      while (status.ok() && distinct_runs.size() > 1) {
+        std::vector<MetadataFileMeta> next_runs;
+        for (size_t begin = 0; begin < distinct_runs.size() && status.ok();
+             begin += 8) {
+          const size_t end = std::min(distinct_runs.size(), begin + 8);
+          if (end - begin == 1) {
+            next_runs.push_back(distinct_runs[begin]);
+          } else {
+            std::vector<MetadataFileMeta> group(distinct_runs.begin() + begin,
+                                                distinct_runs.begin() + end);
+            MetadataFileMeta merged;
+            status = merge_distinct_group(group, &merged, nullptr);
+            if (status.ok()) next_runs.push_back(std::move(merged));
+          }
+        }
+        if (status.ok()) distinct_runs.swap(next_runs);
+      }
+      if (status.ok() && !distinct_runs.empty()) {
+        Iterator* unique = metadata_index_->NewIterator(distinct_runs, false);
+        unique->SeekToFirst();
+        while (unique->Valid() && status.ok()) {
+          if (distinct == std::numeric_limits<uint64_t>::max()) {
+            status = Status::Corruption("distinct key count overflow during rebuild");
+            break;
+          }
+          ++distinct;
+          const std::string key = unique->key().ToString();
+          while (unique->Valid() && unique->key() == Slice(key)) unique->Next();
+        }
+        if (status.ok()) status = unique->status();
+        delete unique;
+      }
+    }
   }
 
   mutex_.Lock();
-  bool manifest_attempted = false;
-  if (s.ok()) s = SyncMetadataWALPrefix(logfile_number_);
-  if (s.ok()) {
-    VersionEdit edit;
-    for (const MetadataFileMeta& old_file : old_files) {
-      edit.RemoveMetadataFile(old_file.number);
-    }
-    if (have_rebuilt_file) edit.AddMetadataFile(rebuilt_file);
-    edit.SetMetadataCheckpoint(rebuilt_mseq, rebuilt_total,
-                               rebuilt_distinct, logfile_number_);
-    manifest_attempted = true;
-    s = LogAndApply(&edit);
+  for (uint64_t number : scratch_numbers) {
+    metadata_index_->Evict(number);
+    pending_outputs_.erase(number);
+    env_->RemoveFile(MetadataFileName(dbname_, number));
   }
-
-  for (uint64_t number : output_numbers) pending_outputs_.erase(number);
-  if (s.ok()) {
-    metadata_total_entries_ = rebuilt_total;
-    metadata_distinct_keys_ = rebuilt_distinct;
-    metadata_mseq_ = rebuilt_mseq;
-    metadata_recovery_max_mseq_ = rebuilt_mseq;
+  if (status.ok()) {
+    metadata_total_entries_ = total;
+    metadata_distinct_keys_ = distinct;
+    metadata_mseq_ = 0;
+    metadata_recovery_max_mseq_ = 0;
     metadata_wal_bytes_ = 0;
     metadata_wal_checkpoint_bytes_ = 0;
     metadata_index_->ResetAfterRebuild();
-    metadata_profile_.Count(MetadataProfileCounter::kRebuiltRecords,
-                           rebuilt_records);
-    for (const MetadataFileMeta& file : old_wal_files) {
-      metadata_index_->Evict(file.number);
-      pending_outputs_.erase(file.number);
-    }
-    metadata_wal_files_.clear();
-    ++metadata_wal_files_revision_;
     metadata_needs_rebuild_ = false;
     metadata_rebuild_only_error_ = false;
-    RemoveObsoleteFiles();
-  } else if (!manifest_attempted) {
-    for (uint64_t number : output_numbers) {
-      env_->RemoveFile(MetadataFileName(dbname_, number));
-    }
   }
-  return s;
+  return status;
+}
+
+Status DBImpl::PersistPrimaryMetadataCheckpoint() {
+  mutex_.AssertHeld();
+  if (metadata_needs_rebuild_ ||
+      metadata_total_entries_ < metadata_distinct_keys_) {
+    return Status::Corruption("primary metadata checkpoint is not trusted");
+  }
+  VersionEdit edit;
+  edit.SetPrimaryMetadataCheckpoint(versions_->LastSequence(),
+                                    metadata_total_entries_,
+                                    metadata_distinct_keys_);
+  return LogAndApply(&edit);
 }
 
 Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
@@ -2195,6 +2246,12 @@ void DBImpl::CompactMemTable() {
   if (s.ok()) {
     edit.SetPrevLogNumber(0);
     edit.SetLogNumber(logfile_number_);  // Earlier logs no longer needed
+    if (!metadata_needs_rebuild_ &&
+        (mem_ == nullptr || mem_->NumEntries() == 0)) {
+      edit.SetPrimaryMetadataCheckpoint(
+          versions_->LastSequence(), metadata_total_entries_,
+          metadata_distinct_keys_);
+    }
     s = LogAndApply(&edit);
   }
 
@@ -2397,9 +2454,11 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
       while (deltas->Valid() && merge_status.ok()) {
         const std::string key = deltas->key().ToString();
         int64_t sum = 0;
+        uint64_t output_records_sum = 0;
         while (deltas->Valid() && deltas->key() == Slice(key)) {
           int64_t delta;
-          if (!DecodeMetadataDelta(deltas->value(), &delta) ||
+          uint64_t output_records;
+          if (!DecodeMetadataDelta(deltas->value(), &delta, &output_records) ||
               (delta > 0 && sum > std::numeric_limits<int64_t>::max() - delta) ||
               (delta < 0 && sum < std::numeric_limits<int64_t>::min() - delta)) {
             merge_status =
@@ -2407,11 +2466,18 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
             break;
           }
           sum += delta;
+          if (std::numeric_limits<uint64_t>::max() - output_records_sum <
+              output_records) {
+            merge_status = Status::Corruption(
+                "metadata compaction output count overflow");
+            break;
+          }
+          output_records_sum += output_records;
           deltas->Next();
         }
         if (!merge_status.ok()) break;
         if (sum == 0) continue;
-        builder.Add(key, EncodeMetadataDelta(sum));
+        builder.Add(key, EncodeMetadataDelta(sum, output_records_sum));
         if (!have_key) {
           merged.smallest = key;
           have_key = true;
@@ -2457,8 +2523,10 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
     if (spill_status.ok()) {
       TableBuilder builder(metadata_index_->TableOptions(), output);
       for (const auto& entry : compact->metadata_deltas) {
-        if (entry.second == 0) continue;
-        builder.Add(entry.first, EncodeMetadataDelta(entry.second));
+        if (entry.second.net_records == 0) continue;
+        builder.Add(entry.first,
+                    EncodeMetadataDelta(entry.second.net_records,
+                                        entry.second.output_records));
         if (!have_key) {
           run.smallest = entry.first;
           have_key = true;
@@ -2486,20 +2554,26 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
     return Status::OK();
   };
 
-  auto add_metadata_delta = [&](const std::string& key,
-                                int64_t adjustment) -> Status {
+  auto add_metadata_delta = [&](const std::string& key, int64_t adjustment,
+                                uint64_t output_adjustment) -> Status {
     auto iter = compact->metadata_deltas.find(key);
     if (iter == compact->metadata_deltas.end()) {
-      compact->metadata_delta_bytes += key.size() + sizeof(int64_t) + 64;
-      iter = compact->metadata_deltas.emplace(key, 0).first;
+      compact->metadata_delta_bytes += key.size() + sizeof(PrimaryMetadataDelta) + 64;
+      iter = compact->metadata_deltas.emplace(key, PrimaryMetadataDelta()).first;
     }
     if ((adjustment > 0 &&
-         iter->second > std::numeric_limits<int64_t>::max() - adjustment) ||
+         iter->second.net_records >
+             std::numeric_limits<int64_t>::max() - adjustment) ||
         (adjustment < 0 &&
-         iter->second < std::numeric_limits<int64_t>::min() - adjustment)) {
+         iter->second.net_records <
+             std::numeric_limits<int64_t>::min() - adjustment) ||
+        std::numeric_limits<uint64_t>::max() -
+                iter->second.output_records <
+            output_adjustment) {
       return Status::Corruption("metadata compaction delta overflow");
     }
-    iter->second += adjustment;
+    iter->second.net_records += adjustment;
+    iter->second.output_records += output_adjustment;
     if (compact->metadata_delta_bytes >= options_.metadata_workspace_size) {
       return spill_metadata_deltas();
     }
@@ -2524,7 +2598,7 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
     }
     ProfileScope filtering("gc.iterate_filter");
     ProfileScope::Count("gc.records_checked");
-    status = add_metadata_delta(parsed.user_key.ToString(), -1);
+    status = add_metadata_delta(parsed.user_key.ToString(), -1, 0);
     if (!status.ok()) break;
 
     const bool new_user_key =
@@ -2583,7 +2657,7 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
       output_meta.largest.DecodeFrom(internal_key);
       { ProfileScope emit("gc.output_add"); builder->Add(internal_key, input->value()); }
       ProfileScope::Count("gc.records_output");
-      status = add_metadata_delta(parsed.user_key.ToString(), 1);
+      status = add_metadata_delta(parsed.user_key.ToString(), 1, 1);
       if (!status.ok()) break;
     }
     if (!keep) {
@@ -3211,7 +3285,9 @@ void DBImpl::CleanupCompaction(CompactionState* compact) {
     pending_outputs_.erase(out.number);
   }
   for (uint64_t number : compact->metadata_delta_output_numbers) {
+    metadata_index_->Evict(number);
     pending_outputs_.erase(number);
+    env_->RemoveFile(MetadataFileName(dbname_, number));
   }
   delete compact;
 }
@@ -3294,15 +3370,15 @@ Status DBImpl::FinishCompactionOutputFile(CompactionState* compact,
 Status DBImpl::InstallCompactionResults(CompactionState* compact) {
   mutex_.AssertHeld();
   MetadataProfile::Timer timer(
-      &metadata_profile_, MetadataProfileStage::kPrimaryCompactionCommit,
-      true);
+      &metadata_profile_, MetadataProfileStage::kPrimaryCompactionCommit, true);
   if (compact->compaction != nullptr) {
     Log(options_.info_log, "Compacted %d@%d + %d@%d files => %lld bytes",
-      compact->compaction->num_input_files(0), compact->compaction->level(),
-      compact->compaction->num_input_files(1), compact->compaction->level() + 1,
-      static_cast<long long>(compact->total_bytes));
+        compact->compaction->num_input_files(0),
+        compact->compaction->level(),
+        compact->compaction->num_input_files(1),
+        compact->compaction->level() + 1,
+        static_cast<long long>(compact->total_bytes));
   }
-
   if (!bg_error_.ok()) return bg_error_;
 
   VersionEdit* edit = compact->compaction != nullptr
@@ -3318,17 +3394,9 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
                     out.largest);
     }
   };
-  auto finish_prepare = [&]() {
-    if (metadata_compaction_prepare_ == compact) {
-      metadata_compaction_prepare_ = nullptr;
-      metadata_compaction_prepare_in_progress_ = false;
-      background_work_finished_signal_.SignalAll();
-      metadata_work_signal_.SignalAll();
-    }
-  };
 
-  // A count-preserving compaction has no metadata transaction to coordinate.
-  // It can install its primary files without serializing foreground writes.
+  // Identical input/output record counts do not change any statistic. These
+  // jobs can install without blocking foreground writes.
   if (compact->metadata_delta_runs.empty()) {
     add_primary_file_edits();
     Status s = LogAndApply(edit);
@@ -3337,563 +3405,133 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
     return s;
   }
 
-  // Let any existing metadata flush/compaction finish before taking the
-  // baseline file view. Once registered, the metadata worker waits until this
-  // compaction has installed or abandoned its prepared files.
-  while (metadata_storage_work_in_progress_ || write_log_in_progress_) {
-    background_work_finished_signal_.Wait();
-  }
-
-  for (const MetadataFileMeta& run : compact->metadata_delta_runs) {
-    if (run.smallest.empty()) continue;
-    if (!compact->has_metadata_delta_range) {
-      compact->metadata_delta_smallest = run.smallest;
-      compact->metadata_delta_largest = run.largest;
-      compact->has_metadata_delta_range = true;
-    } else {
-      if (BytewiseComparator()->Compare(run.smallest,
-                                        compact->metadata_delta_smallest) < 0) {
-        compact->metadata_delta_smallest = run.smallest;
-      }
-      if (BytewiseComparator()->Compare(run.largest,
-                                        compact->metadata_delta_largest) > 0) {
-        compact->metadata_delta_largest = run.largest;
-      }
-    }
-  }
-  if (!compact->has_metadata_delta_range) {
-    add_primary_file_edits();
-    Status s = LogAndApply(edit);
-    if (s.ok())
-      metadata_profile_.Count(MetadataProfileCounter::kPrimaryCompactions);
-    return s;
-  }
-
-  Status status = ReserveMetadataMSeq(&compact->metadata_baseline_mseq);
-  if (!status.ok()) return status;
-  metadata_compaction_prepare_ = compact;
-  metadata_compaction_prepare_in_progress_ = true;
-  MetadataProfile::Timer prepare_timer(
-      &metadata_profile_, MetadataProfileStage::kPrimaryCompactionPrepare,
-      true);
-  const std::vector<MetadataFileMeta> baseline_sources = MetadataLookupFiles();
-
-  const size_t workspace = std::min<size_t>(
-      64 << 10, std::max<size_t>(1, options_.metadata_workspace_size / 4));
-  const uint64_t baseline_number = versions_->NewFileNumber();
-  pending_outputs_.insert(baseline_number);
-  compact->metadata_delta_output_numbers.push_back(baseline_number);
-  compact->prepared_baseline.kind = kMetadataIndex;
-  compact->prepared_baseline.number = baseline_number;
-  compact->prepared_baseline.min_mseq = compact->metadata_baseline_mseq;
-  compact->prepared_baseline.max_mseq = compact->metadata_baseline_mseq;
-  const std::string baseline_filename = MetadataFileName(dbname_, baseline_number);
-
-  WritableFile* baseline_file = nullptr;
-  std::unique_ptr<TableBuilder> baseline_builder;
-  Iterator* deltas = metadata_index_->NewIterator(
-      compact->metadata_delta_runs, false);
-  mutex_.Unlock();
-  status = env_->NewWritableFile(baseline_filename, &baseline_file);
-  if (status.ok()) {
-    baseline_builder.reset(
-        new TableBuilder(metadata_index_->TableOptions(), baseline_file));
-  }
-  mutex_.Lock();
-
-  auto apply_delta = [](uint64_t old_count, int64_t delta,
-                        uint64_t* new_count) -> Status {
-    if (delta < 0) {
-      const uint64_t magnitude =
-          static_cast<uint64_t>(-(delta + 1)) + 1;
-      if (old_count < magnitude) {
-        return Status::Corruption("metadata compaction count underflow");
-      }
-      *new_count = old_count - magnitude;
-    } else {
-      const uint64_t increment = static_cast<uint64_t>(delta);
-      if (std::numeric_limits<uint64_t>::max() - old_count < increment) {
-        return Status::Corruption("metadata compaction count overflow");
-      }
-      *new_count = old_count + increment;
-    }
-    return Status::OK();
-  };
-
-  bool baseline_have_key = false;
-  deltas->SeekToFirst();
-  while (status.ok() && deltas->Valid()) {
-    std::vector<std::string> chunk_keys;
-    std::vector<int64_t> chunk_deltas;
-    size_t chunk_bytes = 0;
-    while (status.ok() && deltas->Valid() && chunk_keys.size() < 256) {
-      const std::string key = deltas->key().ToString();
-      int64_t delta_sum = 0;
-      while (deltas->Valid() && deltas->key() == Slice(key)) {
-        int64_t delta;
-        if (!DecodeMetadataDelta(deltas->value(), &delta) ||
-            (delta > 0 &&
-             delta_sum > std::numeric_limits<int64_t>::max() - delta) ||
-            (delta < 0 &&
-             delta_sum < std::numeric_limits<int64_t>::min() - delta)) {
-          status = Status::Corruption("metadata compaction delta overflow");
-          break;
-        }
-        delta_sum += delta;
-        deltas->Next();
-      }
-      if (!status.ok()) break;
-      if (delta_sum == 0) continue;
-      const size_t charge = key.size() + sizeof(int64_t) + 16;
-      if (!chunk_keys.empty() &&
-          charge > workspace - std::min(workspace, chunk_bytes)) {
-        // The current key is already consumed. Keep it for the next chunk by
-        // processing this chunk immediately after appending it.
-      }
-      chunk_bytes = charge > std::numeric_limits<size_t>::max() - chunk_bytes
-                        ? std::numeric_limits<size_t>::max()
-                        : chunk_bytes + charge;
-      chunk_keys.push_back(key);
-      chunk_deltas.push_back(delta_sum);
-      if (chunk_bytes >= workspace) break;
-    }
-    if (!status.ok()) break;
-    if (chunk_keys.empty()) continue;
-
-    std::vector<Slice> lookup_keys;
-    lookup_keys.reserve(chunk_keys.size());
-    for (const std::string& key : chunk_keys) lookup_keys.emplace_back(key);
-    std::vector<MetadataValue> old_values;
-    std::vector<bool> old_found;
-    status = metadata_index_->LookupMany(baseline_sources, lookup_keys,
-                                         &old_values, &old_found);
-    if (!status.ok()) {
-      metadata_needs_rebuild_ = true;
-      metadata_rebuild_only_error_ = true;
-      break;
-    }
-
-    std::vector<std::pair<std::string, MetadataValue>> after_values;
-    after_values.reserve(chunk_keys.size());
-    for (size_t i = 0; i < chunk_keys.size(); ++i) {
-      const uint64_t old_count = old_found[i] ? old_values[i].count : 0;
-      uint64_t after_count = 0;
-      status = apply_delta(old_count, chunk_deltas[i], &after_count);
-      if (!status.ok()) break;
-      MetadataValue after;
-      after.mseq = compact->metadata_baseline_mseq;
-      after.count = after_count;
-      after_values.emplace_back(chunk_keys[i], after);
-
-      if (chunk_deltas[i] > 0) {
-        const uint64_t amount = static_cast<uint64_t>(chunk_deltas[i]);
-        if (std::numeric_limits<uint64_t>::max() -
-                compact->delta_positive_records < amount) {
-          status = Status::Corruption("metadata compaction total overflow");
-          break;
-        }
-        compact->delta_positive_records += amount;
-      } else {
-        const uint64_t amount =
-            static_cast<uint64_t>(-(chunk_deltas[i] + 1)) + 1;
-        if (std::numeric_limits<uint64_t>::max() -
-                compact->delta_negative_records < amount) {
-          status = Status::Corruption("metadata compaction total overflow");
-          break;
-        }
-        compact->delta_negative_records += amount;
-      }
-      if (!compact->has_first_metadata_delta) {
-        compact->first_metadata_delta_key = chunk_keys[i];
-        compact->first_metadata_after_count = after_count;
-        compact->has_first_metadata_delta = true;
-      }
-      compact->has_metadata_changes = true;
-    }
-    if (!status.ok()) break;
-    mutex_.Unlock();
-    for (const auto& entry : after_values) {
-      baseline_builder->Add(entry.first,
-                            MetadataIndex::EncodeValue(entry.second));
-      if (!baseline_have_key) {
-        compact->prepared_baseline.smallest = entry.first;
-        baseline_have_key = true;
-      }
-      compact->prepared_baseline.largest = entry.first;
-    }
-    mutex_.Lock();
-  }
-  if (status.ok()) status = deltas->status();
-  mutex_.Unlock();
-  if (status.ok() && baseline_builder != nullptr) {
-    status = baseline_builder->Finish();
-    compact->prepared_baseline.file_size = baseline_builder->FileSize();
-  }
-  if (status.ok() && baseline_file != nullptr) status = baseline_file->Sync();
-  if (status.ok() && baseline_file != nullptr) status = baseline_file->Close();
-  if (!status.ok() && baseline_builder != nullptr) baseline_builder->Abandon();
-  delete baseline_file;
-  delete deltas;
-  mutex_.Lock();
-
-  if (status.ok() && baseline_have_key) {
-    compact->has_prepared_baseline = true;
-  } else if (status.ok()) {
-    pending_outputs_.erase(baseline_number);
-    env_->RemoveFile(baseline_filename);
-  }
-
-  if (!status.ok()) {
-    finish_prepare();
-    return status;
-  }
-
-  // If every key's net record-count delta cancelled, the primary files can be
-  // installed without a statistics event.
-  if (!compact->has_metadata_changes) {
-    prepare_timer.Stop();
-    finish_prepare();
-    add_primary_file_edits();
-    status = LogAndApply(edit);
-    if (status.ok())
-      metadata_profile_.Count(MetadataProfileCounter::kPrimaryCompactions);
-    return status;
-  }
-
-  // Close the range to new foreground commits and wait for any group that
-  // passed admission before this point. A large tail naturally stops new
-  // overlapping groups at their pre-WAL admission check.
-  compact->metadata_journal_finishing = true;
-  MetadataProfile::Timer tail_timer(
-      &metadata_profile_, MetadataProfileStage::kPrimaryCompactionTail, true);
-  while (write_log_in_progress_) {
-    background_work_finished_signal_.Wait();
-  }
-  status = ReserveMetadataMSeq(&compact->metadata_correction_mseq);
-  if (!status.ok()) {
-    finish_prepare();
-    return status;
-  }
-
-  const uint64_t correction_number = versions_->NewFileNumber();
-  pending_outputs_.insert(correction_number);
-  compact->metadata_delta_output_numbers.push_back(correction_number);
-  const std::string correction_filename =
-      MetadataFileName(dbname_, correction_number);
-  WritableFile* correction_file = nullptr;
-  std::unique_ptr<TableBuilder> correction_builder;
-  compact->prepared_correction.kind = kMetadataIndex;
-  compact->prepared_correction.number = correction_number;
-  compact->prepared_correction.min_mseq = compact->metadata_correction_mseq;
-  compact->prepared_correction.max_mseq = compact->metadata_correction_mseq;
-
-  mutex_.Unlock();
-  status = env_->NewWritableFile(correction_filename, &correction_file);
-  if (status.ok()) {
-    correction_builder.reset(
-        new TableBuilder(metadata_index_->TableOptions(), correction_file));
-  }
-  mutex_.Lock();
-
-  Iterator* correction_deltas = metadata_index_->NewIterator(
-      compact->metadata_delta_runs, false);
-  Iterator* baseline_iter =
-      metadata_index_->NewIterator({compact->prepared_baseline}, false);
-  correction_deltas->SeekToFirst();
-  baseline_iter->SeekToFirst();
-  bool correction_have_key = false;
-  uint64_t tail_touched_keys = 0;
-  uint64_t distinct_added = 0;
-  uint64_t distinct_removed = 0;
-  auto count_transition = [&](uint64_t before, uint64_t after) -> Status {
-    if (before == 0 && after != 0) {
-      if (distinct_added == std::numeric_limits<uint64_t>::max()) {
-        return Status::Corruption("metadata distinct count overflow");
-      }
-      ++distinct_added;
-    } else if (before != 0 && after == 0) {
-      if (distinct_removed == std::numeric_limits<uint64_t>::max()) {
-        return Status::Corruption("metadata distinct count overflow");
-      }
-      ++distinct_removed;
-    }
-    return Status::OK();
-  };
-
-  while (status.ok() && correction_deltas->Valid()) {
-    struct CorrectionEntry {
-      std::string key;
-      int64_t delta;
-      uint64_t before;
-      uint64_t baseline_after;
-      bool may_be_touched;
-    };
-    std::vector<CorrectionEntry> chunk;
-    size_t chunk_bytes = 0;
-    while (correction_deltas->Valid() && chunk.size() < 256) {
-      const std::string key = correction_deltas->key().ToString();
-      int64_t delta_sum = 0;
-      while (correction_deltas->Valid() &&
-             correction_deltas->key() == Slice(key)) {
-        int64_t delta;
-        if (!DecodeMetadataDelta(correction_deltas->value(), &delta) ||
-            (delta > 0 &&
-             delta_sum > std::numeric_limits<int64_t>::max() - delta) ||
-            (delta < 0 &&
-             delta_sum < std::numeric_limits<int64_t>::min() - delta)) {
-          status = Status::Corruption("metadata compaction delta overflow");
-          break;
-        }
-        delta_sum += delta;
-        correction_deltas->Next();
-      }
-      if (!status.ok()) break;
-      if (delta_sum == 0) continue;
-      if (!baseline_iter->Valid() || baseline_iter->key() != Slice(key)) {
-        status = Status::Corruption("metadata prepared baseline is incomplete");
-        break;
-      }
-      MetadataValue baseline_after;
-      if (!MetadataIndex::DecodeValue(baseline_iter->value(),
-                                      &baseline_after) ||
-          baseline_after.mseq != compact->metadata_baseline_mseq) {
-        status = Status::Corruption("invalid metadata prepared baseline");
-        break;
-      }
-      baseline_iter->Next();
-      uint64_t baseline_before = 0;
-      if (delta_sum > 0) {
-        const uint64_t amount = static_cast<uint64_t>(delta_sum);
-        if (baseline_after.count < amount) {
-          status = Status::Corruption("metadata baseline underflow");
-          break;
-        }
-        baseline_before = baseline_after.count - amount;
-      } else {
-        const uint64_t amount =
-            static_cast<uint64_t>(-(delta_sum + 1)) + 1;
-        if (std::numeric_limits<uint64_t>::max() - baseline_after.count <
-            amount) {
-          status = Status::Corruption("metadata baseline overflow");
-          break;
-        }
-        baseline_before = baseline_after.count + amount;
-      }
-      bool may_be_touched =
-          compact->metadata_journal_values.find(key) !=
-          compact->metadata_journal_values.end();
-      for (const MetadataFileMeta& journal_file :
-           compact->metadata_journal_files) {
-        if (journal_file.max_mseq > compact->metadata_baseline_mseq &&
-            MetadataKeyInRange(key, journal_file.smallest,
-                               journal_file.largest)) {
-          may_be_touched = true;
-          break;
-        }
-      }
-      const size_t charge = key.size() + sizeof(CorrectionEntry) + 16;
-      chunk_bytes = charge > std::numeric_limits<size_t>::max() - chunk_bytes
-                        ? std::numeric_limits<size_t>::max()
-                        : chunk_bytes + charge;
-      chunk.push_back({key, delta_sum, baseline_before,
-                       baseline_after.count, may_be_touched});
-      if (chunk_bytes >= workspace) break;
-    }
-    if (!status.ok()) break;
-    if (chunk.empty()) continue;
-
-    std::vector<Slice> candidate_keys;
-    for (size_t i = 0; i < chunk.size(); ++i) {
-      if (chunk[i].may_be_touched) {
-        candidate_keys.emplace_back(chunk[i].key);
-      }
-    }
-    std::vector<MetadataValue> latest_values;
-    std::vector<bool> latest_found;
-    if (!candidate_keys.empty()) {
-      const std::vector<MetadataFileMeta>& current_files = MetadataLookupFiles();
-      status = metadata_index_->LookupMany(current_files, candidate_keys,
-                                           &latest_values, &latest_found);
-      if (!status.ok()) {
-        metadata_needs_rebuild_ = true;
-        metadata_rebuild_only_error_ = true;
-        break;
-      }
-    }
-
-    std::vector<std::pair<std::string, MetadataValue>> corrections;
-    corrections.reserve(candidate_keys.size());
-    size_t candidate_index = 0;
-    for (size_t i = 0; i < chunk.size(); ++i) {
-      uint64_t before = chunk[i].before;
-      uint64_t after = chunk[i].baseline_after;
-      bool touched = false;
-      if (chunk[i].may_be_touched) {
-        const bool found_value = latest_found[candidate_index];
-        const MetadataValue latest = latest_values[candidate_index];
-        ++candidate_index;
-        if (found_value && latest.mseq > compact->metadata_baseline_mseq) {
-          before = latest.count;
-          status = apply_delta(before, chunk[i].delta, &after);
-          if (!status.ok()) break;
-          touched = true;
-        }
-      }
-      status = count_transition(before, after);
-      if (!status.ok()) break;
-      if (!compact->has_first_metadata_delta) {
-        compact->first_metadata_delta_key = chunk[i].key;
-        compact->has_first_metadata_delta = true;
-      }
-      if (compact->first_metadata_delta_key == chunk[i].key) {
-        compact->first_metadata_after_count = after;
-      }
-      if (touched) {
-        MetadataValue corrected;
-        corrected.mseq = compact->metadata_correction_mseq;
-        corrected.count = after;
-        corrections.emplace_back(chunk[i].key, corrected);
-      }
-    }
-    if (!status.ok()) break;
-    tail_touched_keys += corrections.size();
-    mutex_.Unlock();
-    for (const auto& correction : corrections) {
-      correction_builder->Add(correction.first,
-                              MetadataIndex::EncodeValue(correction.second));
-      if (!correction_have_key) {
-        compact->prepared_correction.smallest = correction.first;
-        correction_have_key = true;
-      }
-      compact->prepared_correction.largest = correction.first;
-    }
-    mutex_.Lock();
-  }
-  if (status.ok()) status = correction_deltas->status();
-  if (status.ok()) status = baseline_iter->status();
-  mutex_.Unlock();
-  if (status.ok() && correction_builder != nullptr) {
-    status = correction_builder->Finish();
-    compact->prepared_correction.file_size = correction_builder->FileSize();
-  }
-  if (status.ok() && correction_file != nullptr) status = correction_file->Sync();
-  if (status.ok() && correction_file != nullptr) status = correction_file->Close();
-  if (!status.ok() && correction_builder != nullptr) correction_builder->Abandon();
-  delete correction_file;
-  delete correction_deltas;
-  delete baseline_iter;
-  mutex_.Lock();
-
-  if (status.ok() && correction_have_key) {
-    compact->has_prepared_correction = true;
-    metadata_profile_.Count(MetadataProfileCounter::kCompactionTailKeys,
-                            tail_touched_keys);
-    metadata_profile_.Count(MetadataProfileCounter::kCompactionJournalFiles,
-                            compact->metadata_journal_files.size());
-    metadata_profile_.Count(MetadataProfileCounter::kCompactionTailBytes,
-                            compact->prepared_correction.file_size);
-  } else if (status.ok()) {
-    pending_outputs_.erase(correction_number);
-    env_->RemoveFile(correction_filename);
-  }
-  if (!status.ok()) {
-    prepare_timer.Stop();
-    tail_timer.Stop();
-    finish_prepare();
-    return status;
-  }
-
-  // Sync the WAL prefix while foreground writers can still make progress.
-  // Writes that append during this sync are caught by the short tail sync in
-  // the final commit gate below.
-  prepare_timer.Stop();
-  tail_timer.Stop();
-  status = SyncMetadataWALPrefix(logfile_number_);
-  if (!status.ok()) {
-    finish_prepare();
-    return status;
-  }
-
-  // The final gate covers scalar reconciliation, any WAL tail sync, and one
-  // Manifest edit. The already prepared baseline is also the durable event
-  // witness, so no extra change file needs to be written under this gate.
-  MetadataProfile::Timer gate_timer(
-      &metadata_profile_, MetadataProfileStage::kPrimaryCompactionGate, true);
+  // The primary Version and the global scalars are one published state. Stop
+  // new write commits, drain the in-flight WAL group, calculate the exact
+  // zero-crossings against the still-current Version, then install one edit.
   BeginMetadataCommit();
   while (write_log_in_progress_) {
     background_work_finished_signal_.Wait();
   }
-  const uint64_t previous_mseq = metadata_mseq_;
-  uint64_t commit_mseq = 0;
-  status = ReserveMetadataMSeq(&commit_mseq);
+
+  uint64_t positive_records = 0;
+  uint64_t negative_records = 0;
+  uint64_t removed_distinct = 0;
+  Iterator* deltas = metadata_index_->NewIterator(
+      compact->metadata_delta_runs, false);
+  deltas->SeekToFirst();
+  Status status;
+  while (deltas->Valid() && status.ok()) {
+    const std::string key = deltas->key().ToString();
+    int64_t net_records = 0;
+    uint64_t output_records = 0;
+    while (deltas->Valid() && deltas->key() == Slice(key)) {
+      int64_t delta = 0;
+      uint64_t output = 0;
+      if (!DecodeMetadataDelta(deltas->value(), &delta, &output) ||
+          (delta > 0 && net_records >
+                            std::numeric_limits<int64_t>::max() - delta) ||
+          (delta < 0 && net_records <
+                            std::numeric_limits<int64_t>::min() - delta) ||
+          std::numeric_limits<uint64_t>::max() - output_records < output) {
+        status = Status::Corruption("invalid primary compaction delta");
+        break;
+      }
+      net_records += delta;
+      output_records += output;
+      deltas->Next();
+    }
+    if (!status.ok() || net_records == 0) continue;
+
+    if (net_records > 0) {
+      const uint64_t amount = static_cast<uint64_t>(net_records);
+      if (output_records < amount ||
+          std::numeric_limits<uint64_t>::max() - positive_records < amount) {
+        status = Status::Corruption("primary compaction count overflow");
+        break;
+      }
+      positive_records += amount;
+    } else {
+      const uint64_t amount =
+          static_cast<uint64_t>(-(net_records + 1)) + 1;
+      if (std::numeric_limits<uint64_t>::max() - negative_records < amount ||
+          output_records > std::numeric_limits<uint64_t>::max() - amount) {
+        status = Status::Corruption("primary compaction count overflow");
+        break;
+      }
+      negative_records += amount;
+
+      // output = input + delta. If compaction still outputs this key, it
+      // remains distinct without a lookup. Only a key with no output can cross
+      // to zero, so probe the current primary state for those keys only.
+      if (output_records == 0) {
+        uint64_t before = 0;
+        status = CountPrimaryRecordsForKey(key, &before);
+        if (!status.ok()) break;
+        if (before < amount) {
+          status = Status::Corruption(
+              "primary compaction count underflow");
+          break;
+        }
+        if (before == amount) {
+          if (removed_distinct == std::numeric_limits<uint64_t>::max()) {
+            status = Status::Corruption("distinct key count overflow");
+            break;
+          }
+          ++removed_distinct;
+        }
+      }
+    }
+  }
+  if (status.ok()) status = deltas->status();
+  delete deltas;
+
   uint64_t next_total = metadata_total_entries_;
   uint64_t next_distinct = metadata_distinct_keys_;
   if (status.ok()) {
-    if (next_total < compact->delta_negative_records ||
+    if (next_total < negative_records ||
         std::numeric_limits<uint64_t>::max() -
-                (next_total - compact->delta_negative_records) <
-            compact->delta_positive_records) {
-      status = Status::Corruption("metadata compaction total overflow");
+                (next_total - negative_records) < positive_records) {
+      status = Status::Corruption("primary compaction total underflow/overflow");
     } else {
-      next_total = next_total - compact->delta_negative_records +
-                   compact->delta_positive_records;
+      next_total = next_total - negative_records + positive_records;
     }
   }
   if (status.ok()) {
-    if (next_distinct < distinct_removed ||
-        std::numeric_limits<uint64_t>::max() -
-                (next_distinct - distinct_removed) <
-            distinct_added) {
-      status = Status::Corruption("metadata compaction distinct overflow");
+    if (next_distinct < removed_distinct) {
+      status = Status::Corruption("primary compaction distinct underflow");
     } else {
-      next_distinct = next_distinct - distinct_removed + distinct_added;
+      next_distinct -= removed_distinct;
     }
   }
-  if (status.ok()) status = SyncMetadataWALPrefix(logfile_number_);
-
   if (status.ok()) {
-    compact->prepared_baseline.max_mseq = commit_mseq;
-    if (compact->has_prepared_correction) {
-      compact->prepared_correction.max_mseq = commit_mseq;
-    }
     add_primary_file_edits();
-    if (compact->has_prepared_baseline)
-      edit->AddMetadataFile(compact->prepared_baseline);
-    if (compact->has_prepared_correction)
-      edit->AddMetadataFile(
-          compact->prepared_correction);
-    MetadataCommitMeta commit;
-    commit.file_number = compact->prepared_baseline.number;
-    commit.mseq = commit_mseq;
-    commit.prev_mseq = previous_mseq;
-    commit.total_entries = next_total;
-    commit.distinct_keys = next_distinct;
-    commit.wal_number = versions_->metadata_wal_number();
-    edit->AddMetadataCommit(commit);
+    edit->SetPrimaryMetadataCheckpoint(versions_->LastSequence(), next_total,
+                                       next_distinct);
     status = LogAndApply(edit);
-    if (status.ok()) {
-      metadata_profile_.Count(MetadataProfileCounter::kPrimaryCompactions);
-      if (compact->compaction != nullptr) {
-        for (int which = 0; which < 2; ++which)
-          for (int i = 0; i < compact->compaction->num_input_files(which); ++i)
-            ProfileScope::Count("gc.installed_input_sst_bytes",
-                                compact->compaction->input(which, i)->file_size);
-        for (const auto& out : compact->outputs)
-          ProfileScope::Count("gc.installed_output_sst_bytes", out.file_size);
-        ProfileScope::Count("gc.installed_removed_records",
-                            compact->delta_negative_records - compact->delta_positive_records);
+  }
+  if (status.ok()) {
+    metadata_total_entries_ = next_total;
+    metadata_distinct_keys_ = next_distinct;
+    metadata_profile_.Count(MetadataProfileCounter::kPrimaryCompactions);
+    if (negative_records >= positive_records) {
+      ProfileScope::Count("gc.installed_removed_records",
+                          negative_records - positive_records);
+    }
+    if (compact->compaction != nullptr) {
+      for (int which = 0; which < 2; ++which) {
+        for (int i = 0; i < compact->compaction->num_input_files(which); ++i) {
+          ProfileScope::Count(
+              "gc.installed_input_sst_bytes",
+              compact->compaction->input(which, i)->file_size);
+        }
       }
-      metadata_total_entries_ = next_total;
-      metadata_distinct_keys_ = next_distinct;
-      metadata_mseq_ = commit_mseq;
-      metadata_index_->InvalidateAll();
-      MaybeFreezeMetadata();
+      for (const auto& out : compact->outputs) {
+        ProfileScope::Count("gc.installed_output_sst_bytes", out.file_size);
+      }
     }
   }
 
   EndMetadataCommit();
-  gate_timer.Stop();
-  finish_prepare();
   return status;
 }
 
@@ -3953,9 +3591,11 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       while (deltas->Valid() && merge_status.ok()) {
         const std::string key = deltas->key().ToString();
         int64_t sum = 0;
+        uint64_t output_records_sum = 0;
         while (deltas->Valid() && deltas->key() == Slice(key)) {
           int64_t delta;
-          if (!DecodeMetadataDelta(deltas->value(), &delta) ||
+          uint64_t output_records;
+          if (!DecodeMetadataDelta(deltas->value(), &delta, &output_records) ||
               (delta > 0 && sum > std::numeric_limits<int64_t>::max() - delta) ||
               (delta < 0 && sum < std::numeric_limits<int64_t>::min() - delta)) {
             merge_status =
@@ -3963,11 +3603,18 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
             break;
           }
           sum += delta;
+          if (std::numeric_limits<uint64_t>::max() - output_records_sum <
+              output_records) {
+            merge_status = Status::Corruption(
+                "metadata compaction output count overflow");
+            break;
+          }
+          output_records_sum += output_records;
           deltas->Next();
         }
         if (!merge_status.ok()) break;
         if (sum == 0) continue;
-        builder.Add(key, EncodeMetadataDelta(sum));
+        builder.Add(key, EncodeMetadataDelta(sum, output_records_sum));
         if (!have_key) {
           merged.smallest = key;
           have_key = true;
@@ -4015,8 +3662,10 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     if (spill_status.ok()) {
       TableBuilder builder(metadata_index_->TableOptions(), output);
       for (const auto& entry : compact->metadata_deltas) {
-        if (entry.second == 0) continue;
-        builder.Add(entry.first, EncodeMetadataDelta(entry.second));
+        if (entry.second.net_records == 0) continue;
+        builder.Add(entry.first,
+                    EncodeMetadataDelta(entry.second.net_records,
+                                        entry.second.output_records));
         if (!have_key) {
           run.smallest = entry.first;
           have_key = true;
@@ -4046,20 +3695,26 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     return Status::OK();
   };
 
-  auto add_metadata_delta = [&](const std::string& key,
-                                int64_t adjustment) -> Status {
+  auto add_metadata_delta = [&](const std::string& key, int64_t adjustment,
+                                uint64_t output_adjustment) -> Status {
     auto iter = compact->metadata_deltas.find(key);
     if (iter == compact->metadata_deltas.end()) {
-      compact->metadata_delta_bytes += key.size() + sizeof(int64_t) + 64;
-      iter = compact->metadata_deltas.emplace(key, 0).first;
+      compact->metadata_delta_bytes += key.size() + sizeof(PrimaryMetadataDelta) + 64;
+      iter = compact->metadata_deltas.emplace(key, PrimaryMetadataDelta()).first;
     }
     if ((adjustment > 0 &&
-         iter->second > std::numeric_limits<int64_t>::max() - adjustment) ||
+         iter->second.net_records >
+             std::numeric_limits<int64_t>::max() - adjustment) ||
         (adjustment < 0 &&
-         iter->second < std::numeric_limits<int64_t>::min() - adjustment)) {
+         iter->second.net_records <
+             std::numeric_limits<int64_t>::min() - adjustment) ||
+        std::numeric_limits<uint64_t>::max() -
+                iter->second.output_records <
+            output_adjustment) {
       return Status::Corruption("metadata compaction delta overflow");
     }
-    iter->second += adjustment;
+    iter->second.net_records += adjustment;
+    iter->second.output_records += output_adjustment;
     if (compact->metadata_delta_bytes >= options_.metadata_workspace_size) {
       return spill_metadata_deltas();
     }
@@ -4099,8 +3754,8 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     return Status::OK();
   };
 
-  auto append_sorted_delta = [&](const std::string& key,
-                                 int64_t delta) -> Status {
+  auto append_sorted_delta = [&](const std::string& key, int64_t delta,
+                                 uint64_t output_records) -> Status {
     if (delta == 0) return Status::OK();
     if (sorted_delta_builder == nullptr) {
       const uint64_t number = allocate_delta_file();
@@ -4112,7 +3767,8 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       sorted_delta_builder =
           new TableBuilder(metadata_index_->TableOptions(), sorted_delta_file);
     }
-    sorted_delta_builder->Add(key, EncodeMetadataDelta(delta));
+    sorted_delta_builder->Add(
+        key, EncodeMetadataDelta(delta, output_records));
     if (!sorted_delta_has_key) {
       sorted_delta_run.smallest = key;
       sorted_delta_has_key = true;
@@ -4128,6 +3784,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   ParsedInternalKey ikey;
   std::string current_user_key;
   int64_t current_key_delta = 0;
+  uint64_t current_key_output_records = 0;
   bool has_current_user_key = false;
   SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
   while (input->Valid() && !shutting_down_.load(std::memory_order_acquire)) {
@@ -4170,13 +3827,15 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
           user_comparator()->Compare(ikey.user_key, Slice(current_user_key)) !=
               0) {
         if (stream_sorted_deltas && has_current_user_key) {
-          status = append_sorted_delta(current_user_key, current_key_delta);
+          status = append_sorted_delta(current_user_key, current_key_delta,
+                                       current_key_output_records);
           if (!status.ok()) break;
         }
         // First occurrence of this user key
         current_user_key.assign(ikey.user_key.data(), ikey.user_key.size());
         has_current_user_key = true;
         current_key_delta = 0;
+        current_key_output_records = 0;
         last_sequence_for_key = kMaxSequenceNumber;
       }
 
@@ -4187,7 +3846,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         }
         --current_key_delta;
       } else {
-        status = add_metadata_delta(raw_key, -1);
+        status = add_metadata_delta(raw_key, -1, 0);
         if (!status.ok()) break;
       }
 
@@ -4269,9 +3928,15 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
           break;
         }
         ++current_key_delta;
+        if (current_key_output_records ==
+            std::numeric_limits<uint64_t>::max()) {
+          status = Status::Corruption("metadata output count overflow");
+          break;
+        }
+        ++current_key_output_records;
       } else {
         std::string raw_key(ikey.user_key.data(), ikey.user_key.size());
-        status = add_metadata_delta(raw_key, 1);
+        status = add_metadata_delta(raw_key, 1, 1);
         if (!status.ok()) break;
       }
 
@@ -4300,7 +3965,8 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   delete input;
   input = nullptr;
   if (status.ok() && stream_sorted_deltas && has_current_user_key) {
-    status = append_sorted_delta(current_user_key, current_key_delta);
+    status = append_sorted_delta(current_user_key, current_key_delta,
+                                 current_key_output_records);
   }
   if (status.ok()) {
     status = stream_sorted_deltas ? finish_sorted_delta_run()
@@ -4812,20 +4478,12 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
 
     uint64_t next_total_entries = metadata_total_entries_;
     uint64_t next_distinct_keys = metadata_distinct_keys_;
-    uint64_t next_mseq = metadata_mseq_;
-    std::vector<std::pair<std::string, MetadataValue>> metadata_updates;
-    MetadataFileMeta metadata_change_file;
-    uint64_t metadata_change_file_number = 0;
-    bool has_metadata_change_file = false;
     bool wal_attempted = false;
     bool wal_record_appended = false;
     bool wal_record_synced = false;
     uint64_t write_log_number = logfile_number_;
 
     const uint64_t records_added = batch_counter.total_records();
-    if (status.ok() && records_added != 0) {
-      status = ReserveMetadataMSeq(&next_mseq);
-    }
     if (status.ok() &&
         std::numeric_limits<uint64_t>::max() - next_total_entries <
             records_added) {
@@ -4833,142 +4491,41 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
     }
     if (status.ok()) next_total_entries += records_added;
 
-    const std::vector<MetadataFileMeta>& lookup_files = MetadataLookupFiles();
-    const size_t lookup_workspace = std::min<size_t>(
-        64 << 10, options_.metadata_workspace_size / 4);
-    std::vector<std::string> lookup_chunk_keys;
-    std::vector<uint64_t> lookup_chunk_increments;
-    size_t lookup_chunk_bytes = 0;
-    auto flush_lookup_chunk = [&](TableBuilder* change_builder) -> Status {
-      if (lookup_chunk_keys.empty()) return Status::OK();
-      std::vector<Slice> keys;
-      keys.reserve(lookup_chunk_keys.size());
-      for (const std::string& key : lookup_chunk_keys) keys.emplace_back(key);
-      std::vector<MetadataValue> previous_values;
-      std::vector<bool> previous_found;
-      metadata_profile_.Count(MetadataProfileCounter::kWriteDistinctKeys,
-                              keys.size());
-      Status lookup_status = metadata_index_->LookupMany(
-          lookup_files, keys, &previous_values, &previous_found);
-      if (!lookup_status.ok()) {
-        metadata_needs_rebuild_ = true;
-        metadata_rebuild_only_error_ = true;
-        return lookup_status;
-      }
-      for (size_t i = 0; i < keys.size(); ++i) {
-        const uint64_t old_count = previous_found[i]
-                                       ? previous_values[i].count
-                                       : 0;
-        const uint64_t increment = lookup_chunk_increments[i];
-        if (old_count == 0) {
-          if (next_distinct_keys == std::numeric_limits<uint64_t>::max()) {
-            return Status::Corruption("distinct key count overflow");
-          }
-          ++next_distinct_keys;
+    auto account_key = [&](const Slice& key) -> Status {
+      metadata_profile_.Count(MetadataProfileCounter::kWriteDistinctKeys);
+      uint64_t old_count = 0;
+      Status count_status = CountPrimaryRecordsForKey(key, &old_count);
+      if (!count_status.ok()) return count_status;
+      if (old_count == 0) {
+        if (next_distinct_keys == std::numeric_limits<uint64_t>::max()) {
+          return Status::Corruption("distinct key count overflow");
         }
-        if (std::numeric_limits<uint64_t>::max() - old_count < increment) {
-          return Status::Corruption("per-key record count overflow");
-        }
-        MetadataValue updated;
-        updated.mseq = next_mseq;
-        updated.count = old_count + increment;
-        if (change_builder != nullptr) {
-          change_builder->Add(keys[i], MetadataIndex::EncodeValue(updated));
-          metadata_index_->Invalidate(keys[i]);
-        } else {
-          metadata_updates.emplace_back(lookup_chunk_keys[i], updated);
-        }
-      }
-      lookup_chunk_keys.clear();
-      lookup_chunk_increments.clear();
-      lookup_chunk_bytes = 0;
-      return Status::OK();
-    };
-    auto append_lookup_item = [&](const std::string& key, uint64_t increment,
-                                  TableBuilder* change_builder) -> Status {
-      const size_t item_bytes = key.size() + sizeof(uint64_t) + 16;
-      if (!lookup_chunk_keys.empty() &&
-          (lookup_chunk_keys.size() >= 256 ||
-           item_bytes > lookup_workspace -
-                            std::min(lookup_workspace, lookup_chunk_bytes))) {
-        Status s = flush_lookup_chunk(change_builder);
-        if (!s.ok()) return s;
-      }
-      lookup_chunk_keys.push_back(key);
-      lookup_chunk_increments.push_back(increment);
-      lookup_chunk_bytes =
-          item_bytes > std::numeric_limits<size_t>::max() - lookup_chunk_bytes
-              ? std::numeric_limits<size_t>::max()
-              : lookup_chunk_bytes + item_bytes;
-      if (lookup_chunk_keys.size() >= 256 ||
-          lookup_chunk_bytes >= lookup_workspace) {
-        return flush_lookup_chunk(change_builder);
+        ++next_distinct_keys;
       }
       return Status::OK();
     };
 
     if (status.ok() && batch_counter.spilled()) {
-      metadata_change_file_number = versions_->NewFileNumber();
-      pending_outputs_.insert(metadata_change_file_number);
-      metadata_change_file.kind = kMetadataChange;
-      metadata_change_file.number = metadata_change_file_number;
-      metadata_change_file.min_mseq = next_mseq;
-      metadata_change_file.max_mseq = next_mseq;
-      const std::string filename =
-          MetadataChangeFileName(dbname_, metadata_change_file_number);
-      WritableFile* output = nullptr;
-      Iterator* deltas = metadata_index_->NewIterator(batch_runs, false);
-      status = env_->NewWritableFile(filename, &output);
-      bool have_key = false;
-      if (status.ok()) {
-        TableBuilder builder(metadata_index_->TableOptions(), output);
-        deltas->SeekToFirst();
-        while (deltas->Valid() && status.ok()) {
-          const std::string key = deltas->key().ToString();
-          uint64_t count = 0;
-          while (deltas->Valid() && deltas->key() == Slice(key)) {
-            MetadataValue delta;
-            if (!MetadataIndex::DecodeValue(deltas->value(), &delta) ||
-                delta.mseq != 0 ||
-                std::numeric_limits<uint64_t>::max() - count < delta.count) {
-              status = Status::Corruption("invalid metadata batch delta");
-              break;
-            }
-            count += delta.count;
-            deltas->Next();
-          }
-          if (!status.ok()) break;
-          status = append_lookup_item(key, count, &builder);
-          if (!status.ok()) break;
-          if (!have_key) {
-            metadata_change_file.smallest = key;
-            have_key = true;
-          }
-          metadata_change_file.largest = key;
+      Iterator* keys = metadata_index_->NewIterator(batch_runs, false);
+      keys->SeekToFirst();
+      std::string previous_key;
+      bool have_previous = false;
+      while (keys->Valid() && status.ok()) {
+        std::string key = keys->key().ToString();
+        while (keys->Valid() && keys->key() == Slice(key)) keys->Next();
+        if (!have_previous || key != previous_key) {
+          status = account_key(key);
+          previous_key = std::move(key);
+          have_previous = true;
         }
-        if (status.ok()) status = flush_lookup_chunk(&builder);
-        if (status.ok()) status = deltas->status();
-        if (status.ok()) status = builder.Finish();
-        metadata_change_file.file_size = builder.FileSize();
-        if (status.ok()) status = output->Sync();
-        if (status.ok()) status = output->Close();
-        if (!status.ok()) builder.Abandon();
       }
-      delete output;
-      delete deltas;
-      if (status.ok() && have_key) {
-        has_metadata_change_file = true;
-      } else if (status.ok()) {
-        status = Status::Corruption("empty metadata batch change file");
-      }
+      if (status.ok()) status = keys->status();
+      delete keys;
     } else if (status.ok()) {
-      metadata_updates.reserve(batch_counter.counts.size());
       for (const auto& key_count : batch_counter.counts) {
-        status = append_lookup_item(key_count.first, key_count.second.count,
-                                    nullptr);
+        status = account_key(key_count.first);
         if (!status.ok()) break;
       }
-      if (status.ok()) status = flush_lookup_chunk(nullptr);
     }
 
     for (const MetadataFileMeta& run : batch_runs) {
@@ -4981,10 +4538,9 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
     prepare_timer.Stop();
     std::string wal_record;
     if (status.ok()) {
-      wal_record = EncodeMetadataWALRecord(
-          WriteBatchInternal::Contents(write_batch), next_mseq, metadata_mseq_,
-          next_total_entries, next_distinct_keys, metadata_updates,
-          has_metadata_change_file ? metadata_change_file_number : 0);
+      // Primary WriteBatch bytes are the complete recovery record. Statistics
+      // are rebuilt from primary internal records after recovery.
+      wal_record = WriteBatchInternal::Contents(write_batch).ToString();
     }
 
     // Add to log and apply to memtable.  We can release the lock
@@ -5062,70 +4618,12 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
       }
     }
     if (status.ok()) {
-      if (has_metadata_change_file) {
-        metadata_wal_files_.push_back(metadata_change_file);
-        ++metadata_wal_files_revision_;
-        metadata_index_->InvalidateAll();
-        metadata_profile_.Count(MetadataProfileCounter::kChangeFileBytes,
-                               metadata_change_file.file_size);
-        CompactionState* journal = metadata_compaction_prepare_;
-        if (journal != nullptr && journal->has_metadata_delta_range &&
-            MetadataRangesOverlap(metadata_change_file.smallest,
-                                  metadata_change_file.largest,
-                                  journal->metadata_delta_smallest,
-                                  journal->metadata_delta_largest)) {
-          journal->metadata_journal_files.push_back(metadata_change_file);
-          metadata_profile_.Count(
-              MetadataProfileCounter::kCompactionJournalFiles);
-          metadata_profile_.Count(
-              MetadataProfileCounter::kCompactionJournalBytes,
-              metadata_change_file.file_size);
-        }
-      } else {
-        metadata_index_->Apply(metadata_updates);
-        CompactionState* journal = metadata_compaction_prepare_;
-        if (journal != nullptr && journal->has_metadata_delta_range) {
-          for (const auto& update : metadata_updates) {
-            if (!MetadataKeyInRange(update.first,
-                                    journal->metadata_delta_smallest,
-                                    journal->metadata_delta_largest)) {
-              continue;
-            }
-            auto existing = journal->metadata_journal_values.find(update.first);
-            if (existing == journal->metadata_journal_values.end()) {
-              const size_t charge = update.first.size() +
-                                    sizeof(MetadataValue) + 48;
-              journal->metadata_journal_bytes += charge;
-              metadata_profile_.Count(
-                  MetadataProfileCounter::kCompactionJournalBytes, charge);
-              journal->metadata_journal_values.emplace(update.first,
-                                                        update.second);
-            } else {
-              existing->second = update.second;
-            }
-          }
-        }
-      }
       ProfileScope::Count("write.committed_groups");
       ProfileScope::Count("write.committed_records", batch_count);
       metadata_total_entries_ = next_total_entries;
       metadata_distinct_keys_ = next_distinct_keys;
-      metadata_mseq_ = next_mseq;
-      if (std::numeric_limits<uint64_t>::max() - metadata_wal_bytes_ <
-          wal_record.size()) {
-        metadata_wal_bytes_ = std::numeric_limits<uint64_t>::max();
-      } else {
-        metadata_wal_bytes_ += wal_record.size();
-      }
       versions_->SetLastSequence(last_sequence);
-      MaybeFreezeMetadata();
     } else {
-      if (metadata_change_file_number != 0 && !wal_attempted) {
-        metadata_index_->Evict(metadata_change_file_number);
-        pending_outputs_.erase(metadata_change_file_number);
-        env_->RemoveFile(MetadataChangeFileName(dbname_,
-                                                metadata_change_file_number));
-      }
       RecordBackgroundError(status);
     }
   }
@@ -5550,6 +5048,7 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
   }
   if (s.ok() && impl->metadata_needs_rebuild_) {
     s = impl->RebuildMetadata();
+    if (s.ok()) s = impl->PersistPrimaryMetadataCheckpoint();
   } else if (s.ok()) {
     impl->MaybeFreezeMetadata();
   }

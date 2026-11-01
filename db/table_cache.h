@@ -44,6 +44,10 @@ class TableCache {
              uint64_t file_size, const Slice& k, void* arg,
              void (*handle_result)(void*, const Slice&, const Slice&));
 
+  // Count physical records for an exact raw user key in one primary SST.
+  Status CountUserKeyRecords(uint64_t file_number, uint64_t file_size,
+                             const Slice& user_key, uint64_t* count);
+
   Status GetInternalStats(uint64_t file_number, uint64_t file_size,
                           TableInternalStats* stats);
   Status GetTTLStats(uint64_t file_number, uint64_t file_size,

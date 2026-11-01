@@ -94,6 +94,17 @@ class VersionEdit {
     metadata_distinct_keys_ = distinct_keys;
     metadata_wal_number_ = wal_number;
   }
+  void SetPrimaryMetadataCheckpoint(uint64_t sequence,
+                                    uint64_t total_entries,
+                                    uint64_t distinct_keys) {
+    has_primary_metadata_checkpoint_ = true;
+    primary_metadata_checkpoint_sequence_ = sequence;
+    primary_metadata_total_entries_ = total_entries;
+    primary_metadata_distinct_keys_ = distinct_keys;
+  }
+  bool has_primary_metadata_checkpoint() const {
+    return has_primary_metadata_checkpoint_;
+  }
   void SetCompactPointer(int level, const InternalKey& key) {
     compact_pointers_.push_back(std::make_pair(level, key));
   }
@@ -141,6 +152,10 @@ class VersionEdit {
   uint64_t metadata_distinct_keys_;
   uint64_t metadata_wal_number_;
   bool has_metadata_checkpoint_;
+  uint64_t primary_metadata_checkpoint_sequence_;
+  uint64_t primary_metadata_total_entries_;
+  uint64_t primary_metadata_distinct_keys_;
+  bool has_primary_metadata_checkpoint_;
 
   std::vector<std::pair<int, InternalKey>> compact_pointers_;
   DeletedFileSet deleted_files_;

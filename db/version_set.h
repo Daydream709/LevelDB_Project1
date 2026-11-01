@@ -75,6 +75,13 @@ class Version {
   Status Get(const ReadOptions&, const LookupKey& key, std::string* val,
              uint64_t read_time_micros, GetStats* stats);
 
+  // Count physical records for an exact raw user key. Files in exclude are
+  // ignored; this is used to reconcile compaction output against the latest
+  // installed version.
+  Status CountUserKeyRecords(const Slice& user_key,
+                             const std::set<uint64_t>* exclude,
+                             uint64_t* count) const;
+
   // Adds "stats" into the current state.  Returns true if a new
   // compaction may need to be triggered, false otherwise.
   // REQUIRES: lock is held
@@ -245,6 +252,18 @@ class VersionSet {
   uint64_t metadata_total_entries() const { return metadata_total_entries_; }
   uint64_t metadata_distinct_keys() const { return metadata_distinct_keys_; }
   uint64_t metadata_wal_number() const { return metadata_wal_number_; }
+  bool has_primary_metadata_checkpoint() const {
+    return has_primary_metadata_checkpoint_;
+  }
+  uint64_t primary_metadata_checkpoint_sequence() const {
+    return primary_metadata_checkpoint_sequence_;
+  }
+  uint64_t primary_metadata_total_entries() const {
+    return primary_metadata_total_entries_;
+  }
+  uint64_t primary_metadata_distinct_keys() const {
+    return primary_metadata_distinct_keys_;
+  }
 
   // Pick level and inputs for a new compaction.
   // Returns nullptr if there is no compaction to be done.
@@ -331,6 +350,10 @@ class VersionSet {
   uint64_t metadata_total_entries_;
   uint64_t metadata_distinct_keys_;
   uint64_t metadata_wal_number_;
+  bool has_primary_metadata_checkpoint_;
+  uint64_t primary_metadata_checkpoint_sequence_;
+  uint64_t primary_metadata_total_entries_;
+  uint64_t primary_metadata_distinct_keys_;
 
   // Opened lazily
   WritableFile* descriptor_file_;
