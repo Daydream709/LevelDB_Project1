@@ -183,6 +183,8 @@ class DBImpl : public DB {
   Status CountPrimaryRecordsForKey(const Slice& key, uint64_t* count)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status LogAndApply(VersionEdit* edit) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void UpdatePublishedStatsSnapshot() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void EnablePublishedStatsSnapshot() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   Status WriteLevel0Table(MemTable* mem, VersionEdit* edit, Version* base,
                           uint64_t* output_number = nullptr,
@@ -261,6 +263,14 @@ class DBImpl : public DB {
   uint32_t seed_ GUARDED_BY(mutex_);  // For sampling.
   uint64_t metadata_total_entries_ GUARDED_BY(mutex_);
   uint64_t metadata_distinct_keys_ GUARDED_BY(mutex_);
+  // A coherent lock-free copy for the read-only GetCurrentStats fast path.
+  // The sequence and payload fields are atomic so concurrent seqlock reads do
+  // not introduce C++ data races.
+  std::atomic<bool> published_stats_available_;
+  std::atomic<uint64_t> published_stats_version_;
+  std::atomic<uint64_t> published_stats_total_entries_;
+  std::atomic<uint64_t> published_stats_distinct_keys_;
+  std::atomic<uint64_t> published_stats_sequence_;
   uint64_t metadata_mseq_ GUARDED_BY(mutex_);
   uint64_t metadata_mseq_allocator_ GUARDED_BY(mutex_);
   uint64_t metadata_recovery_max_mseq_ GUARDED_BY(mutex_);

@@ -119,6 +119,58 @@ TEST_F(StatsDBTest, BasicCount) {
   ASSERT_EQ(stats.distinct_keys, 2);
 }
 
+TEST_F(StatsDBTest, CurrentStatsSnapshotIsConsistentDuringConcurrentWrites) {
+  const int kWrites = 3000;
+  std::atomic<bool> start_reader(false);
+  std::atomic<bool> stop_reader(false);
+  std::atomic<bool> invalid_snapshot(false);
+  std::atomic<uint64_t> samples(0);
+  std::thread reader([&] {
+    while (!start_reader.load(std::memory_order_acquire)) {
+      std::this_thread::yield();
+    }
+    uint64_t previous_total = 0;
+    uint64_t previous_sequence = 0;
+    bool have_previous = false;
+    while (!stop_reader.load(std::memory_order_acquire)) {
+      Stats current;
+      const Status status = db_->GetCurrentStats(ReadOptions(), &current);
+      if (!status.ok() || current.total_entries != current.distinct_keys ||
+          current.seq != current.total_entries ||
+          (have_previous &&
+           (current.total_entries < previous_total ||
+            current.seq < previous_sequence))) {
+        invalid_snapshot.store(true, std::memory_order_relaxed);
+      }
+      previous_total = current.total_entries;
+      previous_sequence = current.seq;
+      have_previous = true;
+      samples.fetch_add(1, std::memory_order_relaxed);
+    }
+  });
+
+  start_reader.store(true, std::memory_order_release);
+  bool writes_ok = true;
+  for (int i = 0; i < kWrites; ++i) {
+    if (!db_->Put(WriteOptions(), "snapshot-" + std::to_string(i), "v")
+             .ok()) {
+      writes_ok = false;
+      break;
+    }
+  }
+  stop_reader.store(true, std::memory_order_release);
+  reader.join();
+
+  ASSERT_TRUE(writes_ok);
+  EXPECT_FALSE(invalid_snapshot.load(std::memory_order_relaxed));
+  EXPECT_GT(samples.load(std::memory_order_relaxed), 0U);
+  Stats final_stats;
+  ASSERT_TRUE(db_->GetCurrentStats(ReadOptions(), &final_stats).ok());
+  EXPECT_EQ(final_stats.total_entries, kWrites);
+  EXPECT_EQ(final_stats.distinct_keys, kWrites);
+  EXPECT_EQ(final_stats.seq, kWrites);
+}
+
 TEST_F(StatsDBTest, StatsStayInPrimaryStateWithoutAuxiliaryCheckpoint) {
   delete db_;
   db_ = nullptr;

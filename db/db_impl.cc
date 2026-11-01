@@ -451,6 +451,11 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname,
       seed_(0),
       metadata_total_entries_(0),
       metadata_distinct_keys_(0),
+      published_stats_available_(false),
+      published_stats_version_(0),
+      published_stats_total_entries_(0),
+      published_stats_distinct_keys_(0),
+      published_stats_sequence_(0),
       metadata_mseq_(0),
       metadata_mseq_allocator_(0),
       metadata_recovery_max_mseq_(0),
@@ -1350,6 +1355,32 @@ Status DBImpl::GetCurrentStats(const ReadOptions& options, Stats* stats) {
   if (stats == nullptr) {
     return Status::InvalidArgument("stats must not be null");
   }
+  if (published_stats_available_.load(std::memory_order_acquire)) {
+    uint64_t total_entries;
+    uint64_t distinct_keys;
+    uint64_t sequence;
+    for (;;) {
+      const uint64_t before =
+          published_stats_version_.load(std::memory_order_seq_cst);
+      if ((before & 1U) != 0) continue;
+      total_entries =
+          published_stats_total_entries_.load(std::memory_order_seq_cst);
+      distinct_keys =
+          published_stats_distinct_keys_.load(std::memory_order_seq_cst);
+      sequence =
+          published_stats_sequence_.load(std::memory_order_seq_cst);
+      const uint64_t after =
+          published_stats_version_.load(std::memory_order_seq_cst);
+      if (before == after &&
+          published_stats_available_.load(std::memory_order_acquire)) {
+        stats->total_entries = total_entries;
+        stats->distinct_keys = distinct_keys;
+        stats->seq = sequence;
+        return Status::OK();
+      }
+      if (!published_stats_available_.load(std::memory_order_acquire)) break;
+    }
+  }
   mutex_.Lock();
   while (metadata_rebuild_in_progress_) {
     background_work_finished_signal_.Wait();
@@ -1366,6 +1397,27 @@ Status DBImpl::GetCurrentStats(const ReadOptions& options, Stats* stats) {
   stats->seq = versions_->LastSequence();
   mutex_.Unlock();
   return Status::OK();
+}
+
+void DBImpl::UpdatePublishedStatsSnapshot() {
+  mutex_.AssertHeld();
+  const uint64_t version =
+      published_stats_version_.load(std::memory_order_relaxed);
+  assert((version & 1U) == 0);
+  published_stats_version_.store(version + 1, std::memory_order_seq_cst);
+  published_stats_total_entries_.store(metadata_total_entries_,
+                                       std::memory_order_seq_cst);
+  published_stats_distinct_keys_.store(metadata_distinct_keys_,
+                                       std::memory_order_seq_cst);
+  published_stats_sequence_.store(versions_->LastSequence(),
+                                  std::memory_order_seq_cst);
+  published_stats_version_.store(version + 2, std::memory_order_seq_cst);
+}
+
+void DBImpl::EnablePublishedStatsSnapshot() {
+  mutex_.AssertHeld();
+  UpdatePublishedStatsSnapshot();
+  published_stats_available_.store(true, std::memory_order_release);
 }
 
 Status DBImpl::CountPrimaryRecordsForKey(const Slice& key, uint64_t* count) {
@@ -1615,6 +1667,7 @@ Status DBImpl::FlushMetadata() {
   pending_outputs_.erase(file_number);
   if (!s.ok()) {
     if (s.IsCorruption()) {
+      published_stats_available_.store(false, std::memory_order_release);
       metadata_needs_rebuild_ = true;
       metadata_rebuild_only_error_ = true;
     }
@@ -1802,6 +1855,7 @@ Status DBImpl::CompactMetadata() {
     }
   }
   if (!s.ok() && s.IsCorruption()) {
+    published_stats_available_.store(false, std::memory_order_release);
     metadata_needs_rebuild_ = true;
     metadata_rebuild_only_error_ = true;
   }
@@ -3100,6 +3154,7 @@ void DBImpl::BackgroundMetadataCall() {
       metadata_rebuild_in_progress_ = false;
       if (s.ok()) {
         bg_error_ = Status::OK();
+        EnablePublishedStatsSnapshot();
         RemoveObsoleteFiles();
       } else {
         metadata_rebuild_only_error_ = false;
@@ -3512,6 +3567,7 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
   if (status.ok()) {
     metadata_total_entries_ = next_total;
     metadata_distinct_keys_ = next_distinct;
+    UpdatePublishedStatsSnapshot();
     metadata_profile_.Count(MetadataProfileCounter::kPrimaryCompactions);
     if (negative_records >= positive_records) {
       ProfileScope::Count("gc.installed_removed_records",
@@ -4623,6 +4679,7 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
       metadata_total_entries_ = next_total_entries;
       metadata_distinct_keys_ = next_distinct_keys;
       versions_->SetLastSequence(last_sequence);
+      UpdatePublishedStatsSnapshot();
     } else {
       RecordBackgroundError(status);
     }
@@ -5057,6 +5114,7 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
     impl->RemoveObsoleteFiles();
     impl->MaybeScheduleCompaction();
     impl->metadata_work_signal_.Signal();
+    impl->EnablePublishedStatsSnapshot();
   }
   impl->mutex_.Unlock();
   if (s.ok()) {
