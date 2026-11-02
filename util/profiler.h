@@ -63,6 +63,9 @@ class ProfileScope {
 
 template <class F>
 Status ProfileStatus(const char* name, F&& f) {
+  // Preserve captured active scopes across runtime toggles, but avoid building
+  // an empty scope (including its maps and strings) when nothing is active.
+  if (ProfileScope::Current() == nullptr) return f();
   ProfileScope scope(name);
   return scope.Result(f());
 }
