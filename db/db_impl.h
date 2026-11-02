@@ -133,6 +133,57 @@ class DBImpl : public DB {
                                 uint32_t* seed);
 
   Status NewDB();
+  Status GetCurrentStatsProfiled(Stats* stats);
+  static constexpr uint64_t kCompactStatsFallback = uint64_t{1} << 63;
+  static constexpr uint64_t kCompactStatsFieldBits = 21;
+  static constexpr uint64_t kCompactStatsFieldMask =
+      (uint64_t{1} << kCompactStatsFieldBits) - 1;
+  static constexpr uint64_t kPublishedStatsWideCounts = uint64_t{1} << 63;
+  static constexpr uint64_t kPublishedStatsVersionMask =
+      kPublishedStatsWideCounts - 1;
+  Status GetCurrentStatsFallback(Stats* stats);
+  Status GetCurrentStatsSnapshot(Stats* stats) {
+    const uint64_t compact_snapshot =
+        published_stats_compact_snapshot_.load(std::memory_order_relaxed);
+    if ((compact_snapshot & kCompactStatsFallback) == 0) {
+      stats->total_entries = compact_snapshot & kCompactStatsFieldMask;
+      stats->distinct_keys =
+          (compact_snapshot >> kCompactStatsFieldBits) &
+          kCompactStatsFieldMask;
+      stats->seq = compact_snapshot >> (2 * kCompactStatsFieldBits);
+      return Status::OK();
+    }
+    if (published_stats_available_.load(std::memory_order_acquire)) {
+      uint64_t total_entries;
+      uint64_t distinct_keys;
+      uint64_t sequence;
+      for (;;) {
+        const uint64_t before =
+            published_stats_version_.load(std::memory_order_seq_cst);
+        if ((before & 1U) != 0) continue;
+        if ((before & kPublishedStatsWideCounts) != 0) {
+          return GetCurrentStatsFallback(stats);
+        }
+        const uint64_t packed_counts =
+            published_stats_packed_counts_.load(std::memory_order_seq_cst);
+        total_entries = packed_counts & 0xffffffffULL;
+        distinct_keys = packed_counts >> 32;
+        sequence =
+            published_stats_sequence_.load(std::memory_order_seq_cst);
+        const uint64_t after =
+            published_stats_version_.load(std::memory_order_seq_cst);
+        if (before == after &&
+            published_stats_available_.load(std::memory_order_acquire)) {
+          stats->total_entries = total_entries;
+          stats->distinct_keys = distinct_keys;
+          stats->seq = sequence;
+          return Status::OK();
+        }
+        if (!published_stats_available_.load(std::memory_order_acquire)) break;
+      }
+    }
+    return GetCurrentStatsFallback(stats);
+  }
   // Recover the descriptor from persistent storage.  May do a significant
   // amount of work to recover recently logged updates.  Any changes to
   // be made to the descriptor are added to *edit.
@@ -184,6 +235,7 @@ class DBImpl : public DB {
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status LogAndApply(VersionEdit* edit) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void UpdatePublishedStatsSnapshot() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void UpdatePublishedStatsCompactSnapshot() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void EnablePublishedStatsSnapshot() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   Status WriteLevel0Table(MemTable* mem, VersionEdit* edit, Version* base,
@@ -263,13 +315,15 @@ class DBImpl : public DB {
   uint32_t seed_ GUARDED_BY(mutex_);  // For sampling.
   uint64_t metadata_total_entries_ GUARDED_BY(mutex_);
   uint64_t metadata_distinct_keys_ GUARDED_BY(mutex_);
+  // One-word snapshot for the common counter range; larger values use the
+  // full-width seqlock fields below.
+  std::atomic<uint64_t> published_stats_compact_snapshot_;
   // A coherent lock-free copy for the read-only GetCurrentStats fast path.
   // The sequence and payload fields are atomic so concurrent seqlock reads do
   // not introduce C++ data races.
   std::atomic<bool> published_stats_available_;
   std::atomic<uint64_t> published_stats_version_;
-  std::atomic<uint64_t> published_stats_total_entries_;
-  std::atomic<uint64_t> published_stats_distinct_keys_;
+  std::atomic<uint64_t> published_stats_packed_counts_;
   std::atomic<uint64_t> published_stats_sequence_;
   uint64_t metadata_mseq_ GUARDED_BY(mutex_);
   uint64_t metadata_mseq_allocator_ GUARDED_BY(mutex_);
