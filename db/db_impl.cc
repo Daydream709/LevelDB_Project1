@@ -3045,8 +3045,15 @@ Status DBImpl::FindTTLCompactionCandidate(bool* found) {
             static_cast<double>(expired_estimate) / stats.total_records;
         if (expired_estimate == 0 || (!aged && expired_ratio < 0.30)) continue;
 
-        ProfileScope scoring("ttl.score_candidate");
         ProfileScope::Count("ttl.schedule_candidates");
+        // estimated_io includes this file, so the final score cannot exceed
+        // expired_ratio (allow a conservative floating-point rounding margin).
+        // Keep equal-score candidates on the existing first-wins path.
+        if (expired_ratio + 4 * std::numeric_limits<double>::epsilon() < best_score) {
+          ProfileScope::Count("ttl.schedule_pruned_candidates");
+          continue;
+        }
+        ProfileScope scoring("ttl.score_candidate");
         int target_level = level;
         const Slice smallest = file->smallest.user_key();
         const Slice largest = file->largest.user_key();

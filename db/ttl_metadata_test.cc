@@ -862,6 +862,24 @@ TEST_P(TTLMetadataTest, NegativeScanCacheDoesNotDelayManualGCOrFlush) {
   ExpectStatsMatchPhysicalScan(2);
 }
 
+TEST_P(TTLMetadataTest, PrunedScoringMatchesExhaustiveSelection) {
+  options_.write_buffer_size = 16 << 20;
+  ASSERT_LEVELDB_OK(Open(true));
+  WriteBatch batch;
+  for (int i = 0; i < 192; ++i) {
+    char key[32]; std::snprintf(key, sizeof(key), "mixed-%04d", i);
+    if (i < 64 || i % 2 == 0)
+      batch.PutWithExpiration(key, std::string(32768, 'v'), kTestEpochMicros + kMicrosPerSecond);
+    else batch.Put(key, std::string(32768, 'v'));
+  }
+  ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &batch));
+  ASSERT_NO_FATAL_FAILURE(PushToBottom());
+  ASSERT_GE(TTLCompactionTestPeer::BottomBounds(db_.get()).size(), 3U);
+  env_.Advance(2 * kMicrosPerSecond);
+  ASSERT_NO_FATAL_FAILURE(TTLCompactionTestPeer::CheckCandidateAgainstLinearScan(db_.get()));
+  ExpectStatsMatchPhysicalScan(192);
+}
+
 TEST_P(TTLMetadataTest, UnlockedCandidateReschedulesManualWork) {
   CheckUnlockedCandidateScan(4);
 }
