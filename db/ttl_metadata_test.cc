@@ -49,6 +49,11 @@ namespace leveldb {
 // No production state or public API is added by this test peer.
 class TTLCompactionTestPeer {
  public:
+  static uint64_t ScanDeadline(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    return impl->ttl_scan_not_before_micros_;
+  }
   static void WaitForIdle(DB* db) {
     auto* impl = static_cast<DBImpl*>(db);
     MutexLock lock(&impl->mutex_);
@@ -818,6 +823,45 @@ TEST_P(TTLMetadataTest, UnlockedCandidatePublishesReadError) {
 TEST_P(TTLMetadataTest, ShutdownWaitsForUnlockedCandidateScan) {
   CheckUnlockedCandidateScan(3);
 }
+TEST_P(TTLMetadataTest, NegativeScanCacheExpiresAndInvalidates) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "future", "value", 3600));
+  ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+  TTLCompactionTestPeer::WaitForIdle(db_.get());
+  env_.Advance(2000);
+  TTLCompactionTestPeer::Schedule(db_.get());
+  const uint64_t first = TTLCompactionTestPeer::ScanDeadline(db_.get());
+  EXPECT_EQ(env_.NowMicros() + 1000, first);
+  env_.Advance(500);
+  TTLCompactionTestPeer::Schedule(db_.get());
+  EXPECT_EQ(first, TTLCompactionTestPeer::ScanDeadline(db_.get()));
+  ASSERT_LEVELDB_OK(TTLCompactionTestPeer::PublishEmptyVersion(db_.get()));
+  TTLCompactionTestPeer::Schedule(db_.get());
+  EXPECT_EQ(env_.NowMicros() + 1000, TTLCompactionTestPeer::ScanDeadline(db_.get()));
+  env_.Advance(1000);
+  TTLCompactionTestPeer::Schedule(db_.get());
+  EXPECT_EQ(env_.NowMicros() + 1000, TTLCompactionTestPeer::ScanDeadline(db_.get()));
+  env_.SetTime(kTestEpochMicros - kMicrosPerSecond);
+  TTLCompactionTestPeer::Schedule(db_.get());
+  EXPECT_EQ(env_.NowMicros() + 1000, TTLCompactionTestPeer::ScanDeadline(db_.get()));
+  ExpectValue("future", "value");
+}
+
+TEST_P(TTLMetadataTest, NegativeScanCacheDoesNotDelayManualGCOrFlush) {
+  ASSERT_LEVELDB_OK(Open(true));
+  WriteBatch batch;
+  batch.PutWithExpiration("short", "value", env_.NowMicros() + 500);
+  ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &batch));
+  ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+  TTLCompactionTestPeer::WaitForIdle(db_.get());
+  env_.Advance(500);
+  ExpectMissing("short");
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "new", "value"));
+  db_->CompactRange(nullptr, nullptr);
+  EXPECT_EQ(std::set<std::string>({"new"}), PhysicalKeys());
+  ExpectStatsMatchPhysicalScan(2);
+}
+
 TEST_P(TTLMetadataTest, UnlockedCandidateReschedulesManualWork) {
   CheckUnlockedCandidateScan(4);
 }

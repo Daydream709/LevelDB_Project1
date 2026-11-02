@@ -1480,6 +1480,7 @@ Status DBImpl::LogAndApply(VersionEdit* edit) {
   }
   manifest_commit_in_progress_ = true;
   Status s = versions_->LogAndApply(edit, &mutex_);
+  if (s.ok()) ++ttl_scan_generation_;
   manifest_commit_in_progress_ = false;
   background_work_finished_signal_.SignalAll();
   return s;
@@ -3114,12 +3115,29 @@ void DBImpl::MaybeScheduleCompaction() {
     // replacement is installed.
   } else if (imm_ == nullptr && manual_compaction_ == nullptr &&
              !versions_->NeedsCompaction()) {
+    // Coalesce repeated unsuccessful TTL scans for at most one millisecond.
+    // Manual/size compactions and immutable memtables bypass this branch.
+    const uint64_t scan_now = env_->NowMicros();
+    if (ttl_cached_generation_ == ttl_scan_generation_ &&
+        ttl_scan_not_before_micros_ > scan_now &&
+        ttl_scan_not_before_micros_ - scan_now <= 1000) {
+      return;
+    }
+    const uint64_t scan_generation = ttl_scan_generation_;
     // Reserve the existing background-work slot during the unlocked scan.
     // This also makes shutdown/manual compaction wait for the pinned Version.
     background_compaction_scheduled_ = true;
     bool ttl_candidate = false;
     Status status = FindTTLCompactionCandidate(&ttl_candidate);
     background_compaction_scheduled_ = false;
+    if (status.ok() && !ttl_candidate && snapshots_.empty() &&
+        scan_generation == ttl_scan_generation_ && imm_ == nullptr &&
+        manual_compaction_ == nullptr && !versions_->NeedsCompaction()) {
+      ttl_cached_generation_ = scan_generation;
+      const uint64_t finished = env_->NowMicros();
+      ttl_scan_not_before_micros_ =
+          finished <= UINT64_MAX - 1000 ? finished + 1000 : UINT64_MAX;
+    }
     if (!status.ok()) {
       RecordBackgroundError(status);
     } else if (!shutting_down_.load(std::memory_order_acquire) &&
