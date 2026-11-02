@@ -1397,17 +1397,20 @@ void DBImpl::UpdatePublishedStatsSnapshot() {
   const uint64_t write_version =
       (version_counter + 1) & kPublishedStatsVersionMask;
   published_stats_version_.store(wide_flag | write_version,
-                                 std::memory_order_seq_cst);
+                                 std::memory_order_relaxed);
+  // Readers pair this release fence with an acquire fence after loading the
+  // payload, which orders the odd version before the payload stores.
+  std::atomic_thread_fence(std::memory_order_release);
   const uint64_t packed_counts =
       wide_counts ? 0
                   : (metadata_distinct_keys_ << 32) | metadata_total_entries_;
   published_stats_packed_counts_.store(packed_counts,
-                                       std::memory_order_seq_cst);
+                                       std::memory_order_relaxed);
   published_stats_sequence_.store(versions_->LastSequence(),
-                                  std::memory_order_seq_cst);
+                                  std::memory_order_relaxed);
   published_stats_version_.store(
       wide_flag | ((write_version + 1) & kPublishedStatsVersionMask),
-      std::memory_order_seq_cst);
+      std::memory_order_release);
   UpdatePublishedStatsCompactSnapshot();
 }
 
