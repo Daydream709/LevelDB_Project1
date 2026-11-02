@@ -3943,10 +3943,8 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         // Therefore this deletion marker is obsolete and can be dropped.
         drop = true;
         ProfileScope::Count("gc.dropped_tombstone");
-      } else if (ikey.type == kTypeValueWithTTL) {
-        if (ikey.sequence > compact->smallest_snapshot) {
-          ProfileScope::Count("gc.ttl_retained_sequence_boundary");
-        } else {
+      } else if (ikey.type == kTypeValueWithTTL &&
+                 ikey.sequence <= compact->smallest_snapshot) {
         const Slice raw_value = input->value();
         if (raw_value.size() < 8) {
           status = Status::Corruption(
@@ -3966,7 +3964,13 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         } else {
           ProfileScope::Count("gc.ttl_retained_time_boundary");
         }
-        }
+      }
+
+      if (!drop && ikey.type == kTypeValueWithTTL) {
+        if (ikey.sequence > compact->smallest_snapshot)
+          ProfileScope::Count("gc.ttl_retained_sequence_boundary");
+        // Live TTL values need no lower-level lookup. Expired values already
+        // received the base-level check above; do not repeat it here.
       }
       last_sequence_for_key = ikey.sequence;
     }
