@@ -1346,6 +1346,9 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
   return status;
 }
 
+#if defined(__GNUC__)
+__attribute__((hot))
+#endif
 Status DBImpl::GetCurrentStats(const ReadOptions& options, Stats* stats) {
   (void)options;  // Statistics describe the current published state.
   if (stats == nullptr) {
