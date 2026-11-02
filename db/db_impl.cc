@@ -2951,15 +2951,21 @@ Status DBImpl::FindTTLCompactionCandidate(bool* found) {
       });
       if (!status.ok()) return profile.Result(status);
 
+      uint64_t expired_estimate = 0;
       if (!stats.valid) {
         ProfileScope fallback("ttl.summary_fallback_scan");
         ProfileScope::Count("ttl.summary_fallback_files");
-        std::vector<uint64_t> expirations;
+        // We already inspect every record in the fallback. Count expiration
+        // exactly at this scan's safe time instead of retaining all deadlines
+        // and rebuilding an approximate histogram. This state is local only.
+        stats.total_records = 0;
+        stats.ttl_records = 0;
+        stats.min_expire_time_micros = 0;
+        stats.max_expire_time_micros = 0;
         ReadOptions scan_options;
         scan_options.verify_checksums = true;
         Iterator* iter = table_cache_->NewIterator(
             scan_options, file->number, file->file_size);
-        uint64_t total = 0;
         Status scan_status = Status::OK();
         for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
           ParsedInternalKey key;
@@ -2968,7 +2974,7 @@ Status DBImpl::FindTTLCompactionCandidate(bool* found) {
                 "invalid internal key while scanning TTL summary");
             break;
           }
-          ++total;
+          ++stats.total_records;
           if (key.type == kTypeValueWithTTL) {
             Slice value = iter->value();
             if (value.size() < 8) {
@@ -2976,40 +2982,35 @@ Status DBImpl::FindTTLCompactionCandidate(bool* found) {
                   "TTL value is shorter than its deadline while scanning summary");
               break;
             }
-            expirations.push_back(DecodeFixed64(value.data()));
+            const uint64_t expiry = DecodeFixed64(value.data());
+            if (stats.ttl_records == 0) {
+              stats.min_expire_time_micros = expiry;
+              stats.max_expire_time_micros = expiry;
+            } else {
+              stats.min_expire_time_micros =
+                  std::min(stats.min_expire_time_micros, expiry);
+              stats.max_expire_time_micros =
+                  std::max(stats.max_expire_time_micros, expiry);
+            }
+            ++stats.ttl_records;
+            if (expiry <= safe_time) ++expired_estimate;
           }
         }
         if (scan_status.ok()) scan_status = iter->status();
         fallback.SetStatus(scan_status);
         delete iter;
         if (!scan_status.ok()) return scan_status;
-        stats.total_records = total;
-        stats.ttl_records = expirations.size();
-        if (!expirations.empty()) {
-          const auto bounds = std::minmax_element(expirations.begin(),
-                                                   expirations.end());
-          stats.min_expire_time_micros = *bounds.first;
-          stats.max_expire_time_micros = *bounds.second;
-          const long double span = static_cast<long double>(
-              stats.max_expire_time_micros - stats.min_expire_time_micros);
-          for (uint64_t expiry : expirations) {
-            const long double offset = static_cast<long double>(
-                expiry - stats.min_expire_time_micros);
-            const size_t bucket =
-                span == 0 ? 0 : std::min<size_t>(15, offset / span * 16);
-            ++stats.expiration_histogram[bucket];
-          }
-        }
       }
 
       if (stats.total_records == 0 || stats.ttl_records == 0 ||
           safe_time < stats.min_expire_time_micros) {
         continue;
       }
-      uint64_t expired_estimate = 0;
-      if (safe_time >= stats.max_expire_time_micros) {
+      // Valid summaries retain their existing conservative histogram estimate.
+      // An invalid/missing summary uses the exact count computed above.
+      if (stats.valid && safe_time >= stats.max_expire_time_micros) {
         expired_estimate = stats.ttl_records;
-      } else {
+      } else if (stats.valid) {
         const long double span = static_cast<long double>(
             stats.max_expire_time_micros - stats.min_expire_time_micros);
         for (size_t bucket = 0; bucket < 16; ++bucket) {

@@ -41,6 +41,23 @@ extern char** environ;
 #endif
 
 namespace leveldb {
+// Inspect selection without scheduling GC, so threshold tests are deterministic.
+// No production state or public API is added by this test peer.
+class TTLCompactionTestPeer {
+ public:
+  static Status FindCandidate(DB* db, bool* found) {
+    auto* impl = static_cast<DBImpl*>(db);
+    ProfileScope profile(impl->profiler_, impl->profiling_id_,
+                         "test.ttl_candidate");
+    impl->mutex_.Lock();
+    Status status = impl->FindTTLCompactionCandidate(found);
+    impl->ttl_compaction_level_ = -1;
+    impl->ttl_compaction_begin_.clear();
+    impl->ttl_compaction_end_.clear();
+    impl->mutex_.Unlock();
+    return status;
+  }
+};
 namespace {
 
 constexpr uint64_t kTestEpochMicros = 1700000000000000ULL;
@@ -195,6 +212,43 @@ class TTLMetadataTest : public testing::TestWithParam<bool> {
 
   void Reopen() {
     db_.reset();
+    ASSERT_LEVELDB_OK(Open(false));
+  }
+
+  void MakeTTLSummariesUnavailable(bool corrupt = false) {
+    db_.reset();
+    std::vector<std::string> children;
+    ASSERT_LEVELDB_OK(env_.GetChildren(dbname_, &children));
+    size_t changed = 0;
+    for (const std::string& child : children) {
+      if (child.size() <= 4 || child.substr(child.size() - 4) != ".ldb") continue;
+      const std::string path = dbname_ + "/" + child;
+      std::string contents;
+      ASSERT_LEVELDB_OK(ReadFileToString(&env_, path, &contents));
+      if (corrupt) {
+        const size_t pos = contents.find("LDS1");
+        ASSERT_NE(pos, std::string::npos);
+        contents[pos] ^= 1;  // Optional summary checksum must fail.
+      } else {
+        Footer footer;
+        Slice bytes(contents.data() + contents.size() - Footer::kEncodedLength,
+                    Footer::kEncodedLength);
+        ASSERT_LEVELDB_OK(footer.DecodeFrom(&bytes));
+        const auto offset = footer.metaindex_handle().offset();
+        const auto size = footer.metaindex_handle().size();
+        const std::string marker = "leveldb.internal-stats.v1";
+        const size_t pos = contents.find(marker, offset);
+        ASSERT_NE(pos, std::string::npos);
+        ASSERT_LE(pos + marker.size(), offset + size);
+        contents[pos + marker.size() - 1] = '0';
+        EncodeFixed32(&contents[offset + size + 1],
+                      crc32c::Mask(crc32c::Value(contents.data() + offset,
+                                                size + 1)));
+      }
+      ASSERT_LEVELDB_OK(WriteStringToFile(&env_, contents, path));
+      ++changed;
+    }
+    ASSERT_GT(changed, 0U);
     ASSERT_LEVELDB_OK(Open(false));
   }
 
@@ -794,6 +848,90 @@ TEST_P(TTLMetadataTest, MissingTTLSummaryPreservesAuxiliaryCounts) {
   if (GetParam()) {
     EXPECT_GT(ProfilerTestPeer::Counter(*options_.profiler, "metadata.index_missing"), 0U);
   }
+}
+
+TEST_P(TTLMetadataTest, FallbackCountsExpiredRecordsAtThreshold) {
+  for (int expired : {0, 29, 30, 80}) {
+    SCOPED_TRACE(expired);
+    db_.reset();
+    ASSERT_LEVELDB_OK(DestroyDB(dbname_, options_));
+    env_.SetTime(kTestEpochMicros);
+    ASSERT_LEVELDB_OK(Open(true));
+    WriteBatch batch;
+    for (int i = 0; i < 100; ++i) {
+      const std::string key = "key-" + std::to_string(i);
+      if (i < 80) {
+        batch.PutWithExpiration(key, "value", kTestEpochMicros +
+            (i < expired ? 20 : 3600) * kMicrosPerSecond);
+      } else {
+        batch.Put(key, "value");  // Ordinary records belong in the denominator.
+      }
+    }
+    ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &batch));
+    ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+    MakeTTLSummariesUnavailable();
+    ASSERT_FALSE(HasFatalFailure());
+    env_.Advance(20 * kMicrosPerSecond);  // Equality means expired, age is zero.
+    bool found = false;
+    ASSERT_LEVELDB_OK(TTLCompactionTestPeer::FindCandidate(db_.get(), &found));
+    EXPECT_EQ(expired >= 30, found);
+    EXPECT_EQ(100U, PhysicalKeys().size());  // Selection itself removes nothing.
+    for (int i = 0; i < 100; ++i) {
+      const std::string key = "key-" + std::to_string(i);
+      if (i < expired) ExpectMissing(key);
+      else ExpectValue(key, "value");
+    }
+    ExpectStatsMatchPhysicalScan(100);
+  }
+}
+
+TEST_P(TTLMetadataTest, FallbackAgeThresholdAndSnapshotProtection) {
+  ASSERT_LEVELDB_OK(Open(true));
+  WriteBatch batch;
+  batch.PutWithExpiration("ttl", "value",
+                          kTestEpochMicros + 20 * kMicrosPerSecond);
+  for (int i = 0; i < 99; ++i) batch.Put("plain-" + std::to_string(i), "value");
+  ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &batch));
+  ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+  MakeTTLSummariesUnavailable();
+  ASSERT_FALSE(HasFatalFailure());
+  env_.Advance(79 * kMicrosPerSecond);
+  bool found = false;
+  ASSERT_LEVELDB_OK(TTLCompactionTestPeer::FindCandidate(db_.get(), &found));
+  EXPECT_FALSE(found);  // 1% expired, only 59 seconds old.
+  env_.Advance(kMicrosPerSecond);
+  ASSERT_LEVELDB_OK(TTLCompactionTestPeer::FindCandidate(db_.get(), &found));
+  EXPECT_TRUE(found);  // Exactly 60 seconds old overrides the ratio threshold.
+  const Snapshot* snapshot = db_->GetSnapshot();
+  const Status status = TTLCompactionTestPeer::FindCandidate(db_.get(), &found);
+  EXPECT_TRUE(status.ok()) << status.ToString();
+  EXPECT_FALSE(found);  // Automatic selection remains conservative with snapshots.
+  db_->ReleaseSnapshot(snapshot);
+  db_->CompactRange(nullptr, nullptr);
+  ExpectMissing("ttl");
+  EXPECT_EQ(99U, PhysicalKeys().size());
+  ExpectStatsMatchPhysicalScan(100);
+}
+
+TEST_P(TTLMetadataTest, CorruptSummaryFallbackHandlesMaximumDeadline) {
+  ASSERT_LEVELDB_OK(Open(true));
+  WriteBatch batch;
+  for (int i = 0; i < 10; ++i)
+    batch.PutWithExpiration("key-" + std::to_string(i), "value",
+                            std::numeric_limits<uint64_t>::max());
+  ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &batch));
+  ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+  MakeTTLSummariesUnavailable(true);
+  ASSERT_FALSE(HasFatalFailure());
+  bool found = false;
+  env_.SetTime(std::numeric_limits<uint64_t>::max() - 1);
+  ASSERT_LEVELDB_OK(TTLCompactionTestPeer::FindCandidate(db_.get(), &found));
+  EXPECT_FALSE(found);
+  env_.Advance(1);
+  ASSERT_LEVELDB_OK(TTLCompactionTestPeer::FindCandidate(db_.get(), &found));
+  EXPECT_TRUE(found);  // min == max, all expired exactly at the deadline.
+  EXPECT_EQ(10U, PhysicalKeys().size());
+  ExpectStatsMatchPhysicalScan(10);
 }
 
 TEST_P(TTLMetadataTest, SuccessfulGCCountsOnlyInstalledRecordRemoval) {
