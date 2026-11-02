@@ -3944,8 +3944,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         drop = true;
         ProfileScope::Count("gc.dropped_tombstone");
       } else if (ikey.type == kTypeValueWithTTL &&
-                 ikey.sequence <= compact->smallest_snapshot &&
-                 compact->compaction->IsBaseLevelForKey(ikey.user_key)) {
+                 ikey.sequence <= compact->smallest_snapshot) {
         const Slice raw_value = input->value();
         if (raw_value.size() < 8) {
           status = Status::Corruption(
@@ -3956,8 +3955,12 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
             compact->smallest_snapshot_time_micros) {
           // The expired value acts as a deletion barrier. Older records in
           // this compaction are hidden by the normal sequence rule above.
-          drop = true;
-          ProfileScope::Count("gc.dropped_expired_ttl");
+          // Only expired records need the lower-level safety check. Its
+          // cursors can skip live keys because input user keys are ordered.
+          if (compact->compaction->IsBaseLevelForKey(ikey.user_key)) {
+            drop = true;
+            ProfileScope::Count("gc.dropped_expired_ttl");
+          }
         } else {
           ProfileScope::Count("gc.ttl_retained_time_boundary");
         }
@@ -3966,8 +3969,8 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       if (!drop && ikey.type == kTypeValueWithTTL) {
         if (ikey.sequence > compact->smallest_snapshot)
           ProfileScope::Count("gc.ttl_retained_sequence_boundary");
-        // The preceding TTL branch already checked base level and records its
-        // time-bound retention; do not call IsBaseLevelForKey a second time.
+        // Live TTL values need no lower-level lookup. Expired values already
+        // received the base-level check above; do not repeat it here.
       }
       last_sequence_for_key = ikey.sequence;
     }
