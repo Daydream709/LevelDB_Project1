@@ -317,11 +317,13 @@ class DBImpl : public DB {
   uint64_t metadata_distinct_keys_ GUARDED_BY(mutex_);
   // One-word snapshot for the common counter range; larger values use the
   // full-width seqlock fields below.
-  std::atomic<uint64_t> published_stats_compact_snapshot_;
+  // Keep the read-mostly value apart from writer-updated seqlock fields so
+  // their stores do not invalidate the fast-path reader's cache line.
+  alignas(64) std::atomic<uint64_t> published_stats_compact_snapshot_;
   // A coherent lock-free copy for the read-only GetCurrentStats fast path.
   // The sequence and payload fields are atomic so concurrent seqlock reads do
   // not introduce C++ data races.
-  std::atomic<bool> published_stats_available_;
+  alignas(64) std::atomic<bool> published_stats_available_;
   std::atomic<uint64_t> published_stats_version_;
   std::atomic<uint64_t> published_stats_packed_counts_;
   std::atomic<uint64_t> published_stats_sequence_;
