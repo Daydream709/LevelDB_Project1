@@ -5096,12 +5096,37 @@ Status DB::Delete(const WriteOptions& opt, const Slice& key) {
 
 DB::~DB() = default;
 
+namespace {
+class DBImplUnprofiled final : public DBImpl {
+ public:
+  DBImplUnprofiled(const Options& options, const std::string& dbname,
+                   uint64_t profiling_id)
+      : DBImpl(options, dbname, profiling_id) {}
+
+  Status GetCurrentStats(const ReadOptions& options, Stats* stats) override;
+};
+
+#if defined(__GNUC__)
+__attribute__((hot))
+#endif
+Status DBImplUnprofiled::GetCurrentStats(const ReadOptions& options,
+                                         Stats* stats) {
+  (void)options;
+  return GetCurrentStatsUnprofiled(stats);
+}
+}  // namespace
+
 Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
   *dbptr = nullptr;
 
   const uint64_t profiling_id = options.profiler ? NewProfileDatabaseID() : 0;
   ProfileScope profile(options.profiler, profiling_id, "recovery.open", true, "open");
-  DBImpl* impl = new DBImpl(options, dbname, profiling_id);
+  DBImpl* impl;
+  if (options.profiler == nullptr && !options.enable_metadata_profiling) {
+    impl = new DBImplUnprofiled(options, dbname, profiling_id);
+  } else {
+    impl = new DBImpl(options, dbname, profiling_id);
+  }
   impl->mutex_.Lock();
   VersionEdit edit;
   // Recover handles create_if_missing, error_if_exists

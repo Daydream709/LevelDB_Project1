@@ -97,6 +97,14 @@ class DBImpl : public DB {
   const std::shared_ptr<Profiler>& profiler() const { return profiler_; }
   uint64_t profiling_id() const { return profiling_id_; }
 
+ protected:
+  Status GetCurrentStatsUnprofiled(Stats* stats) {
+    if (stats == nullptr) {
+      return Status::InvalidArgument("stats must not be null");
+    }
+    return GetCurrentStatsSnapshot(stats);
+  }
+
  private:
   friend class DB;
   struct CompactionState;
