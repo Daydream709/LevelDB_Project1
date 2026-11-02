@@ -3,6 +3,9 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/db_impl.h"
+#include "db/version_set.h"
+#include "db/table_cache.h"
+#include "util/mutexlock.h"
 #include "db/write_batch_internal.h"
 #include "util/profiler.h"
 #include "table/format.h"
@@ -12,6 +15,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <condition_variable>
 #include <map>
 #include <limits>
@@ -45,6 +49,68 @@ namespace leveldb {
 // No production state or public API is added by this test peer.
 class TTLCompactionTestPeer {
  public:
+  static Status RewriteRange(DB* db, const Slice* begin, const Slice* end) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    return impl->RewriteBottomLevelRangeLocked(begin, end);
+  }
+  static std::vector<std::pair<std::string, std::string>> BottomBounds(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    std::vector<std::pair<std::string, std::string>> result;
+    for (const auto* f : impl->versions_->current()->files(config::kNumLevels - 1))
+      result.emplace_back(f->smallest.user_key().ToString(),
+                          f->largest.user_key().ToString());
+    return result;
+  }
+  // Reference the previous linear I/O calculation using actual SST metadata.
+  // This fixture uses uniform deadlines, so each file is either all expired
+  // TTL records or ordinary records (no histogram approximation is required).
+  static void CheckCandidateAgainstLinearScan(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    auto* version = impl->versions_->current();
+    const auto* cmp = impl->user_comparator();
+    double best = -1;
+    int expected_level = -1;
+    std::string expected_begin, expected_end;
+    for (int level = 0; level < config::kNumLevels; ++level) {
+      for (const auto* file : version->files(level)) {
+        TableInternalStats stats;
+        ASSERT_LEVELDB_OK(impl->table_cache_->GetTTLStats(file->number, file->file_size, &stats));
+        ASSERT_TRUE(stats.valid);
+        if (stats.ttl_records == 0) continue;
+        ASSERT_EQ(stats.min_expire_time_micros, stats.max_expire_time_micros);
+        ASSERT_LE(stats.max_expire_time_micros, impl->env_->NowMicros());
+        const double ratio = double(stats.ttl_records) / stats.total_records;
+        if (ratio < .30 && impl->env_->NowMicros() - stats.min_expire_time_micros < 60000000) continue;
+        const Slice low = file->smallest.user_key(), high = file->largest.user_key();
+        int target = level;
+        for (int upper = 0; upper < level; ++upper)
+          if (version->OverlapInLevel(upper, &low, &high)) { target = upper; break; }
+        uint64_t io = file->file_size;
+        if (target + 1 < config::kNumLevels)
+          for (const auto* other : version->files(target + 1))
+            if (cmp->Compare(other->largest.user_key(), low) >= 0 &&
+                cmp->Compare(other->smallest.user_key(), high) <= 0)
+              io += other->file_size;
+        const double score = double(file->file_size) * ratio / std::max<uint64_t>(io, 1);
+        if (score > best) {
+          best = score; expected_level = target;
+          expected_begin = low.ToString(); expected_end = high.ToString();
+        }
+      }
+    }
+    bool found = false;
+    ASSERT_LEVELDB_OK(impl->FindTTLCompactionCandidate(&found));
+    EXPECT_EQ(expected_level >= 0, found);
+    EXPECT_EQ(expected_level, impl->ttl_compaction_level_);
+    EXPECT_EQ(expected_begin, impl->ttl_compaction_begin_);
+    EXPECT_EQ(expected_end, impl->ttl_compaction_end_);
+    impl->ttl_compaction_level_ = -1;
+    impl->ttl_compaction_begin_.clear(); impl->ttl_compaction_end_.clear();
+  }
+
   static Status FindCandidate(DB* db, bool* found) {
     auto* impl = static_cast<DBImpl*>(db);
     ProfileScope profile(impl->profiler_, impl->profiling_id_,
@@ -348,6 +414,82 @@ class TTLMetadataTest : public testing::TestWithParam<bool> {
     ExpectMissing(keys[10]);
   }
 
+  void CheckMultiFileRange(const Comparator* comparator) {
+    options_.comparator = comparator;
+    options_.write_buffer_size = 16 << 20;
+    ASSERT_LEVELDB_OK(Open(true));
+    std::vector<std::string> keys;
+    for (int i = 0; i < 128; ++i) {
+      char key[16]; std::snprintf(key, sizeof(key), "key-%04d", i);
+      keys.emplace_back(key);
+    }
+    std::sort(keys.begin(), keys.end(), [comparator](const std::string& a, const std::string& b) {
+      return comparator->Compare(a, b) < 0;
+    });
+    WriteBatch batch;
+    for (const auto& key : keys)
+      batch.PutWithExpiration(key, std::string(32768, 'v'), kTestEpochMicros + kMicrosPerSecond);
+    ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &batch));
+    ASSERT_NO_FATAL_FAILURE(PushToBottom());
+    const auto bounds = TTLCompactionTestPeer::BottomBounds(db_.get());
+    ASSERT_GE(bounds.size(), 3U);
+    env_.Advance(2 * kMicrosPerSecond);
+    std::set<std::string> expected(keys.begin(), keys.end());
+    // Empty range between two real keys, and an explicitly inverted range.
+    const std::string gap = "key-0063x"; const Slice gap_slice(gap);
+    ASSERT_LEVELDB_OK(TTLCompactionTestPeer::RewriteRange(db_.get(), &gap_slice, &gap_slice));
+    EXPECT_EQ(expected, PhysicalKeys());
+    const Slice inverted_begin(keys.back()), inverted_end(keys.front());
+    ASSERT_LEVELDB_OK(TTLCompactionTestPeer::RewriteRange(db_.get(), &inverted_begin, &inverted_end));
+    EXPECT_EQ(expected, PhysicalKeys());
+    const Slice begin(bounds[1].first), end(bounds[2].second);
+    ASSERT_LEVELDB_OK(TTLCompactionTestPeer::RewriteRange(db_.get(), &begin, &end));
+    for (auto it = expected.begin(); it != expected.end();) {
+      if (comparator->Compare(*it, begin) >= 0 && comparator->Compare(*it, end) <= 0) it = expected.erase(it);
+      else ++it;
+    }
+    EXPECT_EQ(expected, PhysicalKeys());
+    ExpectStatsMatchPhysicalScan(128);
+    // Open-ended prefix followed by the remaining suffix, including endpoints.
+    const Slice prefix_end(keys[2]);
+    ASSERT_LEVELDB_OK(TTLCompactionTestPeer::RewriteRange(db_.get(), nullptr, &prefix_end));
+    for (const auto& key : keys) if (comparator->Compare(key, prefix_end) <= 0) expected.erase(key);
+    EXPECT_EQ(expected, PhysicalKeys());
+    const Slice suffix_begin(keys[3]);
+    ASSERT_LEVELDB_OK(TTLCompactionTestPeer::RewriteRange(db_.get(), &suffix_begin, nullptr));
+    EXPECT_TRUE(PhysicalKeys().empty());
+    ExpectStatsMatchPhysicalScan(128);
+  }
+
+  void CheckMultiLevelCandidate(const Comparator* comparator) {
+    options_.comparator = comparator;
+    options_.write_buffer_size = 16 << 20;
+    ASSERT_LEVELDB_OK(Open(true));
+    WriteBatch bottom;
+    for (int i = 0; i < 128; ++i) {
+      char key[16]; std::snprintf(key, sizeof(key), "key-%04d", i);
+      bottom.PutWithExpiration(key, std::string(32768, 'b'), kTestEpochMicros + kMicrosPerSecond);
+    }
+    ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &bottom));
+    ASSERT_NO_FATAL_FAILURE(PushToBottom());
+    ASSERT_GE(TTLCompactionTestPeer::BottomBounds(db_.get()).size(), 3U);
+    WriteBatch upper;
+    for (int i = 0; i < 128; i += 3) {
+      char key[16]; std::snprintf(key, sizeof(key), "key-%04d", i);
+      upper.Put(key, std::string(32768, 'u'));
+    }
+    ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &upper));
+    auto* impl = static_cast<DBImpl*>(db_.get());
+    ASSERT_LEVELDB_OK(impl->TEST_CompactMemTable());
+    for (int level = 2; level < 5; ++level) impl->TEST_CompactRange(level, nullptr, nullptr);
+    std::string count;
+    ASSERT_TRUE(db_->GetProperty("leveldb.num-files-at-level5", &count));
+    ASSERT_GT(std::stoul(count), 0U);
+    env_.Advance(2 * kMicrosPerSecond);
+    TTLCompactionTestPeer::CheckCandidateAgainstLinearScan(db_.get());
+    ExpectStatsMatchPhysicalScan(171);
+  }
+
   void CheckCompactionFailure(FaultClockEnv::Fault fault, bool bottom) {
     ASSERT_LEVELDB_OK(Open(true));
     for (int i = 0; i < 16; ++i) {
@@ -484,6 +626,21 @@ TEST_P(TTLMetadataTest, PartialRangeUsesCustomComparator) {
   // Static lifetime also covers fixture TearDown after an assertion failure.
   static const TTLReverseComparator comparator;
   CheckPartialRange(&comparator);
+}
+
+TEST_P(TTLMetadataTest, MultiFileRangeUsesInclusiveBounds) {
+  CheckMultiFileRange(BytewiseComparator());
+}
+TEST_P(TTLMetadataTest, MultiFileRangeUsesReverseComparator) {
+  static const TTLReverseComparator comparator;
+  CheckMultiFileRange(&comparator);
+}
+TEST_P(TTLMetadataTest, MultiLevelCandidateMatchesLinearScoring) {
+  CheckMultiLevelCandidate(BytewiseComparator());
+}
+TEST_P(TTLMetadataTest, MultiLevelCandidateMatchesReverseLinearScoring) {
+  static const TTLReverseComparator comparator;
+  CheckMultiLevelCandidate(&comparator);
 }
 
 TEST_P(TTLMetadataTest, TTLCompactionTableSyncFailureIsNotPublished) {

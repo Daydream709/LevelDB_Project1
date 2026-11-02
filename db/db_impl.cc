@@ -2458,14 +2458,21 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
   // files below. Removing unrelated files would turn a small TTL cleanup into
   // a rewrite of the entire bottom level.
   std::vector<FileMetaData*> files;
-  for (FileMetaData* file : base->files(bottom_level)) {
-    if (begin != nullptr &&
-        user_comparator()->Compare(file->largest.user_key(), *begin) < 0) {
-      continue;
-    }
+  const auto& bottom_files = base->files(bottom_level);
+  auto first = bottom_files.begin();
+  if (begin != nullptr) {
+    // Compare user keys so every version at an inclusive endpoint is kept.
+    first = std::lower_bound(
+        first, bottom_files.end(), *begin,
+        [this](const FileMetaData* file, const Slice& key) {
+          return user_comparator()->Compare(file->largest.user_key(), key) < 0;
+        });
+  }
+  for (; first != bottom_files.end(); ++first) {
+    FileMetaData* file = *first;
     if (end != nullptr &&
         user_comparator()->Compare(file->smallest.user_key(), *end) > 0) {
-      continue;
+      break;
     }
     files.push_back(file);
   }
@@ -3046,11 +3053,18 @@ Status DBImpl::FindTTLCompactionCandidate(bool* found) {
 
       uint64_t estimated_io = file->file_size;
       if (target_level + 1 < config::kNumLevels) {
-        for (FileMetaData* overlap : current->files(target_level + 1)) {
-          if (user_comparator()->Compare(overlap->largest.user_key(), smallest) >= 0 &&
-              user_comparator()->Compare(overlap->smallest.user_key(), largest) <= 0) {
-            estimated_io += overlap->file_size;
-          }
+        // The next level is at least L1: its ordered ranges allow binary
+        // location followed by a bounded scan. Never apply this rule to L0.
+        const auto& next_files = current->files(target_level + 1);
+        auto overlap = std::lower_bound(
+            next_files.begin(), next_files.end(), smallest,
+            [this](const FileMetaData* file, const Slice& key) {
+              return user_comparator()->Compare(file->largest.user_key(), key) < 0;
+            });
+        for (; overlap != next_files.end(); ++overlap) {
+          if (user_comparator()->Compare((*overlap)->smallest.user_key(), largest) > 0)
+            break;
+          estimated_io += (*overlap)->file_size;
         }
       }
       const double score =
