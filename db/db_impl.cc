@@ -2977,6 +2977,9 @@ Status DBImpl::FindTTLCompactionCandidate(bool* found) {
           stats.max_expire_time_micros = 0;
           ReadOptions scan_options;
           scan_options.verify_checksums = true;
+          // A maintenance scan must not evict the foreground working set.
+          // Existing cached blocks can still be reused by the iterator.
+          scan_options.fill_cache = false;
           Iterator* iter = table_cache_->NewIterator(
               scan_options, file->number, file->file_size);
           Status scan_status = Status::OK();
