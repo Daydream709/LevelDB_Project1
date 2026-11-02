@@ -3864,6 +3864,9 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   uint64_t current_key_output_records = 0;
   bool has_current_user_key = false;
   SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
+  // Count takes std::string: avoid constructing (and allocating) counter
+  // names per record when this compaction did not capture a profiling scope.
+  const bool collect_gc_counters = profile.active();
   while (input->Valid() && !shutting_down_.load(std::memory_order_acquire)) {
     // Prioritize immutable compaction work
     if (has_imm_.load(std::memory_order_relaxed)) {
@@ -3879,7 +3882,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     }
 
     ProfileScope filtering("gc.iterate_filter");
-    ProfileScope::Count("gc.records_checked");
+    if (collect_gc_counters) ProfileScope::Count("gc.records_checked");
     Slice key = input->key();
     if (key.size() < 8) {
       status = Status::Corruption("internal key is too short during compaction");
@@ -3930,7 +3933,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       if (last_sequence_for_key <= compact->smallest_snapshot) {
         // Hidden by an newer entry for same user key
         drop = true;  // (A)
-        ProfileScope::Count("gc.dropped_hidden_version");
+        if (collect_gc_counters) ProfileScope::Count("gc.dropped_hidden_version");
       } else if (ikey.type == kTypeDeletion &&
                  ikey.sequence <= compact->smallest_snapshot &&
                  compact->compaction->IsBaseLevelForKey(ikey.user_key)) {
@@ -3942,7 +3945,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         //     few iterations of this loop (by rule (A) above).
         // Therefore this deletion marker is obsolete and can be dropped.
         drop = true;
-        ProfileScope::Count("gc.dropped_tombstone");
+        if (collect_gc_counters) ProfileScope::Count("gc.dropped_tombstone");
       } else if (ikey.type == kTypeValueWithTTL &&
                  ikey.sequence <= compact->smallest_snapshot) {
         const Slice raw_value = input->value();
@@ -3959,15 +3962,15 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
           // cursors can skip live keys because input user keys are ordered.
           if (compact->compaction->IsBaseLevelForKey(ikey.user_key)) {
             drop = true;
-            ProfileScope::Count("gc.dropped_expired_ttl");
+            if (collect_gc_counters) ProfileScope::Count("gc.dropped_expired_ttl");
           }
         } else {
-          ProfileScope::Count("gc.ttl_retained_time_boundary");
+          if (collect_gc_counters) ProfileScope::Count("gc.ttl_retained_time_boundary");
         }
       }
 
       if (!drop && ikey.type == kTypeValueWithTTL) {
-        if (ikey.sequence > compact->smallest_snapshot)
+        if (collect_gc_counters && ikey.sequence > compact->smallest_snapshot)
           ProfileScope::Count("gc.ttl_retained_sequence_boundary");
         // Live TTL values need no lower-level lookup. Expired values already
         // received the base-level check above; do not repeat it here.
@@ -3984,12 +3987,12 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         (int)last_sequence_for_key, (int)compact->smallest_snapshot);
 #endif
 
-    if (drop) {
+    if (drop && collect_gc_counters) {
       ProfileScope::Count("gc.records_dropped");
       ProfileScope::Count("gc.dropped_encoded_bytes", key.size() + input->value().size());
     }
     if (!drop) {
-      ProfileScope::Count("gc.records_output");
+      if (collect_gc_counters) ProfileScope::Count("gc.records_output");
       // Open output file if necessary
       if (compact->builder == nullptr) {
         status = OpenCompactionOutputFile(compact);
