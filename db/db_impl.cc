@@ -456,6 +456,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname,
       published_stats_version_(0),
       published_stats_packed_counts_(0),
       published_stats_sequence_(0),
+      published_stats_wide_snapshot_current_(false),
       metadata_mseq_(0),
       metadata_mseq_allocator_(0),
       metadata_recovery_max_mseq_(0),
@@ -1389,6 +1390,22 @@ Status DBImpl::GetCurrentStatsFallback(Stats* stats) {
 
 void DBImpl::UpdatePublishedStatsSnapshot() {
   mutex_.AssertHeld();
+  const uint64_t sequence = versions_->LastSequence();
+  const bool compact_counts =
+      metadata_total_entries_ <= kCompactStatsFieldMask &&
+      metadata_distinct_keys_ <= kCompactStatsFieldMask &&
+      sequence <= kCompactStatsFieldMask;
+  if (published_stats_available_.load(std::memory_order_relaxed) &&
+      compact_counts && !published_stats_wide_snapshot_current_) {
+    const uint64_t compact_snapshot =
+        metadata_total_entries_ |
+        (metadata_distinct_keys_ << kCompactStatsFieldBits) |
+        (sequence << (2 * kCompactStatsFieldBits));
+    published_stats_compact_snapshot_.store(compact_snapshot,
+                                            std::memory_order_relaxed);
+    return;
+  }
+
   const uint64_t version =
       published_stats_version_.load(std::memory_order_relaxed);
   const uint64_t version_counter = version & kPublishedStatsVersionMask;
@@ -1414,7 +1431,12 @@ void DBImpl::UpdatePublishedStatsSnapshot() {
   published_stats_version_.store(
       wide_flag | ((write_version + 1) & kPublishedStatsVersionMask),
       std::memory_order_release);
+  published_stats_wide_snapshot_current_ = true;
   UpdatePublishedStatsCompactSnapshot();
+  if (published_stats_available_.load(std::memory_order_relaxed) &&
+      compact_counts) {
+    published_stats_wide_snapshot_current_ = false;
+  }
 }
 
 void DBImpl::UpdatePublishedStatsCompactSnapshot() {

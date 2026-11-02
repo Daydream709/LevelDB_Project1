@@ -339,6 +339,7 @@ class DBImpl : public DB {
   std::atomic<uint64_t> published_stats_version_;
   std::atomic<uint64_t> published_stats_packed_counts_;
   std::atomic<uint64_t> published_stats_sequence_;
+  bool published_stats_wide_snapshot_current_ GUARDED_BY(mutex_);
   uint64_t metadata_mseq_ GUARDED_BY(mutex_);
   uint64_t metadata_mseq_allocator_ GUARDED_BY(mutex_);
   uint64_t metadata_recovery_max_mseq_ GUARDED_BY(mutex_);
