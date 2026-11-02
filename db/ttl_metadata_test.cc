@@ -49,6 +49,41 @@ namespace leveldb {
 // No production state or public API is added by this test peer.
 class TTLCompactionTestPeer {
  public:
+  static void WaitForIdle(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    while (impl->background_compaction_scheduled_ || impl->profiling_callbacks_ != 0)
+      impl->background_work_finished_signal_.Wait();
+  }
+  static void Schedule(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    impl->MaybeScheduleCompaction();
+  }
+  static void EvictTables(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    for (int level = 0; level < config::kNumLevels; ++level)
+      for (const auto* file : impl->versions_->current()->files(level))
+        impl->table_cache_->Evict(file->number);
+  }
+  static Status PublishEmptyVersion(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    VersionEdit edit;
+    return impl->LogAndApply(&edit);
+  }
+  static bool BackgroundPending(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    return impl->background_compaction_scheduled_;
+  }
+  static Status BackgroundError(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    return impl->bg_error_;
+  }
+
   static Status RewriteRange(DB* db, const Slice* begin, const Slice* end) {
     auto* impl = static_cast<DBImpl*>(db);
     MutexLock lock(&impl->mutex_);
@@ -141,6 +176,42 @@ class FaultClockEnv : public EnvWrapper {
   void SetFault(Fault fault) { fault_.store(static_cast<int>(fault)); }
   unsigned FaultHits() const { return fault_hits_.load(); }
 
+  void BlockNextTableRead(bool fail = false) {
+    std::lock_guard<std::mutex> lock(read_mu_);
+    block_next_table_read_ = true;
+    table_read_blocked_ = false;
+    release_table_read_ = false;
+    fail_table_read_ = fail;
+  }
+  bool WaitForBlockedTableRead() {
+    std::unique_lock<std::mutex> lock(read_mu_);
+    return read_cv_.wait_for(lock, std::chrono::seconds(10),
+                            [this] { return table_read_blocked_; });
+  }
+  void ReleaseTableRead() {
+    std::lock_guard<std::mutex> lock(read_mu_);
+    release_table_read_ = true;
+    read_cv_.notify_all();
+  }
+  Status BeforeTableRead() {
+    std::unique_lock<std::mutex> lock(read_mu_);
+    if (!block_next_table_read_) return Status::OK();
+    block_next_table_read_ = false;
+    table_read_blocked_ = true;
+    read_cv_.notify_all();
+    read_cv_.wait(lock, [this] { return release_table_read_; });
+    table_read_blocked_ = false;
+    return fail_table_read_ ? Status::IOError("injected candidate read failure")
+                            : Status::OK();
+  }
+  Status NewRandomAccessFile(const std::string& fname,
+                             RandomAccessFile** result) override {
+    Status status = target()->NewRandomAccessFile(fname, result);
+    if (status.ok() && fname.size() > 4 && fname.substr(fname.size() - 4) == ".ldb")
+      *result = new GatedRandomFile(this, *result);
+    return status;
+  }
+
   void BlockNextTableSync() {
     std::lock_guard<std::mutex> lock(sync_mu_);
     block_next_table_sync_ = true;
@@ -203,6 +274,19 @@ class FaultClockEnv : public EnvWrapper {
   }
 
  private:
+  class GatedRandomFile : public RandomAccessFile {
+   public:
+    GatedRandomFile(FaultClockEnv* env, RandomAccessFile* file)
+        : env_(env), file_(file) {}
+    Status Read(uint64_t offset, size_t n, Slice* result, char* scratch) const override {
+      Status status = env_->BeforeTableRead();
+      return status.ok() ? file_->Read(offset, n, result, scratch) : status;
+    }
+   private:
+    FaultClockEnv* env_;
+    std::unique_ptr<RandomAccessFile> file_;
+  };
+
   class FaultyWritableFile : public WritableFile {
    public:
     FaultyWritableFile(FaultClockEnv* env, std::string fname,
@@ -233,6 +317,12 @@ class FaultClockEnv : public EnvWrapper {
     std::unique_ptr<WritableFile> file_;
   };
 
+  std::mutex read_mu_;
+  std::condition_variable read_cv_;
+  bool block_next_table_read_ = false;
+  bool table_read_blocked_ = false;
+  bool release_table_read_ = false;
+  bool fail_table_read_ = false;
   std::atomic<uint64_t> now_;
   std::atomic<int> fault_{static_cast<int>(Fault::kNone)};
   std::atomic<unsigned> fault_hits_{0};
@@ -490,6 +580,79 @@ class TTLMetadataTest : public testing::TestWithParam<bool> {
     ExpectStatsMatchPhysicalScan(171);
   }
 
+  // 0: snapshot; 1: Version replacement; 2: I/O failure; 3: shutdown;
+  // 4: manual flush/compaction queued while the scan owns the work slot.
+  void CheckUnlockedCandidateScan(int mode) {
+    ASSERT_LEVELDB_OK(Open(true));
+    ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "ttl", "value", 1));
+    ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+    ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "hot", "before"));
+    // Memtable flush completion does not imply its background callback has
+    // finished candidate scanning/profiling. Isolate the intended scan first.
+    TTLCompactionTestPeer::WaitForIdle(db_.get());
+    TTLCompactionTestPeer::EvictTables(db_.get());
+    env_.Advance(2 * kMicrosPerSecond);
+    env_.BlockNextTableRead(mode == 2);
+    DB* raw = db_.get();
+    std::thread scanner([raw] { TTLCompactionTestPeer::Schedule(raw); });
+    const bool entered = env_.WaitForBlockedTableRead();
+    if (!entered) {
+      env_.ReleaseTableRead(); scanner.join();
+      FAIL() << "candidate scan did not enter the controlled SST read";
+    }
+    std::mutex done_mu;
+    std::condition_variable done_cv;
+    bool done = false;
+    Status foreground_status;
+    std::string value;
+    const Snapshot* snapshot = nullptr;
+    std::thread foreground([&] {
+      if (mode == 3) {
+        db_.reset();
+      } else if (mode == 4) {
+        raw->CompactRange(nullptr, nullptr);
+      } else {
+        foreground_status = raw->Get(ReadOptions(), "hot", &value);
+        if (foreground_status.ok())
+          foreground_status = raw->Put(WriteOptions(), "hot", "after");
+        if (mode == 0) snapshot = raw->GetSnapshot();
+        if (mode == 1 && foreground_status.ok())
+          foreground_status = TTLCompactionTestPeer::PublishEmptyVersion(raw);
+      }
+      std::lock_guard<std::mutex> lock(done_mu);
+      done = true; done_cv.notify_all();
+    });
+    bool finished_while_read_blocked;
+    {
+      std::unique_lock<std::mutex> lock(done_mu);
+      finished_while_read_blocked = done_cv.wait_for(
+          lock, std::chrono::milliseconds(500), [&] { return done; });
+    }
+    env_.ReleaseTableRead();
+    scanner.join(); foreground.join();
+    EXPECT_EQ(mode < 3, finished_while_read_blocked);
+    if (mode == 3) { EXPECT_EQ(nullptr, db_.get()); return; }
+    if (mode == 4) {
+      ExpectValue("hot", "before"); ExpectMissing("ttl");
+      ExpectStatsMatchPhysicalScan(2); return;
+    }
+    EXPECT_TRUE(foreground_status.ok()) << foreground_status.ToString();
+    EXPECT_EQ("before", value);
+    ExpectValue("hot", "after");
+    if (mode == 2) {
+      EXPECT_TRUE(TTLCompactionTestPeer::BackgroundError(raw).IsIOError());
+      EXPECT_TRUE(raw->Put(WriteOptions(), "later", "value").IsIOError());
+      Reopen(); ExpectValue("hot", "after");
+    } else {
+      EXPECT_FALSE(TTLCompactionTestPeer::BackgroundPending(raw));
+      EXPECT_EQ(1U, PhysicalKeys().count("ttl"));
+    }
+    if (snapshot != nullptr) raw->ReleaseSnapshot(snapshot);
+    db_->CompactRange(nullptr, nullptr);
+    ExpectMissing("ttl"); ExpectValue("hot", "after");
+    ExpectStatsMatchPhysicalScan(3);
+  }
+
   void CheckCompactionFailure(FaultClockEnv::Fault fault, bool bottom) {
     ASSERT_LEVELDB_OK(Open(true));
     for (int i = 0; i < 16; ++i) {
@@ -641,6 +804,22 @@ TEST_P(TTLMetadataTest, MultiLevelCandidateMatchesLinearScoring) {
 TEST_P(TTLMetadataTest, MultiLevelCandidateMatchesReverseLinearScoring) {
   static const TTLReverseComparator comparator;
   CheckMultiLevelCandidate(&comparator);
+}
+
+TEST_P(TTLMetadataTest, UnlockedCandidateAllowsReadsWritesAndRejectsSnapshot) {
+  CheckUnlockedCandidateScan(0);
+}
+TEST_P(TTLMetadataTest, UnlockedCandidateRejectsChangedVersion) {
+  CheckUnlockedCandidateScan(1);
+}
+TEST_P(TTLMetadataTest, UnlockedCandidatePublishesReadError) {
+  CheckUnlockedCandidateScan(2);
+}
+TEST_P(TTLMetadataTest, ShutdownWaitsForUnlockedCandidateScan) {
+  CheckUnlockedCandidateScan(3);
+}
+TEST_P(TTLMetadataTest, UnlockedCandidateReschedulesManualWork) {
+  CheckUnlockedCandidateScan(4);
 }
 
 TEST_P(TTLMetadataTest, TTLCompactionTableSyncFailureIsNotPublished) {

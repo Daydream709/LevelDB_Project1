@@ -2949,135 +2949,147 @@ Status DBImpl::FindTTLCompactionCandidate(bool* found) {
   std::string best_begin;
   std::string best_end;
 
-  for (int level = 0; level < config::kNumLevels; ++level) {
-    for (FileMetaData* file : current->files(level)) {
-      TableInternalStats stats;
-      ProfileScope::Count("ttl.schedule_checked_files");
-      Status status = ProfileStatus("ttl.load_summary", [&] {
-        return table_cache_->GetTTLStats(file->number, file->file_size, &stats);
-      });
-      if (!status.ok()) return profile.Result(status);
+  // File metadata in a referenced Version is immutable. Keep that Version
+  // alive while table I/O and fallback scans run without blocking the DB mutex.
+  current->Ref();
+  mutex_.Unlock();
+  const Status scan_status = [&]() -> Status {
+    for (int level = 0; level < config::kNumLevels; ++level) {
+      for (FileMetaData* file : current->files(level)) {
+        TableInternalStats stats;
+        ProfileScope::Count("ttl.schedule_checked_files");
+        Status status = ProfileStatus("ttl.load_summary", [&] {
+          return table_cache_->GetTTLStats(file->number, file->file_size, &stats);
+        });
+        if (!status.ok()) return profile.Result(status);
 
-      uint64_t expired_estimate = 0;
-      if (!stats.valid) {
-        ProfileScope fallback("ttl.summary_fallback_scan");
-        ProfileScope::Count("ttl.summary_fallback_files");
-        // We already inspect every record in the fallback. Count expiration
-        // exactly at this scan's safe time instead of retaining all deadlines
-        // and rebuilding an approximate histogram. This state is local only.
-        stats.total_records = 0;
-        stats.ttl_records = 0;
-        stats.min_expire_time_micros = 0;
-        stats.max_expire_time_micros = 0;
-        ReadOptions scan_options;
-        scan_options.verify_checksums = true;
-        Iterator* iter = table_cache_->NewIterator(
-            scan_options, file->number, file->file_size);
-        Status scan_status = Status::OK();
-        for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-          ParsedInternalKey key;
-          if (!ParseInternalKey(iter->key(), &key)) {
-            scan_status = Status::Corruption(
-                "invalid internal key while scanning TTL summary");
-            break;
-          }
-          ++stats.total_records;
-          if (key.type == kTypeValueWithTTL) {
-            Slice value = iter->value();
-            if (value.size() < 8) {
+        uint64_t expired_estimate = 0;
+        if (!stats.valid) {
+          ProfileScope fallback("ttl.summary_fallback_scan");
+          ProfileScope::Count("ttl.summary_fallback_files");
+          // We already inspect every record in the fallback. Count expiration
+          // exactly at this scan's safe time instead of retaining all deadlines
+          // and rebuilding an approximate histogram. This state is local only.
+          stats.total_records = 0;
+          stats.ttl_records = 0;
+          stats.min_expire_time_micros = 0;
+          stats.max_expire_time_micros = 0;
+          ReadOptions scan_options;
+          scan_options.verify_checksums = true;
+          Iterator* iter = table_cache_->NewIterator(
+              scan_options, file->number, file->file_size);
+          Status scan_status = Status::OK();
+          for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+            ParsedInternalKey key;
+            if (!ParseInternalKey(iter->key(), &key)) {
               scan_status = Status::Corruption(
-                  "TTL value is shorter than its deadline while scanning summary");
+                  "invalid internal key while scanning TTL summary");
               break;
             }
-            const uint64_t expiry = DecodeFixed64(value.data());
-            if (stats.ttl_records == 0) {
-              stats.min_expire_time_micros = expiry;
-              stats.max_expire_time_micros = expiry;
-            } else {
-              stats.min_expire_time_micros =
-                  std::min(stats.min_expire_time_micros, expiry);
-              stats.max_expire_time_micros =
-                  std::max(stats.max_expire_time_micros, expiry);
+            ++stats.total_records;
+            if (key.type == kTypeValueWithTTL) {
+              Slice value = iter->value();
+              if (value.size() < 8) {
+                scan_status = Status::Corruption(
+                    "TTL value is shorter than its deadline while scanning summary");
+                break;
+              }
+              const uint64_t expiry = DecodeFixed64(value.data());
+              if (stats.ttl_records == 0) {
+                stats.min_expire_time_micros = expiry;
+                stats.max_expire_time_micros = expiry;
+              } else {
+                stats.min_expire_time_micros =
+                    std::min(stats.min_expire_time_micros, expiry);
+                stats.max_expire_time_micros =
+                    std::max(stats.max_expire_time_micros, expiry);
+              }
+              ++stats.ttl_records;
+              if (expiry <= safe_time) ++expired_estimate;
             }
-            ++stats.ttl_records;
-            if (expiry <= safe_time) ++expired_estimate;
+          }
+          if (scan_status.ok()) scan_status = iter->status();
+          fallback.SetStatus(scan_status);
+          delete iter;
+          if (!scan_status.ok()) return scan_status;
+        }
+
+        if (stats.total_records == 0 || stats.ttl_records == 0 ||
+            safe_time < stats.min_expire_time_micros) {
+          continue;
+        }
+        // Valid summaries retain their existing conservative histogram estimate.
+        // An invalid/missing summary uses the exact count computed above.
+        if (stats.valid && safe_time >= stats.max_expire_time_micros) {
+          expired_estimate = stats.ttl_records;
+        } else if (stats.valid) {
+          const long double span = static_cast<long double>(
+              stats.max_expire_time_micros - stats.min_expire_time_micros);
+          for (size_t bucket = 0; bucket < 16; ++bucket) {
+            const uint64_t upper = static_cast<uint64_t>(
+                stats.min_expire_time_micros +
+                span * static_cast<long double>(bucket + 1) / 16.0L);
+            if (upper <= safe_time) {
+              expired_estimate += stats.expiration_histogram[bucket];
+            }
           }
         }
-        if (scan_status.ok()) scan_status = iter->status();
-        fallback.SetStatus(scan_status);
-        delete iter;
-        if (!scan_status.ok()) return scan_status;
-      }
+        const bool aged =
+            safe_time >= stats.min_expire_time_micros &&
+            safe_time - stats.min_expire_time_micros >= 60ULL * 1000000ULL;
+        const double expired_ratio =
+            static_cast<double>(expired_estimate) / stats.total_records;
+        if (expired_estimate == 0 || (!aged && expired_ratio < 0.30)) continue;
 
-      if (stats.total_records == 0 || stats.ttl_records == 0 ||
-          safe_time < stats.min_expire_time_micros) {
-        continue;
-      }
-      // Valid summaries retain their existing conservative histogram estimate.
-      // An invalid/missing summary uses the exact count computed above.
-      if (stats.valid && safe_time >= stats.max_expire_time_micros) {
-        expired_estimate = stats.ttl_records;
-      } else if (stats.valid) {
-        const long double span = static_cast<long double>(
-            stats.max_expire_time_micros - stats.min_expire_time_micros);
-        for (size_t bucket = 0; bucket < 16; ++bucket) {
-          const uint64_t upper = static_cast<uint64_t>(
-              stats.min_expire_time_micros +
-              span * static_cast<long double>(bucket + 1) / 16.0L);
-          if (upper <= safe_time) {
-            expired_estimate += stats.expiration_histogram[bucket];
-          }
-        }
-      }
-      const bool aged =
-          safe_time >= stats.min_expire_time_micros &&
-          safe_time - stats.min_expire_time_micros >= 60ULL * 1000000ULL;
-      const double expired_ratio =
-          static_cast<double>(expired_estimate) / stats.total_records;
-      if (expired_estimate == 0 || (!aged && expired_ratio < 0.30)) continue;
-
-      ProfileScope scoring("ttl.score_candidate");
-      ProfileScope::Count("ttl.schedule_candidates");
-      int target_level = level;
-      const Slice smallest = file->smallest.user_key();
-      const Slice largest = file->largest.user_key();
-      for (int upper_level = 0; upper_level < level; ++upper_level) {
-        if (current->OverlapInLevel(upper_level, &smallest, &largest)) {
-          target_level = upper_level;
-          break;
-        }
-      }
-      if (target_level == config::kNumLevels - 1 && !snapshots_.empty()) {
-        continue;
-      }
-
-      uint64_t estimated_io = file->file_size;
-      if (target_level + 1 < config::kNumLevels) {
-        // The next level is at least L1: its ordered ranges allow binary
-        // location followed by a bounded scan. Never apply this rule to L0.
-        const auto& next_files = current->files(target_level + 1);
-        auto overlap = std::lower_bound(
-            next_files.begin(), next_files.end(), smallest,
-            [this](const FileMetaData* file, const Slice& key) {
-              return user_comparator()->Compare(file->largest.user_key(), key) < 0;
-            });
-        for (; overlap != next_files.end(); ++overlap) {
-          if (user_comparator()->Compare((*overlap)->smallest.user_key(), largest) > 0)
+        ProfileScope scoring("ttl.score_candidate");
+        ProfileScope::Count("ttl.schedule_candidates");
+        int target_level = level;
+        const Slice smallest = file->smallest.user_key();
+        const Slice largest = file->largest.user_key();
+        for (int upper_level = 0; upper_level < level; ++upper_level) {
+          if (current->OverlapInLevel(upper_level, &smallest, &largest)) {
+            target_level = upper_level;
             break;
-          estimated_io += (*overlap)->file_size;
+          }
         }
-      }
-      const double score =
-          static_cast<double>(file->file_size) * expired_ratio /
-          std::max<uint64_t>(estimated_io, 1);
-      if (score > best_score) {
-        best_score = score;
-        best_level = target_level;
-        best_begin.assign(smallest.data(), smallest.size());
-        best_end.assign(largest.data(), largest.size());
+
+        uint64_t estimated_io = file->file_size;
+        if (target_level + 1 < config::kNumLevels) {
+          // The next level is at least L1: its ordered ranges allow binary
+          // location followed by a bounded scan. Never apply this rule to L0.
+          const auto& next_files = current->files(target_level + 1);
+          auto overlap = std::lower_bound(
+              next_files.begin(), next_files.end(), smallest,
+              [this](const FileMetaData* file, const Slice& key) {
+                return user_comparator()->Compare(file->largest.user_key(), key) < 0;
+              });
+          for (; overlap != next_files.end(); ++overlap) {
+            if (user_comparator()->Compare((*overlap)->smallest.user_key(), largest) > 0)
+              break;
+            estimated_io += (*overlap)->file_size;
+          }
+        }
+        const double score =
+            static_cast<double>(file->file_size) * expired_ratio /
+            std::max<uint64_t>(estimated_io, 1);
+        if (score > best_score) {
+          best_score = score;
+          best_level = target_level;
+          best_begin.assign(smallest.data(), smallest.size());
+          best_end.assign(largest.data(), largest.size());
+        }
       }
     }
-  }
+    return Status::OK();
+  }();
+  mutex_.Lock();
+  const bool usable = current == versions_->current() && snapshots_.empty() &&
+      !shutting_down_.load(std::memory_order_acquire) && bg_error_.ok() &&
+      imm_ == nullptr && manual_compaction_ == nullptr &&
+      !versions_->NeedsCompaction();
+  current->Unref();
+  if (!scan_status.ok()) return scan_status;
+  if (!usable) return Status::OK();
 
   if (best_level >= 0) {
     ProfileScope::Count("ttl.schedule_selected");
@@ -3102,16 +3114,25 @@ void DBImpl::MaybeScheduleCompaction() {
     // replacement is installed.
   } else if (imm_ == nullptr && manual_compaction_ == nullptr &&
              !versions_->NeedsCompaction()) {
+    // Reserve the existing background-work slot during the unlocked scan.
+    // This also makes shutdown/manual compaction wait for the pinned Version.
+    background_compaction_scheduled_ = true;
     bool ttl_candidate = false;
     Status status = FindTTLCompactionCandidate(&ttl_candidate);
+    background_compaction_scheduled_ = false;
     if (!status.ok()) {
       RecordBackgroundError(status);
-    } else if (ttl_candidate) {
+    } else if (!shutting_down_.load(std::memory_order_acquire) &&
+               bg_error_.ok() && !bottom_rewrite_in_progress_ &&
+               (ttl_candidate || imm_ != nullptr || manual_compaction_ != nullptr ||
+                versions_->NeedsCompaction())) {
+      // Foreground writers/manual work may have arrived while scanning.
       background_compaction_scheduled_ = true;
       profiling_schedule_time_ = ProfileScope::Current() ? ProfileScope::Now() : 0;
       profiling_parent_job_id_ = ProfileScope::CurrentTaskID();
       env_->Schedule(&DBImpl::BGWork, this);
     }
+    background_work_finished_signal_.SignalAll();
   } else {
     background_compaction_scheduled_ = true;
     profiling_schedule_time_ = ProfileScope::Current() ? ProfileScope::Now() : 0;
