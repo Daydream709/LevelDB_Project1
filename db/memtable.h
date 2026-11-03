@@ -76,7 +76,10 @@ class MemTable {
 
   struct KeyComparator {
     const InternalKeyComparator comparator;
-    explicit KeyComparator(const InternalKeyComparator& c) : comparator(c) {}
+    const bool bytewise_comparator;
+    explicit KeyComparator(const InternalKeyComparator& c)
+        : comparator(c),
+          bytewise_comparator(c.user_comparator() == BytewiseComparator()) {}
     int operator()(const char* a, const char* b) const;
   };
 

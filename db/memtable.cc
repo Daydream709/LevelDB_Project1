@@ -29,6 +29,21 @@ size_t MemTable::ApproximateMemoryUsage() { return arena_.MemoryUsage(); }
 
 int MemTable::KeyComparator::operator()(const char* aptr,
                                         const char* bptr) const {
+  // The official write benchmark and many applications use 16-byte keys.
+  // Their internal key length is 24 and fits in one varint byte.
+  if (bytewise_comparator &&
+      static_cast<unsigned char>(aptr[0]) == 24 &&
+      static_cast<unsigned char>(bptr[0]) == 24) {
+    const char* a_key = aptr + 1;
+    const char* b_key = bptr + 1;
+    const int user_order = std::memcmp(a_key, b_key, 16);
+    if (user_order != 0) return user_order;
+    const uint64_t a_tag = DecodeFixed64(a_key + 16);
+    const uint64_t b_tag = DecodeFixed64(b_key + 16);
+    if (a_tag > b_tag) return -1;
+    if (a_tag < b_tag) return 1;
+    return 0;
+  }
   // Internal keys are encoded as length-prefixed strings.
   Slice a = GetLengthPrefixedSlice(aptr);
   Slice b = GetLengthPrefixedSlice(bptr);

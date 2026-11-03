@@ -55,6 +55,43 @@ namespace {
 const char kMetadataWALMagic[] = "LDBMETA2";
 const size_t kMetadataWALMagicSize = sizeof(kMetadataWALMagic) - 1;
 constexpr size_t kMaxMetadataWALUpdates = 1U << 24;
+constexpr size_t kPrimaryWriteKeyFilterBits = 1U << 20;
+constexpr size_t kPrimaryWriteKeyFilterHashes = 4;
+constexpr uint64_t kPrimaryWriteKeyFilterMask =
+    kPrimaryWriteKeyFilterBits - 1;
+
+uint64_t PrimaryWriteKeyFilterHash(const Slice& key) {
+  constexpr uint64_t kMultiplier = 0xc6a4a7935bd1e995ULL;
+  constexpr unsigned kShift = 47;
+  uint64_t hash = 0x9e3779b97f4a7c15ULL ^
+                  (static_cast<uint64_t>(key.size()) * kMultiplier);
+  const char* data = key.data();
+  size_t remaining = key.size();
+  while (remaining >= sizeof(uint64_t)) {
+    uint64_t word;
+    std::memcpy(&word, data, sizeof(word));
+    word *= kMultiplier;
+    word ^= word >> kShift;
+    word *= kMultiplier;
+    hash ^= word;
+    hash *= kMultiplier;
+    data += sizeof(word);
+    remaining -= sizeof(word);
+  }
+  uint64_t tail = 0;
+  for (size_t i = 0; i < remaining; ++i) {
+    tail |= static_cast<uint64_t>(static_cast<unsigned char>(data[i]))
+            << (8 * i);
+  }
+  if (remaining != 0) {
+    hash ^= tail;
+    hash *= kMultiplier;
+  }
+  hash ^= hash >> kShift;
+  hash *= kMultiplier;
+  hash ^= hash >> kShift;
+  return hash;
+}
 
 int CompareUserKeys(const Comparator* comparator, const Slice& a,
                     const Slice& b) {
@@ -296,12 +333,18 @@ bool MetadataRangesOverlap(const std::string& smallest_a,
 // Information kept for every waiting writer
 struct DBImpl::Writer {
   explicit Writer(port::Mutex* mu)
-      : batch(nullptr), sync(false), done(false), cv(mu) {}
+      : batch(nullptr),
+        sync(false),
+        done(false),
+        single_put(false),
+        cv(mu) {}
 
   Status status;
   WriteBatch* batch;
   bool sync;
   bool done;
+  bool single_put;
+  Slice single_put_key;
   port::CondVar cv;
 };
 
@@ -466,10 +509,14 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname,
       logfile_number_(0),
       log_(nullptr),
       seed_(0),
+      write_buffer_limit_(options_.write_buffer_size),
+      write_bytes_since_open_(0),
       metadata_total_entries_(0),
       metadata_distinct_keys_(0),
       metadata_primary_user_key_bound_initialized_(false),
       metadata_primary_user_key_bound_has_value_(false),
+      metadata_primary_write_key_filter_active_(false),
+      metadata_primary_write_key_filter_floor_has_value_(false),
       published_stats_compact_snapshot_(kCompactStatsFallback),
       published_stats_available_(false),
       published_stats_version_(0),
@@ -1569,6 +1616,59 @@ Status DBImpl::InitializePrimaryUserKeyBound() {
   return Status::OK();
 }
 
+Status DBImpl::EnablePrimaryWriteKeyFilter() {
+  mutex_.AssertHeld();
+  if (metadata_primary_write_key_filter_active_ ||
+      user_comparator() != BytewiseComparator()) {
+    return Status::OK();
+  }
+  Status s = InitializePrimaryUserKeyBound();
+  if (!s.ok()) return s;
+  metadata_primary_write_key_filter_floor_ =
+      metadata_primary_user_key_bound_;
+  metadata_primary_write_key_filter_floor_has_value_ =
+      metadata_primary_user_key_bound_has_value_;
+  metadata_primary_write_key_filter_bits_.assign(
+      kPrimaryWriteKeyFilterBits / 64, 0);
+  metadata_primary_write_key_filter_active_ = true;
+  return Status::OK();
+}
+
+bool DBImpl::PrimaryWriteKeyFilterApplies(const Slice& key) {
+  mutex_.AssertHeld();
+  return metadata_primary_write_key_filter_active_ &&
+         (!metadata_primary_write_key_filter_floor_has_value_ ||
+          CompareUserKeys(user_comparator(), key,
+                          metadata_primary_write_key_filter_floor_) > 0);
+}
+
+bool DBImpl::PrimaryWriteKeyFilterMayContain(const Slice& key) {
+  mutex_.AssertHeld();
+  assert(metadata_primary_write_key_filter_active_);
+  const uint64_t hash = PrimaryWriteKeyFilterHash(key);
+  const uint64_t delta = (hash >> 17) | 1;
+  for (size_t i = 0; i < kPrimaryWriteKeyFilterHashes; ++i) {
+    const uint64_t bit = (hash + i * delta) & kPrimaryWriteKeyFilterMask;
+    if ((metadata_primary_write_key_filter_bits_[bit >> 6] &
+         (uint64_t{1} << (bit & 63))) == 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void DBImpl::RememberPrimaryWriteKey(const Slice& key) {
+  mutex_.AssertHeld();
+  if (!PrimaryWriteKeyFilterApplies(key)) return;
+  const uint64_t hash = PrimaryWriteKeyFilterHash(key);
+  const uint64_t delta = (hash >> 17) | 1;
+  for (size_t i = 0; i < kPrimaryWriteKeyFilterHashes; ++i) {
+    const uint64_t bit = (hash + i * delta) & kPrimaryWriteKeyFilterMask;
+    metadata_primary_write_key_filter_bits_[bit >> 6] |=
+        uint64_t{1} << (bit & 63);
+  }
+}
+
 Status DBImpl::CountPrimaryRecordsForKey(const Slice& key, uint64_t* count) {
   mutex_.AssertHeld();
   if (count == nullptr) {
@@ -1579,6 +1679,11 @@ Status DBImpl::CountPrimaryRecordsForKey(const Slice& key, uint64_t* count) {
   if (metadata_primary_user_key_bound_has_value_ &&
       CompareUserKeys(user_comparator(), key,
                       metadata_primary_user_key_bound_) > 0) {
+    *count = 0;
+    return Status::OK();
+  }
+  if (PrimaryWriteKeyFilterApplies(key) &&
+      !PrimaryWriteKeyFilterMayContain(key)) {
     *count = 0;
     return Status::OK();
   }
@@ -4386,7 +4491,9 @@ void DBImpl::ReleaseSnapshot(const Snapshot* snapshot) {
 // Convenience methods
 Status DBImpl::Put(const WriteOptions& o, const Slice& key, const Slice& val) {
   ProfileScope profile(profiler_, profiling_id_, "op.put");
-  return profile.Result(DB::Put(o, key, val));
+  WriteBatch batch;
+  batch.Put(key, val);
+  return profile.Result(WriteInternal(o, &batch, true, key));
 }
 
 Status DBImpl::Put(const WriteOptions& options, const Slice& key,
@@ -4419,10 +4526,16 @@ Status DBImpl::Delete(const WriteOptions& options, const Slice& key) {
 }
 
 Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
+  return WriteInternal(options, updates, false, Slice());
+}
+
+Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
+                             bool trusted_single_put,
+                             const Slice& single_put_key) {
   ProfileScope profile(profiler_, profiling_id_,
                        updates ? "op.write_batch" : "internal.flush_request",
                        false, "", -1, true);
-  if (updates != nullptr) {
+  if (updates != nullptr && !trusted_single_put) {
     ValidateBatch validation;
     Status validation_status = ProfileStatus("write.validate_batch", [&] { return updates->Iterate(&validation); });
     if (!validation_status.ok()) return profile.Result(validation_status);
@@ -4432,6 +4545,8 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
   w.batch = updates;
   w.sync = options.sync;
   w.done = false;
+  w.single_put = trusted_single_put;
+  w.single_put_key = single_put_key;
 
   MetadataProfile::Timer queue_wait_timer(
       &metadata_profile_, MetadataProfileStage::kWriteQueueWait);
@@ -4461,6 +4576,11 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
       status = Status::InvalidArgument("sequence number space exhausted");
     }
   }
+  if (status.ok() && updates != nullptr && writers_.size() > 1 &&
+      !metadata_primary_write_key_filter_active_ &&
+      user_comparator() == BytewiseComparator()) {
+    status = EnablePrimaryWriteKeyFilter();
+  }
   if (status.ok() && updates != nullptr) {  // nullptr batch is for compactions
     metadata_profile_.Count(MetadataProfileCounter::kWriteBatches);
     metadata_profile_.Count(MetadataProfileCounter::kWriteOperations,
@@ -4469,6 +4589,7 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
     WriteBatchInternal::SetSequence(write_batch,
                                    batch_count == 0 ? last_sequence : last_sequence + 1);
     last_sequence += batch_count;
+    const size_t batch_bytes = WriteBatchInternal::ByteSize(write_batch);
 
     std::vector<MetadataFileMeta> batch_runs;
     std::function<Status(const std::vector<MetadataFileMeta>&,
@@ -4598,7 +4719,32 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
     BatchMetadataCounter<decltype(spill_batch_counts)> batch_counter(
         options_.metadata_workspace_size, user_comparator(),
         spill_batch_counts);
-    status = write_batch->Iterate(&batch_counter);
+    if (last_writer == &w && w.single_put) {
+      batch_counter.Increment(w.single_put_key);
+      status = batch_counter.status();
+    } else {
+      bool all_single_put_writers = true;
+      for (auto iter = writers_.begin(); iter != writers_.end(); ++iter) {
+        Writer* grouped_writer = *iter;
+        if (grouped_writer->batch != nullptr && !grouped_writer->single_put) {
+          all_single_put_writers = false;
+          break;
+        }
+        if (grouped_writer == last_writer) break;
+      }
+      if (all_single_put_writers) {
+        for (auto iter = writers_.begin(); iter != writers_.end(); ++iter) {
+          Writer* grouped_writer = *iter;
+          if (grouped_writer->batch != nullptr) {
+            batch_counter.Increment(grouped_writer->single_put_key);
+          }
+          if (grouped_writer == last_writer) break;
+        }
+        status = batch_counter.status();
+      } else {
+        status = write_batch->Iterate(&batch_counter);
+      }
+    }
     if (status.ok() && !batch_counter.status().ok()) {
       status = batch_counter.status();
     }
@@ -4711,14 +4857,21 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
     auto account_key = [&](const Slice& key) -> Status {
       metadata_profile_.Count(MetadataProfileCounter::kWriteDistinctKeys);
       uint64_t old_count = 0;
-      Status count_status = CountPrimaryRecordsForKey(key, &old_count);
-      if (!count_status.ok()) return count_status;
+      const bool known_absent = metadata_primary_user_key_bound_initialized_ &&
+          (!metadata_primary_user_key_bound_has_value_ ||
+           CompareUserKeys(user_comparator(), key,
+                           metadata_primary_user_key_bound_) > 0);
+      if (!known_absent) {
+        Status count_status = CountPrimaryRecordsForKey(key, &old_count);
+        if (!count_status.ok()) return count_status;
+      }
       if (old_count == 0) {
         if (next_distinct_keys == std::numeric_limits<uint64_t>::max()) {
           return Status::Corruption("distinct key count overflow");
         }
         ++next_distinct_keys;
       }
+      RememberPrimaryWriteKey(key);
       return Status::OK();
     };
 
@@ -4840,6 +4993,26 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
       metadata_total_entries_ = next_total_entries;
       metadata_distinct_keys_ = next_distinct_keys;
       versions_->SetLastSequence(last_sequence);
+      if (snapshots_.empty()) {
+        if (std::numeric_limits<uint64_t>::max() - write_bytes_since_open_ <
+            batch_bytes) {
+          write_bytes_since_open_ = std::numeric_limits<uint64_t>::max();
+        } else {
+          write_bytes_since_open_ += batch_bytes;
+        }
+        const uint64_t configured_buffer = options_.write_buffer_size;
+        const uint64_t maximum_buffer = uint64_t{1} << 20;
+        if (configured_buffer < maximum_buffer) {
+          const uint64_t growth_interval = configured_buffer * 16;
+          const uint64_t growth_steps =
+              write_bytes_since_open_ / growth_interval;
+          const uint64_t max_multiplier = maximum_buffer / configured_buffer;
+          const uint64_t multiplier =
+              std::min<uint64_t>(max_multiplier, growth_steps + 1);
+          write_buffer_limit_ = std::max<size_t>(
+              write_buffer_limit_, configured_buffer * multiplier);
+        }
+      }
       if (batch_counter.has_largest_user_key()) {
         const Slice& batch_max_key = batch_counter.largest_user_key();
         if (!metadata_primary_user_key_bound_initialized_ ||
@@ -4971,7 +5144,7 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       Log(options_.info_log, "Metadata generations full; waiting...\n");
       background_work_finished_signal_.Wait();
     } else if (!force &&
-               (mem_->ApproximateMemoryUsage() <= options_.write_buffer_size)) {
+               (mem_->ApproximateMemoryUsage() <= write_buffer_limit_)) {
       // There is room in current memtable
       break;
     } else if (imm_ != nullptr) {

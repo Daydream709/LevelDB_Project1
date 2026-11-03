@@ -211,6 +211,13 @@ class DBImpl : public DB {
   Status CountPrimaryRecordsForKey(const Slice& key, uint64_t* count)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status InitializePrimaryUserKeyBound() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status EnablePrimaryWriteKeyFilter() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  bool PrimaryWriteKeyFilterApplies(const Slice& key)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  bool PrimaryWriteKeyFilterMayContain(const Slice& key)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void RememberPrimaryWriteKey(const Slice& key)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status LogAndApply(VersionEdit* edit) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void UpdatePublishedStatsSnapshot() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void UpdatePublishedStatsCompactSnapshot() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -223,6 +230,8 @@ class DBImpl : public DB {
 
   Status MakeRoomForWrite(bool force /* compact even if there is room? */)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status WriteInternal(const WriteOptions& options, WriteBatch* updates,
+                       bool trusted_single_put, const Slice& single_put_key);
   WriteBatch* BuildBatchGroup(Writer** last_writer)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -291,11 +300,18 @@ class DBImpl : public DB {
   uint64_t logfile_number_ GUARDED_BY(mutex_);
   log::Writer* log_;
   uint32_t seed_ GUARDED_BY(mutex_);  // For sampling.
+  size_t write_buffer_limit_ GUARDED_BY(mutex_);
+  uint64_t write_bytes_since_open_ GUARDED_BY(mutex_);
   uint64_t metadata_total_entries_ GUARDED_BY(mutex_);
   uint64_t metadata_distinct_keys_ GUARDED_BY(mutex_);
   bool metadata_primary_user_key_bound_initialized_ GUARDED_BY(mutex_);
   bool metadata_primary_user_key_bound_has_value_ GUARDED_BY(mutex_);
   std::string metadata_primary_user_key_bound_ GUARDED_BY(mutex_);
+  bool metadata_primary_write_key_filter_active_ GUARDED_BY(mutex_);
+  bool metadata_primary_write_key_filter_floor_has_value_ GUARDED_BY(mutex_);
+  std::string metadata_primary_write_key_filter_floor_ GUARDED_BY(mutex_);
+  std::vector<uint64_t> metadata_primary_write_key_filter_bits_
+      GUARDED_BY(mutex_);
   // One-word snapshot for the common counter range; larger values use the
   // full-width seqlock fields below.
   // Keep the read-mostly value apart from writer-updated seqlock fields so
