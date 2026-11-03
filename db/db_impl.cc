@@ -56,6 +56,12 @@ const char kMetadataWALMagic[] = "LDBMETA2";
 const size_t kMetadataWALMagicSize = sizeof(kMetadataWALMagic) - 1;
 constexpr size_t kMaxMetadataWALUpdates = 1U << 24;
 
+int CompareUserKeys(const Comparator* comparator, const Slice& a,
+                    const Slice& b) {
+  if (comparator == BytewiseComparator()) return a.compare(b);
+  return comparator->Compare(a, b);
+}
+
 struct MetadataWALRecord {
   uint64_t mseq = 0;
   uint64_t prev_mseq = 0;
@@ -172,8 +178,10 @@ class BatchMetadataCounter final : public WriteBatch::Handler {
  public:
   using SpillCallback = std::function<Status(const MetadataValueMap&)>;
 
-  BatchMetadataCounter(size_t budget, SpillCallback spill)
+  BatchMetadataCounter(size_t budget, const Comparator* user_comparator,
+                       SpillCallback spill)
       : budget_(std::max<size_t>(1, budget)),
+        user_comparator_(user_comparator),
         spill_(std::move(spill)),
         memory_usage_(0),
         total_records_(0),
@@ -184,6 +192,11 @@ class BatchMetadataCounter final : public WriteBatch::Handler {
 
   void Increment(const Slice& key) {
     if (!status_.ok()) return;
+    if (!has_largest_user_key_ ||
+        CompareUserKeys(user_comparator_, key, largest_user_key_) > 0) {
+      largest_user_key_ = key;
+      has_largest_user_key_ = true;
+    }
     if (total_records_ == std::numeric_limits<uint64_t>::max()) {
       count_overflow_ = true;
       return;
@@ -224,15 +237,20 @@ class BatchMetadataCounter final : public WriteBatch::Handler {
   const Status& status() const { return status_; }
   uint64_t total_records() const { return total_records_; }
   bool count_overflow() const { return count_overflow_; }
+  bool has_largest_user_key() const { return has_largest_user_key_; }
+  const Slice& largest_user_key() const { return largest_user_key_; }
 
   MetadataValueMap counts;
 
  private:
   const size_t budget_;
+  const Comparator* const user_comparator_;
   const SpillCallback spill_;
   size_t memory_usage_;
   uint64_t total_records_;
   bool count_overflow_;
+  Slice largest_user_key_;
+  bool has_largest_user_key_ = false;
   bool spilled_ = false;
   Status status_;
 };
@@ -451,6 +469,8 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname,
       seed_(0),
       metadata_total_entries_(0),
       metadata_distinct_keys_(0),
+      metadata_primary_user_key_bound_initialized_(false),
+      metadata_primary_user_key_bound_has_value_(false),
       published_stats_compact_snapshot_(kCompactStatsFallback),
       published_stats_available_(false),
       published_stats_version_(0),
@@ -1465,10 +1485,64 @@ void DBImpl::EnablePublishedStatsSnapshot() {
   UpdatePublishedStatsCompactSnapshot();
 }
 
+Status DBImpl::InitializePrimaryUserKeyBound() {
+  mutex_.AssertHeld();
+  if (metadata_primary_user_key_bound_initialized_) return Status::OK();
+
+  bool has_value = false;
+  std::string maximum;
+  auto consider_key = [&](const Slice& candidate) {
+    if (!has_value ||
+        CompareUserKeys(user_comparator(), candidate, maximum) > 0) {
+      maximum.assign(candidate.data(), candidate.size());
+      has_value = true;
+    }
+  };
+  auto consider_memtable = [&](MemTable* memtable) -> Status {
+    if (memtable == nullptr || memtable->NumEntries() == 0) {
+      return Status::OK();
+    }
+    std::unique_ptr<Iterator> iter(memtable->NewIterator());
+    iter->SeekToLast();
+    if (!iter->Valid()) {
+      return Status::Corruption("non-empty memtable has no last key");
+    }
+    ParsedInternalKey parsed;
+    if (!ParseInternalKey(iter->key(), &parsed)) {
+      return Status::Corruption("invalid last key in primary memtable");
+    }
+    consider_key(parsed.user_key);
+    return iter->status();
+  };
+
+  Status s = consider_memtable(mem_);
+  if (s.ok()) s = consider_memtable(imm_);
+  Version* version = versions_->current();
+  for (int level = 0; s.ok() && level < config::kNumLevels; ++level) {
+    for (FileMetaData* file : version->files(level)) {
+      consider_key(file->largest.user_key());
+    }
+  }
+  if (!s.ok()) return s;
+
+  metadata_primary_user_key_bound_.swap(maximum);
+  metadata_primary_user_key_bound_has_value_ = has_value;
+  metadata_primary_user_key_bound_initialized_ = true;
+  return Status::OK();
+}
+
 Status DBImpl::CountPrimaryRecordsForKey(const Slice& key, uint64_t* count) {
   mutex_.AssertHeld();
   if (count == nullptr) {
     return Status::InvalidArgument("record count output pointer is null");
+  }
+  Status s = InitializePrimaryUserKeyBound();
+  if (!s.ok()) return s;
+  if (metadata_primary_user_key_bound_has_value_ &&
+      CompareUserKeys(user_comparator(), key,
+                      metadata_primary_user_key_bound_) > 0) {
+    *count = 0;
+    return Status::OK();
   }
   uint64_t result = 0;
   if (mem_ != nullptr) result = mem_->CountUserKeyRecords(key);
@@ -1480,8 +1554,7 @@ Status DBImpl::CountPrimaryRecordsForKey(const Slice& key, uint64_t* count) {
     result += immutable_count;
   }
   uint64_t table_count = 0;
-  Status s = versions_->current()->CountUserKeyRecords(key, nullptr,
-                                                        &table_count);
+  s = versions_->current()->CountUserKeyRecords(key, nullptr, &table_count);
   if (!s.ok()) return s;
   if (std::numeric_limits<uint64_t>::max() - result < table_count) {
     return Status::Corruption("user key record count overflow");
@@ -4485,7 +4558,7 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
     MetadataProfile::Timer prepare_timer(
         &metadata_profile_, MetadataProfileStage::kWritePrepare);
     BatchMetadataCounter batch_counter(options_.metadata_workspace_size,
-                                       spill_batch_counts);
+                                       user_comparator(), spill_batch_counts);
     status = write_batch->Iterate(&batch_counter);
     if (status.ok() && !batch_counter.status().ok()) {
       status = batch_counter.status();
@@ -4728,6 +4801,18 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
       metadata_total_entries_ = next_total_entries;
       metadata_distinct_keys_ = next_distinct_keys;
       versions_->SetLastSequence(last_sequence);
+      if (batch_counter.has_largest_user_key()) {
+        const Slice& batch_max_key = batch_counter.largest_user_key();
+        if (!metadata_primary_user_key_bound_initialized_ ||
+            !metadata_primary_user_key_bound_has_value_ ||
+            CompareUserKeys(user_comparator(), batch_max_key,
+                            metadata_primary_user_key_bound_) > 0) {
+          metadata_primary_user_key_bound_.assign(batch_max_key.data(),
+                                                 batch_max_key.size());
+          metadata_primary_user_key_bound_has_value_ = true;
+          metadata_primary_user_key_bound_initialized_ = true;
+        }
+      }
       UpdatePublishedStatsSnapshot();
     } else {
       RecordBackgroundError(status);
@@ -5129,7 +5214,7 @@ class DBImplUnprofiled final : public DBImpl {
 };
 
 #if defined(__GNUC__)
-__attribute__((hot))
+__attribute__((hot, no_stack_protector))
 #endif
 Status DBImplUnprofiled::GetCurrentStats(const ReadOptions& options,
                                          Stats* stats) {
