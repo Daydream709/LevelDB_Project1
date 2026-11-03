@@ -174,10 +174,9 @@ Status DecodeMetadataWALRecord(const Slice& record, MetadataWALRecord* out) {
   return Status::OK();
 }
 
+template <class SpillCallback>
 class BatchMetadataCounter final : public WriteBatch::Handler {
  public:
-  using SpillCallback = std::function<Status(const MetadataValueMap&)>;
-
   BatchMetadataCounter(size_t budget, const Comparator* user_comparator,
                        SpillCallback spill)
       : budget_(std::max<size_t>(1, budget)),
@@ -4557,8 +4556,9 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
 
     MetadataProfile::Timer prepare_timer(
         &metadata_profile_, MetadataProfileStage::kWritePrepare);
-    BatchMetadataCounter batch_counter(options_.metadata_workspace_size,
-                                       user_comparator(), spill_batch_counts);
+    BatchMetadataCounter<decltype(spill_batch_counts)> batch_counter(
+        options_.metadata_workspace_size, user_comparator(),
+        spill_batch_counts);
     status = write_batch->Iterate(&batch_counter);
     if (status.ok() && !batch_counter.status().ok()) {
       status = batch_counter.status();
