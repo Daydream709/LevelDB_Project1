@@ -5243,6 +5243,18 @@ Status DB::Delete(const WriteOptions& opt, const Slice& key) {
 DB::~DB() = default;
 
 namespace {
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((cold, noinline))
+#endif
+Status InvalidUnprofiledStatsArgument(const DBImpl* db,
+                                      const ReadOptions& options,
+                                      Stats* stats) {
+  (void)db;
+  (void)options;
+  (void)stats;
+  return Status::InvalidArgument("stats must not be null");
+}
+
 class DBImplUnprofiled final : public DBImpl {
  public:
   DBImplUnprofiled(const Options& options, const std::string& dbname,
@@ -5258,6 +5270,9 @@ __attribute__((hot, no_stack_protector))
 Status DBImplUnprofiled::GetCurrentStats(const ReadOptions& options,
                                          Stats* stats) {
   (void)options;
+  if (stats == nullptr) {
+    return InvalidUnprofiledStatsArgument(this, options, stats);
+  }
   return GetCurrentStatsUnprofiled(stats);
 }
 }  // namespace

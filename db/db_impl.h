@@ -99,9 +99,6 @@ class DBImpl : public DB {
 
  protected:
   Status GetCurrentStatsUnprofiled(Stats* stats) {
-    if (stats == nullptr) {
-      return Status::InvalidArgument("stats must not be null");
-    }
     return GetCurrentStatsSnapshot(stats);
   }
 
