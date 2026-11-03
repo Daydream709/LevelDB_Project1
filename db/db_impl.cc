@@ -1388,6 +1388,45 @@ Status DBImpl::GetCurrentStatsProfiled(Stats* stats) {
   return GetCurrentStatsSnapshot(stats);
 }
 
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((cold, noinline))
+#endif
+Status DBImpl::GetCurrentStatsWideSnapshot(Stats* stats) {
+  if (published_stats_available_.load(std::memory_order_acquire)) {
+    uint64_t total_entries;
+    uint64_t distinct_keys;
+    uint64_t sequence;
+    for (;;) {
+      const uint64_t before =
+          published_stats_version_.load(std::memory_order_acquire);
+      if ((before & 1U) != 0) continue;
+      if ((before & kPublishedStatsWideCounts) != 0) {
+        return GetCurrentStatsFallback(stats);
+      }
+      const uint64_t packed_counts =
+          published_stats_packed_counts_.load(std::memory_order_relaxed);
+      total_entries = packed_counts & 0xffffffffULL;
+      distinct_keys = packed_counts >> 32;
+      sequence = published_stats_sequence_.load(std::memory_order_relaxed);
+      // Pair with the writer's release fence before its payload stores.
+      // If either payload load observes new data, the trailing version check
+      // cannot accept the old version.
+      std::atomic_thread_fence(std::memory_order_acquire);
+      const uint64_t after =
+          published_stats_version_.load(std::memory_order_relaxed);
+      if (before == after &&
+          published_stats_available_.load(std::memory_order_acquire)) {
+        stats->total_entries = total_entries;
+        stats->distinct_keys = distinct_keys;
+        stats->seq = sequence;
+        return Status::OK();
+      }
+      if (!published_stats_available_.load(std::memory_order_acquire)) break;
+    }
+  }
+  return GetCurrentStatsFallback(stats);
+}
+
 Status DBImpl::GetCurrentStatsFallback(Stats* stats) {
   mutex_.Lock();
   while (metadata_rebuild_in_progress_) {
