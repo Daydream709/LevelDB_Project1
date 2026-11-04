@@ -96,13 +96,17 @@ Status Writer::EmitPhysicalRecord(RecordType t, const char* ptr,
   EncodeFixed32(buf, crc);
 
   // Write the header and the payload
-  Status s = dest_->Append(Slice(buf, kHeaderSize));
-  if (s.ok()) {
-    s = dest_->Append(Slice(ptr, length));
-    if (s.ok()) {
-      s = dest_->Flush();
-    }
+  Status s;
+  if (length <= 512) {
+    char record[512 + kHeaderSize];
+    std::memcpy(record, buf, kHeaderSize);
+    std::memcpy(record + kHeaderSize, ptr, length);
+    s = dest_->Append(Slice(record, kHeaderSize + length));
+  } else {
+    s = dest_->Append(Slice(buf, kHeaderSize));
+    if (s.ok()) s = dest_->Append(Slice(ptr, length));
   }
+  if (s.ok()) s = dest_->Flush();
   block_offset_ += kHeaderSize + length;
   return s;
 }

@@ -1,0 +1,38 @@
+[
+  {
+    "case": "perf_combined_stats_under_write",
+    "phase": "stats_under_ttl_write",
+    "keys": 100000,
+    "threads": 1,
+    "expired_percent": 100,
+    "repeats": 5,
+    "median_ops_per_second": 20113300.0,
+    "min_ops_per_second": 20040200.0,
+    "max_ops_per_second": 20817700.0,
+    "median_p99_us": 0.078
+  },
+  {
+    "case": "perf_combined_stats_under_write",
+    "phase": "ttl_put_with_stats_queries",
+    "keys": 100000,
+    "threads": 1,
+    "expired_percent": 100,
+    "repeats": 5,
+    "median_ops_per_second": 431683,
+    "min_ops_per_second": 334655,
+    "max_ops_per_second": 442683,
+    "median_p99_us": 0
+  },
+  {
+    "case": "perf_combined_stats_under_write",
+    "phase": "ttl_put_without_stats_queries",
+    "keys": 100000,
+    "threads": 1,
+    "expired_percent": 100,
+    "repeats": 5,
+    "median_ops_per_second": 448337,
+    "min_ops_per_second": 421163,
+    "max_ops_per_second": 466055,
+    "median_p99_us": 0
+  }
+]

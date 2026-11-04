@@ -1,0 +1,26 @@
+{
+  "background": null,
+  "branch": "autoresearch/ttl-convergence",
+  "created_at": "2026-11-04T12:27:47Z",
+  "goal": "\u4ee5 0f8f981 \u4e3a\u57fa\u7ebf\u4f18\u5316 TTL \u5199\u5165\u4e0e\u6df7\u5408\u8bfb\u53d6\u5e76\u6301\u7eed\u81f3 50 \u8f6e\u6536\u655b",
+  "guard": "python3.9 /tmp/ttl_convergence_eval.py guard",
+  "max_iterations": 50,
+  "metric": {
+    "command": "python3.9 /tmp/ttl_convergence_eval.py verify",
+    "direction": "higher",
+    "json_key": null,
+    "name": "ttl_eight_config_geomean"
+  },
+  "mode": "foreground",
+  "repo": "/tmp/ttl-convergence-repo",
+  "run_id": "7374c8533e424a56987ba75ab4ffc099",
+  "schema_version": 1,
+  "scope": [
+    "db",
+    "table",
+    "util",
+    "include"
+  ],
+  "target": 2,
+  "timeout_seconds": 2400
+}

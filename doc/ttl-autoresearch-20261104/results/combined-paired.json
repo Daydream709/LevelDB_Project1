@@ -1,0 +1,1154 @@
+[
+  {
+    "version": "baseline",
+    "repeat": 0,
+    "expiry": 0,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 85940,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.2327,
+          "ops_per_second": 429739,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57992258,
+          "db_directory_bytes_after_drain": 56330608
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.21437,
+          "ops_per_second": 466482,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58023033,
+          "db_directory_bytes_after_drain": 56330608
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 4109506,
+          "seconds": 0.21432,
+          "ops_per_second": 19174600.0,
+          "p50_us": 0.03,
+          "p95_us": 0.04,
+          "p99_us": 0.092,
+          "latency_samples": 64212,
+          "append_bytes_during_phase": 58023117,
+          "db_directory_bytes_after_drain": 56330608
+        }
+      ]
+    }
+  },
+  {
+    "version": "candidate",
+    "repeat": 0,
+    "expiry": 0,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 93764,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.201686,
+          "ops_per_second": 495820,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56481558,
+          "db_directory_bytes_after_drain": 59872334
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.354474,
+          "ops_per_second": 282108,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55900138,
+          "db_directory_bytes_after_drain": 59872796
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7029741,
+          "seconds": 0.354436,
+          "ops_per_second": 19833600.0,
+          "p50_us": 0.03,
+          "p95_us": 0.036,
+          "p99_us": 0.074,
+          "latency_samples": 109840,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872796
+        }
+      ]
+    }
+  },
+  {
+    "version": "candidate",
+    "repeat": 1,
+    "expiry": 0,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 94436,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.330138,
+          "ops_per_second": 302904,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55979045,
+          "db_directory_bytes_after_drain": 59872796
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 6663255,
+          "seconds": 0.330083,
+          "ops_per_second": 20186600.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.069,
+          "latency_samples": 104114,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872796
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.368135,
+          "ops_per_second": 271640,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55945821,
+          "db_directory_bytes_after_drain": 59872950
+        }
+      ]
+    }
+  },
+  {
+    "version": "baseline",
+    "repeat": 1,
+    "expiry": 0,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 86072,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.396287,
+          "ops_per_second": 252343,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56272362,
+          "db_directory_bytes_after_drain": 56331840
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 8205152,
+          "seconds": 0.396228,
+          "ops_per_second": 20708100.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.069,
+          "latency_samples": 128206,
+          "append_bytes_during_phase": 58023117,
+          "db_directory_bytes_after_drain": 56331840
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.35517,
+          "ops_per_second": 281555,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57661665,
+          "db_directory_bytes_after_drain": 56331686
+        }
+      ]
+    }
+  },
+  {
+    "version": "baseline",
+    "repeat": 2,
+    "expiry": 0,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 85952,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.208453,
+          "ops_per_second": 479725,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57958781,
+          "db_directory_bytes_after_drain": 56330608
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.221893,
+          "ops_per_second": 450668,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56757783,
+          "db_directory_bytes_after_drain": 56330762
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 3968005,
+          "seconds": 0.221844,
+          "ops_per_second": 17886500.0,
+          "p50_us": 0.03,
+          "p95_us": 0.049,
+          "p99_us": 0.087,
+          "latency_samples": 62001,
+          "append_bytes_during_phase": 58023117,
+          "db_directory_bytes_after_drain": 56330762
+        }
+      ]
+    }
+  },
+  {
+    "version": "candidate",
+    "repeat": 2,
+    "expiry": 0,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 94480,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.200765,
+          "ops_per_second": 498094,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56506476,
+          "db_directory_bytes_after_drain": 59872334
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.367953,
+          "ops_per_second": 271774,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55995657,
+          "db_directory_bytes_after_drain": 59872950
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7360610,
+          "seconds": 0.367908,
+          "ops_per_second": 20006600.0,
+          "p50_us": 0.03,
+          "p95_us": 0.033,
+          "p99_us": 0.068,
+          "latency_samples": 115010,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872950
+        }
+      ]
+    }
+  },
+  {
+    "version": "candidate",
+    "repeat": 3,
+    "expiry": 0,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 94172,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.229274,
+          "ops_per_second": 436158,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56024728,
+          "db_directory_bytes_after_drain": 59872488
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 4490742,
+          "seconds": 0.229221,
+          "ops_per_second": 19591300.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.083,
+          "latency_samples": 70168,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872488
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.367519,
+          "ops_per_second": 272095,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55871067,
+          "db_directory_bytes_after_drain": 59872950
+        }
+      ]
+    }
+  },
+  {
+    "version": "baseline",
+    "repeat": 3,
+    "expiry": 0,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 84764,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.404058,
+          "ops_per_second": 247489,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56803814,
+          "db_directory_bytes_after_drain": 56331994
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 8306932,
+          "seconds": 0.404014,
+          "ops_per_second": 20561000.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.077,
+          "latency_samples": 129796,
+          "append_bytes_during_phase": 58023117,
+          "db_directory_bytes_after_drain": 56331994
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.204535,
+          "ops_per_second": 488914,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57971335,
+          "db_directory_bytes_after_drain": 56330608
+        }
+      ]
+    }
+  },
+  {
+    "version": "baseline",
+    "repeat": 4,
+    "expiry": 0,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 86064,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.258114,
+          "ops_per_second": 387426,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57699327,
+          "db_directory_bytes_after_drain": 56331070
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.310623,
+          "ops_per_second": 321934,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57674224,
+          "db_directory_bytes_after_drain": 56331378
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 6684487,
+          "seconds": 0.310584,
+          "ops_per_second": 21522300.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.074,
+          "latency_samples": 104446,
+          "append_bytes_during_phase": 58023117,
+          "db_directory_bytes_after_drain": 56331378
+        }
+      ]
+    }
+  },
+  {
+    "version": "candidate",
+    "repeat": 4,
+    "expiry": 0,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 93856,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.248555,
+          "ops_per_second": 402326,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55991504,
+          "db_directory_bytes_after_drain": 59872488
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.367917,
+          "ops_per_second": 271800,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55098609,
+          "db_directory_bytes_after_drain": 59872950
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7163539,
+          "seconds": 0.36787,
+          "ops_per_second": 19473000.0,
+          "p50_us": 0.03,
+          "p95_us": 0.048,
+          "p99_us": 0.064,
+          "latency_samples": 111931,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872950
+        }
+      ]
+    }
+  },
+  {
+    "version": "candidate",
+    "repeat": 5,
+    "expiry": 0,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 86724,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.367507,
+          "ops_per_second": 272104,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55941668,
+          "db_directory_bytes_after_drain": 59872950
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7357923,
+          "seconds": 0.367457,
+          "ops_per_second": 20023900.0,
+          "p50_us": 0.03,
+          "p95_us": 0.032,
+          "p99_us": 0.068,
+          "latency_samples": 114968,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872950
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.361628,
+          "ops_per_second": 276527,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55389319,
+          "db_directory_bytes_after_drain": 59872950
+        }
+      ]
+    }
+  },
+  {
+    "version": "baseline",
+    "repeat": 5,
+    "expiry": 0,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 89576,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.268374,
+          "ops_per_second": 372614,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57766286,
+          "db_directory_bytes_after_drain": 56331070
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 5401083,
+          "seconds": 0.268322,
+          "ops_per_second": 20129100.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.08,
+          "latency_samples": 84392,
+          "append_bytes_during_phase": 58023117,
+          "db_directory_bytes_after_drain": 56331070
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.263186,
+          "ops_per_second": 379959,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57649116,
+          "db_directory_bytes_after_drain": 56331533
+        }
+      ]
+    }
+  },
+  {
+    "version": "baseline",
+    "repeat": 0,
+    "expiry": 50,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 49576,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.340269,
+          "ops_per_second": 293885,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57506837,
+          "db_directory_bytes_after_drain": 56331532
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.406297,
+          "ops_per_second": 246125,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57958781,
+          "db_directory_bytes_after_drain": 56332918
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 8311740,
+          "seconds": 0.406249,
+          "ops_per_second": 20459700.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.061,
+          "latency_samples": 129871,
+          "append_bytes_during_phase": 58023117,
+          "db_directory_bytes_after_drain": 56332918
+        }
+      ]
+    }
+  },
+  {
+    "version": "candidate",
+    "repeat": 0,
+    "expiry": 50,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 53532,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.252402,
+          "ops_per_second": 396193,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56074564,
+          "db_directory_bytes_after_drain": 59872488
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.367777,
+          "ops_per_second": 271904,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55904291,
+          "db_directory_bytes_after_drain": 59872950
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7688065,
+          "seconds": 0.367737,
+          "ops_per_second": 20906400.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.072,
+          "latency_samples": 120127,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872950
+        }
+      ]
+    }
+  },
+  {
+    "version": "candidate",
+    "repeat": 1,
+    "expiry": 50,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 46556,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.366862,
+          "ops_per_second": 272582,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56041340,
+          "db_directory_bytes_after_drain": 59873258
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7324252,
+          "seconds": 0.366817,
+          "ops_per_second": 19967100.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.077,
+          "latency_samples": 114442,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59873258
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.368032,
+          "ops_per_second": 271715,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55912597,
+          "db_directory_bytes_after_drain": 59872950
+        }
+      ]
+    }
+  },
+  {
+    "version": "baseline",
+    "repeat": 1,
+    "expiry": 50,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 48844,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.393305,
+          "ops_per_second": 254256,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57778841,
+          "db_directory_bytes_after_drain": 56331840
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 8211411,
+          "seconds": 0.393252,
+          "ops_per_second": 20880800.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.074,
+          "latency_samples": 128304,
+          "append_bytes_during_phase": 58023117,
+          "db_directory_bytes_after_drain": 56331840
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.235637,
+          "ops_per_second": 424382,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57707701,
+          "db_directory_bytes_after_drain": 56330839
+        }
+      ]
+    }
+  },
+  {
+    "version": "baseline",
+    "repeat": 2,
+    "expiry": 50,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 48488,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.23279,
+          "ops_per_second": 429572,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57657485,
+          "db_directory_bytes_after_drain": 56330916
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.344283,
+          "ops_per_second": 290459,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57582160,
+          "db_directory_bytes_after_drain": 56331532
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7022059,
+          "seconds": 0.344242,
+          "ops_per_second": 20398600.0,
+          "p50_us": 0.03,
+          "p95_us": 0.034,
+          "p99_us": 0.069,
+          "latency_samples": 109720,
+          "append_bytes_during_phase": 58023117,
+          "db_directory_bytes_after_drain": 56331532
+        }
+      ]
+    }
+  },
+  {
+    "version": "candidate",
+    "repeat": 2,
+    "expiry": 50,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 53612,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.201883,
+          "ops_per_second": 495336,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56531394,
+          "db_directory_bytes_after_drain": 59872334
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.367825,
+          "ops_per_second": 271869,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56045493,
+          "db_directory_bytes_after_drain": 59873104
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7474624,
+          "seconds": 0.367777,
+          "ops_per_second": 20323800.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.054,
+          "latency_samples": 116791,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59873104
+        }
+      ]
+    }
+  },
+  {
+    "version": "candidate",
+    "repeat": 3,
+    "expiry": 50,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 46572,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.367919,
+          "ops_per_second": 271799,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56199154,
+          "db_directory_bytes_after_drain": 59872950
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7119829,
+          "seconds": 0.367875,
+          "ops_per_second": 19353900.0,
+          "p50_us": 0.029,
+          "p95_us": 0.031,
+          "p99_us": 0.067,
+          "latency_samples": 111248,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872950
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.368129,
+          "ops_per_second": 271644,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56120247,
+          "db_directory_bytes_after_drain": 59872950
+        }
+      ]
+    }
+  },
+  {
+    "version": "baseline",
+    "repeat": 3,
+    "expiry": 50,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 45268,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.405092,
+          "ops_per_second": 246858,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57703517,
+          "db_directory_bytes_after_drain": 56332456
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 8126858,
+          "seconds": 0.405037,
+          "ops_per_second": 20064500.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.072,
+          "latency_samples": 126983,
+          "append_bytes_during_phase": 58023117,
+          "db_directory_bytes_after_drain": 56332456
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.366085,
+          "ops_per_second": 273161,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57749547,
+          "db_directory_bytes_after_drain": 56331686
+        }
+      ]
+    }
+  },
+  {
+    "version": "baseline",
+    "repeat": 4,
+    "expiry": 50,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 47636,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.383445,
+          "ops_per_second": 260794,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57736994,
+          "db_directory_bytes_after_drain": 56331840
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.261823,
+          "ops_per_second": 381937,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57858348,
+          "db_directory_bytes_after_drain": 56330916
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 5266422,
+          "seconds": 0.261785,
+          "ops_per_second": 20117400.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.079,
+          "latency_samples": 82288,
+          "append_bytes_during_phase": 58023117,
+          "db_directory_bytes_after_drain": 56330916
+        }
+      ]
+    }
+  },
+  {
+    "version": "candidate",
+    "repeat": 4,
+    "expiry": 50,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 53616,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.211617,
+          "ops_per_second": 472551,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56606148,
+          "db_directory_bytes_after_drain": 59872334
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.369712,
+          "ops_per_second": 270481,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55912597,
+          "db_directory_bytes_after_drain": 59872950
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7616931,
+          "seconds": 0.369665,
+          "ops_per_second": 20605000.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.071,
+          "latency_samples": 119015,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872950
+        }
+      ]
+    }
+  },
+  {
+    "version": "candidate",
+    "repeat": 5,
+    "expiry": 50,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 46512,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.367038,
+          "ops_per_second": 272451,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56028881,
+          "db_directory_bytes_after_drain": 59872950
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7309569,
+          "seconds": 0.366984,
+          "ops_per_second": 19918000.0,
+          "p50_us": 0.03,
+          "p95_us": 0.032,
+          "p99_us": 0.068,
+          "latency_samples": 114213,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872950
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.367773,
+          "ops_per_second": 271907,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55949974,
+          "db_directory_bytes_after_drain": 59872950
+        }
+      ]
+    }
+  },
+  {
+    "version": "baseline",
+    "repeat": 5,
+    "expiry": 50,
+    "result": {
+      "case": "perf_combined_stats_under_write",
+      "status": "pass",
+      "peak_rss_kib": 45292,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.406707,
+          "ops_per_second": 245877,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57653301,
+          "db_directory_bytes_after_drain": 56332148
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 8521028,
+          "seconds": 0.406664,
+          "ops_per_second": 20953500.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.072,
+          "latency_samples": 133142,
+          "append_bytes_during_phase": 58023117,
+          "db_directory_bytes_after_drain": 56332148
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.240752,
+          "ops_per_second": 415365,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57686778,
+          "db_directory_bytes_after_drain": 56330916
+        }
+      ]
+    }
+  }
+]

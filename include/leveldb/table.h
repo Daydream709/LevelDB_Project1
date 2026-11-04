@@ -94,7 +94,8 @@ class LEVELDB_EXPORT Table {
   // that key is not present.
   Status InternalGet(const ReadOptions&, const Slice& key, void* arg,
                      void (*handle_result)(void* arg, const Slice& k,
-                                           const Slice& v));
+                                           const Slice& v),
+                     bool bytewise_internal = false);
   Status InternalGetMany(const ReadOptions&, const std::vector<Slice>& keys,
                          std::vector<GetResult>* results,
                          size_t* data_block_probes);

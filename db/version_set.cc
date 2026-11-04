@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <utility>
 
 #include "db/filename.h"
 #include "db/log_reader.h"
@@ -427,7 +428,7 @@ Status Version::Get(const ReadOptions& options, const LookupKey& k,
 
   ForEachOverlapping(state.saver.user_key, state.ikey, &state, &State::Match);
 
-  return state.found ? state.s : Status::NotFound(Slice());
+  return state.found ? std::move(state.s) : Status::NotFound(Slice());
 }
 
 Status Version::CountUserKeyRecords(const Slice& user_key,

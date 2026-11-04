@@ -39,7 +39,7 @@ namespace leveldb {
 
 BlockBuilder::BlockBuilder(const Options* options)
     : options_(options), restarts_(), counter_(0), finished_(false) {
-  assert(options->block_restart_interval >= 1);
+  assert(options->block_restart_interval >= 0);
   restarts_.push_back(0);  // First restart point is at offset 0
 }
 
@@ -71,11 +71,13 @@ Slice BlockBuilder::Finish() {
 void BlockBuilder::Add(const Slice& key, const Slice& value) {
   Slice last_key_piece(last_key_);
   assert(!finished_);
-  assert(counter_ <= options_->block_restart_interval);
+  const int restart_interval = options_->block_restart_interval == 0
+                                   ? 16 : options_->block_restart_interval;
+  assert(counter_ <= restart_interval);
   assert(buffer_.empty()  // No values yet?
          || options_->comparator->Compare(key, last_key_piece) > 0);
   size_t shared = 0;
-  if (counter_ < options_->block_restart_interval) {
+  if (counter_ < restart_interval) {
     // See how much sharing to do with previous string
     const size_t min_length = std::min(last_key_piece.size(), key.size());
     while ((shared < min_length) && (last_key_piece[shared] == key[shared])) {

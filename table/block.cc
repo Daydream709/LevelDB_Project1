@@ -125,6 +125,7 @@ class Block::Iter : public Iterator {
   const char* const data_;       // underlying block contents
   uint32_t const restarts_;      // Offset of restart array (list of fixed32)
   uint32_t const num_restarts_;  // Number of uint32_t entries in restart array
+  const bool bytewise_internal_;
 
   // current_ is offset in data_ of current entry.  >= restarts_ if !Valid
   uint32_t current_;
@@ -134,6 +135,27 @@ class Block::Iter : public Iterator {
   Status status_;
 
   inline int Compare(const Slice& a, const Slice& b) const {
+    if (bytewise_internal_ && a.size() >= 8 && b.size() >= 8) {
+#if defined(__GNUC__) || defined(__clang__)
+      if (a.size() == 24 && b.size() == 24) {
+        const uint64_t a0 = __builtin_bswap64(DecodeFixed64(a.data()));
+        const uint64_t b0 = __builtin_bswap64(DecodeFixed64(b.data()));
+        if (a0 != b0) return a0 < b0 ? -1 : 1;
+        const uint64_t a1 = __builtin_bswap64(DecodeFixed64(a.data() + 8));
+        const uint64_t b1 = __builtin_bswap64(DecodeFixed64(b.data() + 8));
+        if (a1 != b1) return a1 < b1 ? -1 : 1;
+        const uint64_t at = DecodeFixed64(a.data() + 16);
+        const uint64_t bt = DecodeFixed64(b.data() + 16);
+        return at > bt ? -1 : (at < bt ? 1 : 0);
+      }
+#endif
+      const int result = Slice(a.data(), a.size() - 8).compare(
+          Slice(b.data(), b.size() - 8));
+      if (result != 0) return result;
+      const uint64_t anum = DecodeFixed64(a.data() + a.size() - 8);
+      const uint64_t bnum = DecodeFixed64(b.data() + b.size() - 8);
+      return anum > bnum ? -1 : (anum < bnum ? 1 : 0);
+    }
     return comparator_->Compare(a, b);
   }
 
@@ -159,11 +181,12 @@ class Block::Iter : public Iterator {
 
  public:
   Iter(const Comparator* comparator, const char* data, uint32_t restarts,
-       uint32_t num_restarts)
+       uint32_t num_restarts, bool bytewise_internal = false)
       : comparator_(comparator),
         data_(data),
         restarts_(restarts),
         num_restarts_(num_restarts),
+        bytewise_internal_(bytewise_internal),
         current_(restarts_),
         restart_index_(num_restarts_) {
     assert(num_restarts_ > 0);
@@ -337,13 +360,109 @@ Iterator* Block::NewIterator(const Comparator* comparator) {
 Status Block::SeekThen(const Comparator* comparator, const Slice& target,
                        void* arg,
                        void (*handle_result)(void*, const Slice&,
-                                             const Slice&)) {
+                                             const Slice&),
+                       bool bytewise_internal) {
   if (size_ < sizeof(uint32_t)) {
     return Status::Corruption("bad block contents");
   }
   const uint32_t num_restarts = NumRestarts();
   if (num_restarts == 0) return Status::OK();
-  Iter iter(comparator, data_, restart_offset_, num_restarts);
+#if defined(__GNUC__) || defined(__clang__)
+  if (bytewise_internal && target.size() == 24) {
+    if (restart_offset_ == 0) return Status::OK();
+    const uint64_t target0 = __builtin_bswap64(DecodeFixed64(target.data()));
+    const uint64_t target1 = __builtin_bswap64(DecodeFixed64(target.data() + 8));
+    const uint64_t target_tag = DecodeFixed64(target.data() + 16);
+    auto compare_key = [&](const char* key, size_t len) {
+      if (len == 24) {
+        const uint64_t a0 = __builtin_bswap64(DecodeFixed64(key));
+        if (a0 != target0) return a0 < target0 ? -1 : 1;
+        const uint64_t a1 = __builtin_bswap64(DecodeFixed64(key + 8));
+        if (a1 != target1) return a1 < target1 ? -1 : 1;
+        const uint64_t at = DecodeFixed64(key + 16);
+        return at > target_tag ? -1 : (at < target_tag ? 1 : 0);
+      }
+      return comparator->Compare(Slice(key, len), target);
+    };
+    uint32_t left = 0, right = num_restarts - 1;
+    const char* candidate = nullptr;
+    uint32_t candidate_key_size = 0, candidate_value_size = 0;
+    uint32_t candidate_offset = 0;
+    while (left < right) {
+      const uint32_t mid = left + (right - left + 1) / 2;
+      const uint32_t offset = DecodeFixed32(data_ + restart_offset_ + mid * 4);
+      if (offset >= restart_offset_) return Status::Corruption("bad entry in block");
+      uint32_t shared, non_shared, value_length;
+      const char* p = DecodeEntry(data_ + offset, data_ + restart_offset_,
+                                  &shared, &non_shared, &value_length);
+      if (p == nullptr || shared != 0) return Status::Corruption("bad entry in block");
+      if (compare_key(p, non_shared) < 0) {
+        left = mid;
+      } else {
+        candidate = p;
+        candidate_key_size = non_shared;
+        candidate_value_size = value_length;
+        candidate_offset = offset;
+        right = mid - 1;
+      }
+    }
+    const uint32_t offset = DecodeFixed32(data_ + restart_offset_ + left * 4);
+    if (offset >= restart_offset_) return Status::Corruption("bad entry in block");
+    const char* p = data_ + offset;
+    const char* limit = data_ + restart_offset_;
+    if (candidate != nullptr) {
+      uint32_t shared, non_shared, value_length;
+      const char* first = DecodeEntry(p, limit, &shared, &non_shared,
+                                      &value_length);
+      if (first == nullptr || shared != 0)
+        return Status::Corruption("bad entry in block");
+      // If the next restart immediately follows this entry, there are no
+      // hidden entries between it and the binary-search candidate.
+      if (first + non_shared + value_length == data_ + candidate_offset &&
+          compare_key(first, non_shared) < 0) {
+        (*handle_result)(arg, Slice(candidate, candidate_key_size),
+                         Slice(candidate + candidate_key_size,
+                               candidate_value_size));
+        return Status::OK();
+      }
+    }
+    char key[32];
+    size_t key_size = 0;
+    bool prefix_matches = false;
+    while (p < limit) {
+      uint32_t shared, non_shared, value_length;
+      const char* delta = DecodeEntry(p, limit, &shared, &non_shared, &value_length);
+      if (delta == nullptr || shared > key_size)
+        return Status::Corruption("bad entry in block");
+      const size_t next_size = static_cast<size_t>(shared) + non_shared;
+      if (next_size > sizeof(key)) break;
+      std::memcpy(key + shared, delta, non_shared);
+      if (shared < 8 || key_size < 8) {
+        prefix_matches = next_size >= 8 &&
+            __builtin_bswap64(DecodeFixed64(key)) == target0;
+      }
+      key_size = next_size;
+      int order;
+      if (key_size == 24 && prefix_matches) {
+        const uint64_t second = __builtin_bswap64(DecodeFixed64(key + 8));
+        if (second != target1) order = second < target1 ? -1 : 1;
+        else {
+          const uint64_t tag = DecodeFixed64(key + 16);
+          order = tag > target_tag ? -1 : (tag < target_tag ? 1 : 0);
+        }
+      } else {
+        order = compare_key(key, key_size);
+      }
+      if (order >= 0) {
+        (*handle_result)(arg, Slice(key, key_size), Slice(delta + non_shared, value_length));
+        return Status::OK();
+      }
+      p = delta + non_shared + value_length;
+    }
+    if (p >= limit) return Status::OK();
+  }
+#endif
+  Iter iter(comparator, data_, restart_offset_, num_restarts, bytewise_internal);
   iter.Seek(target);
   if (iter.Valid()) (*handle_result)(arg, iter.key(), iter.value());
   return iter.status();

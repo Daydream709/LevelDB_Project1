@@ -1,0 +1,5483 @@
+{
+  "schema_version": 1,
+  "kind": "combined",
+  "profile": "standard",
+  "config": {
+    "keys": 100000,
+    "threads": 8,
+    "rounds": 8,
+    "repeat": 3
+  },
+  "value_bytes": 256,
+  "seed": 7774596,
+  "source": "/home/ubuntu/leveldb_project1",
+  "records": [
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 6.324759984971024,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_concurrent-n100000-t8-e50-r1/run.log",
+      "case": "combined_concurrent",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 129440,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 6.274230849987362,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_concurrent-n100000-t8-e50-r2/run.log",
+      "case": "combined_concurrent",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 129304,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 6.174825296038762,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_concurrent-n100000-t8-e50-r3/run.log",
+      "case": "combined_concurrent",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 128940,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.016349073965102434,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_contract-n100000-t8-e50-r1/run.log",
+      "case": "combined_contract",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8812,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.016125099966302514,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_contract-n100000-t8-e50-r2/run.log",
+      "case": "combined_contract",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8816,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.016150967974681407,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_contract-n100000-t8-e50-r3/run.log",
+      "case": "combined_contract",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8816,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06424734799657017,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_gc-n100000-t8-e50-r1/run.log",
+      "case": "combined_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8820,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06444114504847676,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_gc-n100000-t8-e50-r2/run.log",
+      "case": "combined_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8820,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06444277398986742,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_gc-n100000-t8-e50-r3/run.log",
+      "case": "combined_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8824,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.032391284010373056,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_overwrites-n100000-t8-e50-r1/run.log",
+      "case": "combined_overwrites",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8824,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06425128399860114,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_overwrites-n100000-t8-e50-r2/run.log",
+      "case": "combined_overwrites",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8828,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.064392336003948,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_overwrites-n100000-t8-e50-r3/run.log",
+      "case": "combined_overwrites",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8828,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.2146277939900756,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_reopen-n100000-t8-e50-r1/run.log",
+      "case": "combined_reopen",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8832,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.21472520602401346,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_reopen-n100000-t8-e50-r2/run.log",
+      "case": "combined_reopen",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8836,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.21484774397686124,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_reopen-n100000-t8-e50-r3/run.log",
+      "case": "combined_reopen",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8836,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11460815701866522,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_views-n100000-t8-e50-r1/run.log",
+      "case": "combined_views",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8840,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11458395601948723,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_views-n100000-t8-e50-r2/run.log",
+      "case": "combined_views",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8840,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11454919801326469,
+      "log": "/tmp/ttl-project1-postcommit-full/combined_views-n100000-t8-e50-r3/run.log",
+      "case": "combined_views",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8844,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.03236703894799575,
+      "log": "/tmp/ttl-project1-postcommit-full/metadata_contract-n100000-t8-e50-r1/run.log",
+      "case": "metadata_contract",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8844,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.03232336096698418,
+      "log": "/tmp/ttl-project1-postcommit-full/metadata_contract-n100000-t8-e50-r2/run.log",
+      "case": "metadata_contract",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8844,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.03232112602563575,
+      "log": "/tmp/ttl-project1-postcommit-full/metadata_contract-n100000-t8-e50-r3/run.log",
+      "case": "metadata_contract",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8848,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.665619854000397,
+      "log": "/tmp/ttl-project1-postcommit-full/metadata_reopen-n100000-t8-e50-r1/run.log",
+      "case": "metadata_reopen",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 42148,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.6153485769755207,
+      "log": "/tmp/ttl-project1-postcommit-full/metadata_reopen-n100000-t8-e50-r2/run.log",
+      "case": "metadata_reopen",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 42300,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.615204976988025,
+      "log": "/tmp/ttl-project1-postcommit-full/metadata_reopen-n100000-t8-e50-r3/run.log",
+      "case": "metadata_reopen",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 42160,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.26478385098744184,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n10000-t1-e0-r1/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 8876,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.0312795,
+          "ops_per_second": 319698,
+          "p50_us": 31279,
+          "p95_us": 31279,
+          "p99_us": 31279,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2992905,
+          "db_directory_bytes_after_drain": 3011051
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.2648166900034994,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n10000-t1-e0-r2/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 8880,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.0319173,
+          "ops_per_second": 313310,
+          "p50_us": 31916.6,
+          "p95_us": 31916.6,
+          "p99_us": 31916.6,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2992905,
+          "db_directory_bytes_after_drain": 3011051
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.26499153999611735,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n10000-t1-e0-r3/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 8884,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.0315195,
+          "ops_per_second": 317264,
+          "p50_us": 31519,
+          "p95_us": 31519,
+          "p99_us": 31519,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2992905,
+          "db_directory_bytes_after_drain": 3011051
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.26484213798539713,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n10000-t1-e50-r1/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 8900,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.0358094,
+          "ops_per_second": 279256,
+          "p50_us": 35808.8,
+          "p95_us": 35808.8,
+          "p99_us": 35808.8,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 1611153,
+          "db_directory_bytes_after_drain": 1514798
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.2648113839677535,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n10000-t1-e50-r2/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 8908,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.0355625,
+          "ops_per_second": 281195,
+          "p50_us": 35561.6,
+          "p95_us": 35561.6,
+          "p99_us": 35561.6,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 1611153,
+          "db_directory_bytes_after_drain": 1514798
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.26483729004394263,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n10000-t1-e50-r3/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 8912,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.0354109,
+          "ops_per_second": 282399,
+          "p50_us": 35410.3,
+          "p95_us": 35410.3,
+          "p99_us": 35410.3,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 1611153,
+          "db_directory_bytes_after_drain": 1514798
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.26483107201056555,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n10000-t1-e100-r1/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 8916,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.033512,
+          "ops_per_second": 298401,
+          "p50_us": 33511.2,
+          "p95_us": 33511.2,
+          "p99_us": 33511.2,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 229292,
+          "db_directory_bytes_after_drain": 17821
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.26469740795437247,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n10000-t1-e100-r2/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 8924,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.035104,
+          "ops_per_second": 284868,
+          "p50_us": 35103.2,
+          "p95_us": 35103.2,
+          "p99_us": 35103.2,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 229292,
+          "db_directory_bytes_after_drain": 17821
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.2646477940143086,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n10000-t1-e100-r3/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 8936,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.0335344,
+          "ops_per_second": 298201,
+          "p50_us": 33533.6,
+          "p95_us": 33533.6,
+          "p99_us": 33533.6,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 229292,
+          "db_directory_bytes_after_drain": 17821
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.7166221049847081,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n100000-t1-e0-r1/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 44828,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.202168,
+          "ops_per_second": 494639,
+          "p50_us": 202167,
+          "p95_us": 202167,
+          "p99_us": 202167,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 29929173,
+          "db_directory_bytes_after_drain": 30005375
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.4663903710315935,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n100000-t1-e0-r2/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 44880,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.209218,
+          "ops_per_second": 477971,
+          "p50_us": 209217,
+          "p95_us": 209217,
+          "p99_us": 209217,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 29929173,
+          "db_directory_bytes_after_drain": 30005375
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.366646133014001,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n100000-t1-e0-r3/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 44976,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.205253,
+          "ops_per_second": 487203,
+          "p50_us": 205253,
+          "p95_us": 205253,
+          "p99_us": 205253,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 29929173,
+          "db_directory_bytes_after_drain": 30005375
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.416516151977703,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n100000-t1-e50-r1/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 26104,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.24458,
+          "ops_per_second": 408864,
+          "p50_us": 244579,
+          "p95_us": 244579,
+          "p99_us": 244579,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 16110725,
+          "db_directory_bytes_after_drain": 15041516
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.5666682859882712,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n100000-t1-e50-r2/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 30572,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.242123,
+          "ops_per_second": 413012,
+          "p50_us": 242123,
+          "p95_us": 242123,
+          "p99_us": 242123,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 16110725,
+          "db_directory_bytes_after_drain": 15041516
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.667721870006062,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n100000-t1-e50-r3/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 29856,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.242497,
+          "ops_per_second": 412377,
+          "p50_us": 242496,
+          "p95_us": 242496,
+          "p99_us": 242496,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 16110725,
+          "db_directory_bytes_after_drain": 15041516
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.5664691820275038,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n100000-t1-e100-r1/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 20708,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.281694,
+          "ops_per_second": 354995,
+          "p50_us": 281687,
+          "p95_us": 281687,
+          "p99_us": 281687,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2292570,
+          "db_directory_bytes_after_drain": 77237
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.5666127169970423,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n100000-t1-e100-r2/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 15472,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.279222,
+          "ops_per_second": 358138,
+          "p50_us": 279213,
+          "p95_us": 279213,
+          "p99_us": 279213,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2292570,
+          "db_directory_bytes_after_drain": 77237
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.7170852510025725,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_gc-n100000-t1-e100-r3/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 14816,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.281157,
+          "ops_per_second": 355673,
+          "p50_us": 281156,
+          "p95_us": 281156,
+          "p99_us": 281156,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2292570,
+          "db_directory_bytes_after_drain": 77237
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.7657227169838734,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t1-e0-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 13884,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0202755,
+          "ops_per_second": 493206,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032000
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0203463,
+          "ops_per_second": 491489,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032000
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 394827,
+          "seconds": 0.020309,
+          "ops_per_second": 19441000.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.088,
+          "latency_samples": 6170,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032000
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.7658879539812915,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t1-e0-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 13652,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0210896,
+          "ops_per_second": 474167,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032000
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 411015,
+          "seconds": 0.0210526,
+          "ops_per_second": 19523200.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.083,
+          "latency_samples": 6423,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032000
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0201801,
+          "ops_per_second": 495538,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032000
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.7658706990187056,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t1-e0-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 13824,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0206171,
+          "ops_per_second": 485035,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032000
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0211365,
+          "ops_per_second": 473116,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032000
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 412035,
+          "seconds": 0.0210851,
+          "ops_per_second": 19541500.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.071,
+          "latency_samples": 6439,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032000
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.5654944339767098,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t1-e50-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 10924,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0199418,
+          "ops_per_second": 501460,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032001
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0204823,
+          "ops_per_second": 488227,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032001
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 405359,
+          "seconds": 0.0204318,
+          "ops_per_second": 19839600.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.082,
+          "latency_samples": 6334,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032001
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.5652746509877034,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t1-e50-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 10948,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0206851,
+          "ops_per_second": 483440,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032001
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 394069,
+          "seconds": 0.0206544,
+          "ops_per_second": 19079100.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.069,
+          "latency_samples": 6158,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032001
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0198856,
+          "ops_per_second": 502875,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032001
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.5653509179828689,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t1-e50-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 11064,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0205189,
+          "ops_per_second": 487357,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032001
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0208733,
+          "ops_per_second": 479081,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032001
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 402290,
+          "seconds": 0.0208246,
+          "ops_per_second": 19318000.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.1,
+          "latency_samples": 6286,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032001
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.31500686099752784,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t1-e100-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 11116,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.020839,
+          "ops_per_second": 479870,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032002
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0212099,
+          "ops_per_second": 471478,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032002
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 437094,
+          "seconds": 0.0211632,
+          "ops_per_second": 20653500.0,
+          "p50_us": 0.031,
+          "p95_us": 0.032,
+          "p99_us": 0.091,
+          "latency_samples": 6830,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032002
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3148194749956019,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t1-e100-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 11016,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0207844,
+          "ops_per_second": 481130,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032002
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 409459,
+          "seconds": 0.0207569,
+          "ops_per_second": 19726400.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.076,
+          "latency_samples": 6398,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032002
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.020023,
+          "ops_per_second": 499427,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032002
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.2648792649852112,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t1-e100-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 11036,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0203131,
+          "ops_per_second": 492294,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032002
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0203771,
+          "ops_per_second": 490748,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032002
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 393753,
+          "seconds": 0.0203323,
+          "ops_per_second": 19365900.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.093,
+          "latency_samples": 6153,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6032002
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.8658129080431536,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t8-e0-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 0,
+      "peak_rss_kib": 16908,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0680994,
+          "ops_per_second": 146844,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891381,
+          "db_directory_bytes_after_drain": 5892814
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0706774,
+          "ops_per_second": 141488,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2892163,
+          "db_directory_bytes_after_drain": 5893596
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1231867,
+          "seconds": 0.0704933,
+          "ops_per_second": 17475000.0,
+          "p50_us": 0.032,
+          "p95_us": 0.048,
+          "p99_us": 0.078,
+          "latency_samples": 19248,
+          "append_bytes_during_phase": 2889247,
+          "db_directory_bytes_after_drain": 5893596
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.8660115040256642,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t8-e0-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 0,
+      "peak_rss_kib": 16376,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0722529,
+          "ops_per_second": 138403,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891441,
+          "db_directory_bytes_after_drain": 5892874
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1274544,
+          "seconds": 0.0720224,
+          "ops_per_second": 17696500.0,
+          "p50_us": 0.031,
+          "p95_us": 0.048,
+          "p99_us": 0.071,
+          "latency_samples": 19915,
+          "append_bytes_during_phase": 2890835,
+          "db_directory_bytes_after_drain": 5892874
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0685659,
+          "ops_per_second": 145845,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2890890,
+          "db_directory_bytes_after_drain": 5892323
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.8662626880104654,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t8-e0-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 0,
+      "peak_rss_kib": 17048,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0682675,
+          "ops_per_second": 146483,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2890757,
+          "db_directory_bytes_after_drain": 5892190
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0711363,
+          "ops_per_second": 140575,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891878,
+          "db_directory_bytes_after_drain": 5893311
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1261216,
+          "seconds": 0.070967,
+          "ops_per_second": 17771900.0,
+          "p50_us": 0.031,
+          "p95_us": 0.048,
+          "p99_us": 0.06,
+          "latency_samples": 19707,
+          "append_bytes_during_phase": 2889814,
+          "db_directory_bytes_after_drain": 5893311
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.6656339860055596,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t8-e50-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 11624,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0689153,
+          "ops_per_second": 145106,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891593,
+          "db_directory_bytes_after_drain": 5893027
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0707658,
+          "ops_per_second": 141311,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891992,
+          "db_directory_bytes_after_drain": 5893426
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1275848,
+          "seconds": 0.070577,
+          "ops_per_second": 18077400.0,
+          "p50_us": 0.031,
+          "p95_us": 0.048,
+          "p99_us": 0.064,
+          "latency_samples": 19936,
+          "append_bytes_during_phase": 2888489,
+          "db_directory_bytes_after_drain": 5893426
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.6654585209907964,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t8-e50-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 11360,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0717352,
+          "ops_per_second": 139402,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891878,
+          "db_directory_bytes_after_drain": 5893312
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1271947,
+          "seconds": 0.0714871,
+          "ops_per_second": 17792700.0,
+          "p50_us": 0.031,
+          "p95_us": 0.05,
+          "p99_us": 0.065,
+          "latency_samples": 19875,
+          "append_bytes_during_phase": 2890969,
+          "db_directory_bytes_after_drain": 5893312
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0676491,
+          "ops_per_second": 147822,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891118,
+          "db_directory_bytes_after_drain": 5892552
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.6654494370450266,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t8-e50-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 11588,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0680696,
+          "ops_per_second": 146908,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891023,
+          "db_directory_bytes_after_drain": 5892457
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0711148,
+          "ops_per_second": 140618,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891605,
+          "db_directory_bytes_after_drain": 5893039
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1242057,
+          "seconds": 0.07093,
+          "ops_per_second": 17511000.0,
+          "p50_us": 0.032,
+          "p95_us": 0.049,
+          "p99_us": 0.078,
+          "latency_samples": 19408,
+          "append_bytes_during_phase": 2888973,
+          "db_directory_bytes_after_drain": 5893039
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.4152407040237449,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t8-e100-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 100,
+      "peak_rss_kib": 11460,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0687347,
+          "ops_per_second": 145487,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891270,
+          "db_directory_bytes_after_drain": 5892705
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0709484,
+          "ops_per_second": 140947,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2892460,
+          "db_directory_bytes_after_drain": 5893895
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1205057,
+          "seconds": 0.0707904,
+          "ops_per_second": 17022900.0,
+          "p50_us": 0.031,
+          "p95_us": 0.048,
+          "p99_us": 0.066,
+          "latency_samples": 18830,
+          "append_bytes_during_phase": 2890415,
+          "db_directory_bytes_after_drain": 5893895
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3650473849847913,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t8-e100-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 100,
+      "peak_rss_kib": 11596,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0713799,
+          "ops_per_second": 140095,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891572,
+          "db_directory_bytes_after_drain": 5893007
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1240411,
+          "seconds": 0.0711524,
+          "ops_per_second": 17433100.0,
+          "p50_us": 0.032,
+          "p95_us": 0.048,
+          "p99_us": 0.061,
+          "latency_samples": 19382,
+          "append_bytes_during_phase": 2890360,
+          "db_directory_bytes_after_drain": 5893007
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0677912,
+          "ops_per_second": 147512,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891403,
+          "db_directory_bytes_after_drain": 5892838
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.4151993920095265,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n10000-t8-e100-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 100,
+      "peak_rss_kib": 11476,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0680002,
+          "ops_per_second": 147058,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891191,
+          "db_directory_bytes_after_drain": 5892626
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0707581,
+          "ops_per_second": 141327,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2892296,
+          "db_directory_bytes_after_drain": 5893731
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1182949,
+          "seconds": 0.0705851,
+          "ops_per_second": 16759200.0,
+          "p50_us": 0.032,
+          "p95_us": 0.048,
+          "p99_us": 0.057,
+          "latency_samples": 18484,
+          "append_bytes_during_phase": 2889399,
+          "db_directory_bytes_after_drain": 5893731
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 6.074456815025769,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t1-e0-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 93504,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.201668,
+          "ops_per_second": 495864,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56473252,
+          "db_directory_bytes_after_drain": 59872386
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.202967,
+          "ops_per_second": 492692,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55642652,
+          "db_directory_bytes_after_drain": 59872386
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 3718511,
+          "seconds": 0.202918,
+          "ops_per_second": 18325200.0,
+          "p50_us": 0.03,
+          "p95_us": 0.051,
+          "p99_us": 0.087,
+          "latency_samples": 58102,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872386
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 6.626686674018856,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t1-e0-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 94508,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.316049,
+          "ops_per_second": 316407,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56062105,
+          "db_directory_bytes_after_drain": 59872694
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 6351954,
+          "seconds": 0.316002,
+          "ops_per_second": 20101000.0,
+          "p50_us": 0.031,
+          "p95_us": 0.033,
+          "p99_us": 0.072,
+          "latency_samples": 99250,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872694
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.222347,
+          "ops_per_second": 449748,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55999810,
+          "db_directory_bytes_after_drain": 59872540
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 6.6277064610039815,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t1-e0-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 93432,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.321926,
+          "ops_per_second": 310631,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55933362,
+          "db_directory_bytes_after_drain": 59872848
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.360476,
+          "ops_per_second": 277411,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55900138,
+          "db_directory_bytes_after_drain": 59873002
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7468019,
+          "seconds": 0.360436,
+          "ops_per_second": 20719400.0,
+          "p50_us": 0.03,
+          "p95_us": 0.032,
+          "p99_us": 0.08,
+          "latency_samples": 116688,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59873002
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 4.222833458043169,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t1-e50-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 53580,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.317993,
+          "ops_per_second": 314472,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55879373,
+          "db_directory_bytes_after_drain": 59872849
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.367832,
+          "ops_per_second": 271863,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56066258,
+          "db_directory_bytes_after_drain": 59873003
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7361493,
+          "seconds": 0.367784,
+          "ops_per_second": 20015800.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.082,
+          "latency_samples": 115024,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59873003
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 4.121870308008511,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t1-e50-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 54312,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.336711,
+          "ops_per_second": 296990,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55854455,
+          "db_directory_bytes_after_drain": 59872849
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 6862045,
+          "seconds": 0.336667,
+          "ops_per_second": 20382300.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.071,
+          "latency_samples": 107220,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872849
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.366691,
+          "ops_per_second": 272709,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55829537,
+          "db_directory_bytes_after_drain": 59873003
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 4.271297077997588,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t1-e50-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 46492,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.367932,
+          "ops_per_second": 271789,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55937515,
+          "db_directory_bytes_after_drain": 59873157
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.368235,
+          "ops_per_second": 271566,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55979045,
+          "db_directory_bytes_after_drain": 59873003
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7356930,
+          "seconds": 0.368195,
+          "ops_per_second": 19981100.0,
+          "p50_us": 0.03,
+          "p95_us": 0.04,
+          "p99_us": 0.068,
+          "latency_samples": 114953,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59873003
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.9672741039539687,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t1-e100-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 27284,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.367871,
+          "ops_per_second": 271834,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55925056,
+          "db_directory_bytes_after_drain": 59873004
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.360964,
+          "ops_per_second": 277036,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55613581,
+          "db_directory_bytes_after_drain": 59873004
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7500873,
+          "seconds": 0.360928,
+          "ops_per_second": 20782200.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.068,
+          "latency_samples": 117202,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59873004
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.8682419340475462,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t1-e100-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 23308,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.302266,
+          "ops_per_second": 330834,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55916750,
+          "db_directory_bytes_after_drain": 59872696
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 6119733,
+          "seconds": 0.302217,
+          "ops_per_second": 20249500.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.087,
+          "latency_samples": 95621,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872696
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.297061,
+          "ops_per_second": 336631,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55891832,
+          "db_directory_bytes_after_drain": 59872696
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.8678989029722288,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t1-e100-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 22924,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.292545,
+          "ops_per_second": 341828,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55991504,
+          "db_directory_bytes_after_drain": 59872696
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.339275,
+          "ops_per_second": 294746,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56132701,
+          "db_directory_bytes_after_drain": 59872850
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7006596,
+          "seconds": 0.339231,
+          "ops_per_second": 20654400.0,
+          "p50_us": 0.03,
+          "p95_us": 0.032,
+          "p99_us": 0.078,
+          "latency_samples": 109479,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872850
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 7.827003690006677,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t8-e0-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 0,
+      "peak_rss_kib": 95752,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.689095,
+          "ops_per_second": 145118,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58401515,
+          "db_directory_bytes_after_drain": 59852940
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.716232,
+          "ops_per_second": 139620,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58303910,
+          "db_directory_bytes_after_drain": 59855163
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 12629611,
+          "seconds": 0.716044,
+          "ops_per_second": 17638000.0,
+          "p50_us": 0.031,
+          "p95_us": 0.048,
+          "p99_us": 0.071,
+          "latency_samples": 197338,
+          "append_bytes_during_phase": 58405736,
+          "db_directory_bytes_after_drain": 59855163
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 7.8788389709661715,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t8-e0-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 0,
+      "peak_rss_kib": 94740,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.720314,
+          "ops_per_second": 138828,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57807480,
+          "db_directory_bytes_after_drain": 59853849
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 11888353,
+          "seconds": 0.719996,
+          "ops_per_second": 16511700.0,
+          "p50_us": 0.033,
+          "p95_us": 0.049,
+          "p99_us": 0.065,
+          "latency_samples": 185756,
+          "append_bytes_during_phase": 58405236,
+          "db_directory_bytes_after_drain": 59853849
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.68582,
+          "ops_per_second": 145811,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58213660,
+          "db_directory_bytes_after_drain": 59854542
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 7.477186430012807,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t8-e0-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 0,
+      "peak_rss_kib": 95752,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.685192,
+          "ops_per_second": 145945,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58260625,
+          "db_directory_bytes_after_drain": 59854074
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.716127,
+          "ops_per_second": 139640,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58407724,
+          "db_directory_bytes_after_drain": 59853517
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 12598871,
+          "seconds": 0.715933,
+          "ops_per_second": 17597800.0,
+          "p50_us": 0.031,
+          "p95_us": 0.048,
+          "p99_us": 0.062,
+          "latency_samples": 196858,
+          "append_bytes_during_phase": 58404589,
+          "db_directory_bytes_after_drain": 59853517
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 4.823152926983312,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t8-e50-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 52364,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.687866,
+          "ops_per_second": 145377,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58190387,
+          "db_directory_bytes_after_drain": 59854212
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.719433,
+          "ops_per_second": 138998,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57790287,
+          "db_directory_bytes_after_drain": 59854150
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 11947074,
+          "seconds": 0.719252,
+          "ops_per_second": 16610400.0,
+          "p50_us": 0.033,
+          "p95_us": 0.049,
+          "p99_us": 0.063,
+          "latency_samples": 186674,
+          "append_bytes_during_phase": 58408269,
+          "db_directory_bytes_after_drain": 59854150
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 4.823548079002649,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t8-e50-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 50268,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.71637,
+          "ops_per_second": 139593,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57814772,
+          "db_directory_bytes_after_drain": 59854352
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 12450549,
+          "seconds": 0.716118,
+          "ops_per_second": 17386200.0,
+          "p50_us": 0.032,
+          "p95_us": 0.05,
+          "p99_us": 0.068,
+          "latency_samples": 194540,
+          "append_bytes_during_phase": 58402991,
+          "db_directory_bytes_after_drain": 59854352
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.689548,
+          "ops_per_second": 145023,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58349858,
+          "db_directory_bytes_after_drain": 59854160
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 4.673456408025231,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t8-e50-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 55332,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.686896,
+          "ops_per_second": 145582,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58167803,
+          "db_directory_bytes_after_drain": 59854854
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.719949,
+          "ops_per_second": 138899,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57861530,
+          "db_directory_bytes_after_drain": 59854467
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 12653925,
+          "seconds": 0.719761,
+          "ops_per_second": 17580700.0,
+          "p50_us": 0.032,
+          "p95_us": 0.048,
+          "p99_us": 0.062,
+          "latency_samples": 197718,
+          "append_bytes_during_phase": 58408887,
+          "db_directory_bytes_after_drain": 59854467
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 2.469549745961558,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t8-e100-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 100,
+      "peak_rss_kib": 40984,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.688961,
+          "ops_per_second": 145146,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58402007,
+          "db_directory_bytes_after_drain": 59853807
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.720823,
+          "ops_per_second": 138730,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57984509,
+          "db_directory_bytes_after_drain": 59854441
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 12743254,
+          "seconds": 0.720634,
+          "ops_per_second": 17683400.0,
+          "p50_us": 0.032,
+          "p95_us": 0.048,
+          "p99_us": 0.057,
+          "latency_samples": 199114,
+          "append_bytes_during_phase": 58406121,
+          "db_directory_bytes_after_drain": 59854441
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 2.4691128190024756,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t8-e100-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 100,
+      "peak_rss_kib": 39624,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.717635,
+          "ops_per_second": 139347,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58409213,
+          "db_directory_bytes_after_drain": 59853606
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 12687681,
+          "seconds": 0.717366,
+          "ops_per_second": 17686500.0,
+          "p50_us": 0.032,
+          "p95_us": 0.048,
+          "p99_us": 0.065,
+          "latency_samples": 198246,
+          "append_bytes_during_phase": 58405055,
+          "db_directory_bytes_after_drain": 59853606
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.684537,
+          "ops_per_second": 146084,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58403931,
+          "db_directory_bytes_after_drain": 59854629
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 2.468912616954185,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_combined_stats_under_write-n100000-t8-e100-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 100,
+      "peak_rss_kib": 41064,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.684582,
+          "ops_per_second": 146075,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57937793,
+          "db_directory_bytes_after_drain": 59855441
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.720602,
+          "ops_per_second": 138773,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58410694,
+          "db_directory_bytes_after_drain": 59853444
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 12682546,
+          "seconds": 0.720418,
+          "ops_per_second": 17604400.0,
+          "p50_us": 0.031,
+          "p95_us": 0.048,
+          "p99_us": 0.06,
+          "latency_samples": 198165,
+          "append_bytes_during_phase": 58407540,
+          "db_directory_bytes_after_drain": 59853444
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06443463102914393,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_concurrent-n10000-t1-e50-r1/run.log",
+      "case": "perf_concurrent",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9560,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 10000,
+          "seconds": 0.0199163,
+          "ops_per_second": 502102,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2950595,
+          "db_directory_bytes_after_drain": 2959079
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06449972395785153,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_concurrent-n10000-t1-e50-r2/run.log",
+      "case": "perf_concurrent",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9564,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 10000,
+          "seconds": 0.0196738,
+          "ops_per_second": 508289,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2950595,
+          "db_directory_bytes_after_drain": 2959079
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06442053895443678,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_concurrent-n10000-t1-e50-r3/run.log",
+      "case": "perf_concurrent",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9604,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 10000,
+          "seconds": 0.0195119,
+          "ops_per_second": 512508,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2950595,
+          "db_directory_bytes_after_drain": 2959079
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11462524603120983,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_concurrent-n10000-t8-e50-r1/run.log",
+      "case": "perf_concurrent",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9616,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 10000,
+          "seconds": 0.0680952,
+          "ops_per_second": 146853,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2810622,
+          "db_directory_bytes_after_drain": 2819106
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11468772502848879,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_concurrent-n10000-t8-e50-r2/run.log",
+      "case": "perf_concurrent",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9620,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 10000,
+          "seconds": 0.0683906,
+          "ops_per_second": 146219,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2811356,
+          "db_directory_bytes_after_drain": 2819840
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11464791599428281,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_concurrent-n10000-t8-e50-r3/run.log",
+      "case": "perf_concurrent",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9632,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 10000,
+          "seconds": 0.0685946,
+          "ops_per_second": 145784,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2810902,
+          "db_directory_bytes_after_drain": 2819386
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3649928499944508,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_concurrent-n100000-t1-e50-r1/run.log",
+      "case": "perf_concurrent",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 40704,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 100000,
+          "seconds": 0.20556,
+          "ops_per_second": 486477,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 51931812,
+          "db_directory_bytes_after_drain": 27332526
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.31487606500741094,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_concurrent-n100000-t1-e50-r2/run.log",
+      "case": "perf_concurrent",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 40740,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 100000,
+          "seconds": 0.195487,
+          "ops_per_second": 511542,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 51923144,
+          "db_directory_bytes_after_drain": 27332526
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3149583730264567,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_concurrent-n100000-t1-e50-r3/run.log",
+      "case": "perf_concurrent",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 39828,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 100000,
+          "seconds": 0.195504,
+          "ops_per_second": 511498,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 51914472,
+          "db_directory_bytes_after_drain": 27332526
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.816087023995351,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_concurrent-n100000-t8-e50-r1/run.log",
+      "case": "perf_concurrent",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 36304,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 100000,
+          "seconds": 0.688063,
+          "ops_per_second": 145335,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 51261649,
+          "db_directory_bytes_after_drain": 27330567
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.8662559420336038,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_concurrent-n100000-t8-e50-r2/run.log",
+      "case": "perf_concurrent",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 36080,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 100000,
+          "seconds": 0.701873,
+          "ops_per_second": 142476,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 50895546,
+          "db_directory_bytes_after_drain": 27330163
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.8162257799995132,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_concurrent-n100000-t8-e50-r3/run.log",
+      "case": "perf_concurrent",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 36436,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 100000,
+          "seconds": 0.687101,
+          "ops_per_second": 145539,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 51343503,
+          "db_directory_bytes_after_drain": 27331155
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06453106901608407,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_read-n10000-t1-e50-r1/run.log",
+      "case": "perf_read",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9424,
+      "metrics": [
+        {
+          "phase": "get_hit",
+          "ops": 10000,
+          "seconds": 0.00844956,
+          "ops_per_second": 1183490.0,
+          "p50_us": 0.651,
+          "p95_us": 1.072,
+          "p99_us": 1.593,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740123
+        },
+        {
+          "phase": "get_miss",
+          "ops": 10000,
+          "seconds": 0.00218969,
+          "ops_per_second": 4566860.0,
+          "p50_us": 0.202,
+          "p95_us": 0.211,
+          "p99_us": 0.215,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740123
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06445789203280583,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_read-n10000-t1-e50-r2/run.log",
+      "case": "perf_read",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9428,
+      "metrics": [
+        {
+          "phase": "get_hit",
+          "ops": 10000,
+          "seconds": 0.00817255,
+          "ops_per_second": 1223610.0,
+          "p50_us": 0.626,
+          "p95_us": 0.859,
+          "p99_us": 1.408,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740123
+        },
+        {
+          "phase": "get_miss",
+          "ops": 10000,
+          "seconds": 0.0020276,
+          "ops_per_second": 4931950.0,
+          "p50_us": 0.186,
+          "p95_us": 0.196,
+          "p99_us": 0.201,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740123
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06448708596872166,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_read-n10000-t1-e50-r3/run.log",
+      "case": "perf_read",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9436,
+      "metrics": [
+        {
+          "phase": "get_hit",
+          "ops": 10000,
+          "seconds": 0.00820026,
+          "ops_per_second": 1219470.0,
+          "p50_us": 0.63,
+          "p95_us": 0.866,
+          "p99_us": 1.033,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740123
+        },
+        {
+          "phase": "get_miss",
+          "ops": 10000,
+          "seconds": 0.00204409,
+          "ops_per_second": 4892150.0,
+          "p50_us": 0.186,
+          "p95_us": 0.197,
+          "p99_us": 0.201,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740123
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.4149076259927824,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_read-n100000-t1-e50-r1/run.log",
+      "case": "perf_read",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 32136,
+      "metrics": [
+        {
+          "phase": "get_hit",
+          "ops": 100000,
+          "seconds": 0.113632,
+          "ops_per_second": 880035,
+          "p50_us": 0.9,
+          "p95_us": 1.489,
+          "p99_us": 1.979,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325546
+        },
+        {
+          "phase": "get_miss",
+          "ops": 100000,
+          "seconds": 0.0204313,
+          "ops_per_second": 4894440.0,
+          "p50_us": 0.187,
+          "p95_us": 0.2,
+          "p99_us": 0.202,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325546
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.41519959998549893,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_read-n100000-t1-e50-r2/run.log",
+      "case": "perf_read",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 37800,
+      "metrics": [
+        {
+          "phase": "get_hit",
+          "ops": 100000,
+          "seconds": 0.109419,
+          "ops_per_second": 913919,
+          "p50_us": 0.878,
+          "p95_us": 1.414,
+          "p99_us": 1.925,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325546
+        },
+        {
+          "phase": "get_miss",
+          "ops": 100000,
+          "seconds": 0.0204335,
+          "ops_per_second": 4893930.0,
+          "p50_us": 0.187,
+          "p95_us": 0.203,
+          "p99_us": 0.274,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325546
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.41503795800963417,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_read-n100000-t1-e50-r3/run.log",
+      "case": "perf_read",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 31988,
+      "metrics": [
+        {
+          "phase": "get_hit",
+          "ops": 100000,
+          "seconds": 0.111933,
+          "ops_per_second": 893390,
+          "p50_us": 0.899,
+          "p95_us": 1.445,
+          "p99_us": 1.927,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325546
+        },
+        {
+          "phase": "get_miss",
+          "ops": 100000,
+          "seconds": 0.0209586,
+          "ops_per_second": 4771320.0,
+          "p50_us": 0.187,
+          "p95_us": 0.202,
+          "p99_us": 0.364,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325546
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.164723803056404,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_reopen-n10000-t1-e50-r1/run.log",
+      "case": "perf_reopen",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9620,
+      "metrics": [
+        {
+          "phase": "open",
+          "ops": 1,
+          "seconds": 0.00406727,
+          "ops_per_second": 245.865,
+          "p50_us": 4066.62,
+          "p95_us": 4066.62,
+          "p99_us": 4066.62,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 246,
+          "db_directory_bytes_after_drain": 2747797
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.16463747003581375,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_reopen-n10000-t1-e50-r2/run.log",
+      "case": "perf_reopen",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9724,
+      "metrics": [
+        {
+          "phase": "open",
+          "ops": 1,
+          "seconds": 0.0041003,
+          "ops_per_second": 243.884,
+          "p50_us": 4099.31,
+          "p95_us": 4099.31,
+          "p99_us": 4099.31,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 246,
+          "db_directory_bytes_after_drain": 2747797
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.16464595100842416,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_reopen-n10000-t1-e50-r3/run.log",
+      "case": "perf_reopen",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9744,
+      "metrics": [
+        {
+          "phase": "open",
+          "ops": 1,
+          "seconds": 0.00394499,
+          "ops_per_second": 253.486,
+          "p50_us": 3944.32,
+          "p95_us": 3944.32,
+          "p99_us": 3944.32,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 246,
+          "db_directory_bytes_after_drain": 2747797
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.3665870090480894,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_reopen-n100000-t1-e50-r1/run.log",
+      "case": "perf_reopen",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 41324,
+      "metrics": [
+        {
+          "phase": "open",
+          "ops": 1,
+          "seconds": 0.00408512,
+          "ops_per_second": 244.791,
+          "p50_us": 4084.57,
+          "p95_us": 4084.57,
+          "p99_us": 4084.57,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 256,
+          "db_directory_bytes_after_drain": 27379711
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.5171243099612184,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_reopen-n100000-t1-e50-r2/run.log",
+      "case": "perf_reopen",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 37288,
+      "metrics": [
+        {
+          "phase": "open",
+          "ops": 1,
+          "seconds": 0.00456814,
+          "ops_per_second": 218.908,
+          "p50_us": 4567.55,
+          "p95_us": 4567.55,
+          "p99_us": 4567.55,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 256,
+          "db_directory_bytes_after_drain": 27379711
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.4163502769661136,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_reopen-n100000-t1-e50-r3/run.log",
+      "case": "perf_reopen",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 37552,
+      "metrics": [
+        {
+          "phase": "open",
+          "ops": 1,
+          "seconds": 0.00427785,
+          "ops_per_second": 233.763,
+          "p50_us": 4277.18,
+          "p95_us": 4277.18,
+          "p99_us": 4277.18,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 256,
+          "db_directory_bytes_after_drain": 27379711
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.064572784001939,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_scan-n10000-t1-e50-r1/run.log",
+      "case": "perf_scan",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9548,
+      "metrics": [
+        {
+          "phase": "scan",
+          "ops": 10000,
+          "seconds": 0.00378469,
+          "ops_per_second": 2642220.0,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740123
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06453788198996335,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_scan-n10000-t1-e50-r2/run.log",
+      "case": "perf_scan",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9548,
+      "metrics": [
+        {
+          "phase": "scan",
+          "ops": 10000,
+          "seconds": 0.00376149,
+          "ops_per_second": 2658520.0,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740123
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06453423202037811,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_scan-n10000-t1-e50-r3/run.log",
+      "case": "perf_scan",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9556,
+      "metrics": [
+        {
+          "phase": "scan",
+          "ops": 10000,
+          "seconds": 0.00381483,
+          "ops_per_second": 2621350.0,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740123
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3148790849954821,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_scan-n100000-t1-e50-r1/run.log",
+      "case": "perf_scan",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 29888,
+      "metrics": [
+        {
+          "phase": "scan",
+          "ops": 100000,
+          "seconds": 0.0378182,
+          "ops_per_second": 2644230.0,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325546
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3148241859744303,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_scan-n100000-t1-e50-r2/run.log",
+      "case": "perf_scan",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 31100,
+      "metrics": [
+        {
+          "phase": "scan",
+          "ops": 100000,
+          "seconds": 0.0383425,
+          "ops_per_second": 2608070.0,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325546
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3151304700295441,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_scan-n100000-t1-e50-r3/run.log",
+      "case": "perf_scan",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 30152,
+      "metrics": [
+        {
+          "phase": "scan",
+          "ops": 100000,
+          "seconds": 0.0377926,
+          "ops_per_second": 2646020.0,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325546
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06461884203599766,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats-n10000-t1-e50-r1/run.log",
+      "case": "perf_stats",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9616,
+      "metrics": [
+        {
+          "phase": "stats_query",
+          "ops": 10000,
+          "seconds": 0.00508109,
+          "ops_per_second": 1968080.0,
+          "p50_us": 0.03,
+          "p95_us": 0.032,
+          "p99_us": 0.033,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740124
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06445970002096146,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats-n10000-t1-e50-r2/run.log",
+      "case": "perf_stats",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9620,
+      "metrics": [
+        {
+          "phase": "stats_query",
+          "ops": 10000,
+          "seconds": 0.00503464,
+          "ops_per_second": 1986240.0,
+          "p50_us": 0.031,
+          "p95_us": 0.033,
+          "p99_us": 0.033,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740124
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06446589296683669,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats-n10000-t1-e50-r3/run.log",
+      "case": "perf_stats",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9636,
+      "metrics": [
+        {
+          "phase": "stats_query",
+          "ops": 10000,
+          "seconds": 0.00506107,
+          "ops_per_second": 1975870.0,
+          "p50_us": 0.031,
+          "p95_us": 0.033,
+          "p99_us": 0.034,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740124
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3151386750396341,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats-n100000-t1-e50-r1/run.log",
+      "case": "perf_stats",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 14300,
+      "metrics": [
+        {
+          "phase": "stats_query",
+          "ops": 100000,
+          "seconds": 0.0535734,
+          "ops_per_second": 1866600.0,
+          "p50_us": 0.03,
+          "p95_us": 0.033,
+          "p99_us": 0.034,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325547
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.31503230100497603,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats-n100000-t1-e50-r2/run.log",
+      "case": "perf_stats",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 14924,
+      "metrics": [
+        {
+          "phase": "stats_query",
+          "ops": 100000,
+          "seconds": 0.0540989,
+          "ops_per_second": 1848470.0,
+          "p50_us": 0.029,
+          "p95_us": 0.031,
+          "p99_us": 0.031,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325547
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3149299389915541,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats-n100000-t1-e50-r3/run.log",
+      "case": "perf_stats",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 14532,
+      "metrics": [
+        {
+          "phase": "stats_query",
+          "ops": 100000,
+          "seconds": 0.0538561,
+          "ops_per_second": 1856800.0,
+          "p50_us": 0.031,
+          "p95_us": 0.033,
+          "p99_us": 0.034,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325547
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.26495222898665816,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats_under_write-n10000-t1-e50-r1/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9660,
+      "metrics": [
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.074864,
+          "ops_per_second": 133576,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 8373829,
+          "db_directory_bytes_after_drain": 5483565
+        },
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0753572,
+          "ops_per_second": 132701,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 8373829,
+          "db_directory_bytes_after_drain": 5483565
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 1781933,
+          "seconds": 0.0753132,
+          "ops_per_second": 23660300.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.039,
+          "latency_samples": 27843,
+          "append_bytes_during_phase": 8373906,
+          "db_directory_bytes_after_drain": 5483565
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3149691030266695,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats_under_write-n10000-t1-e50-r2/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9664,
+      "metrics": [
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0737347,
+          "ops_per_second": 135621,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 8373829,
+          "db_directory_bytes_after_drain": 5483565
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 1749427,
+          "seconds": 0.0736926,
+          "ops_per_second": 23739500.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.035,
+          "latency_samples": 27335,
+          "append_bytes_during_phase": 8373906,
+          "db_directory_bytes_after_drain": 5483565
+        },
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.152458,
+          "ops_per_second": 65592,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 8373829,
+          "db_directory_bytes_after_drain": 5483565
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.46524326101643965,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats_under_write-n10000-t1-e50-r3/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9676,
+      "metrics": [
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.162289,
+          "ops_per_second": 61618.4,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 8373829,
+          "db_directory_bytes_after_drain": 5483565
+        },
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.159404,
+          "ops_per_second": 62733.9,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 8373829,
+          "db_directory_bytes_after_drain": 5483565
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 3782860,
+          "seconds": 0.159351,
+          "ops_per_second": 23739200.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.038,
+          "latency_samples": 59108,
+          "append_bytes_during_phase": 8373906,
+          "db_directory_bytes_after_drain": 5483565
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.5154712799703702,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats_under_write-n10000-t8-e50-r1/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9680,
+      "metrics": [
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.190527,
+          "ops_per_second": 52485.9,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 10263263,
+          "db_directory_bytes_after_drain": 5480689
+        },
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.189772,
+          "ops_per_second": 52694.7,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 10264622,
+          "db_directory_bytes_after_drain": 5480495
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 4217941,
+          "seconds": 0.189596,
+          "ops_per_second": 22247000.0,
+          "p50_us": 0.03,
+          "p95_us": 0.043,
+          "p99_us": 0.05,
+          "latency_samples": 65906,
+          "append_bytes_during_phase": 10264109,
+          "db_directory_bytes_after_drain": 5480495
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.5155223179608583,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats_under_write-n10000-t8-e50-r2/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9692,
+      "metrics": [
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.184633,
+          "ops_per_second": 54161.4,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 10268220,
+          "db_directory_bytes_after_drain": 5480369
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 4101064,
+          "seconds": 0.18438,
+          "ops_per_second": 22242500.0,
+          "p50_us": 0.03,
+          "p95_us": 0.044,
+          "p99_us": 0.05,
+          "latency_samples": 64080,
+          "append_bytes_during_phase": 10268297,
+          "db_directory_bytes_after_drain": 5480369
+        },
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.183036,
+          "ops_per_second": 54634,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 10263143,
+          "db_directory_bytes_after_drain": 5480941
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.5153962110052817,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats_under_write-n10000-t8-e50-r3/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9704,
+      "metrics": [
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.186829,
+          "ops_per_second": 53524.9,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 10262747,
+          "db_directory_bytes_after_drain": 5480615
+        },
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.190995,
+          "ops_per_second": 52357.3,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 10264375,
+          "db_directory_bytes_after_drain": 5480387
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 4236246,
+          "seconds": 0.190808,
+          "ops_per_second": 22201700.0,
+          "p50_us": 0.03,
+          "p95_us": 0.044,
+          "p99_us": 0.052,
+          "latency_samples": 66192,
+          "append_bytes_during_phase": 10251157,
+          "db_directory_bytes_after_drain": 5480387
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.9162182449945249,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats_under_write-n100000-t1-e50-r1/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 24292,
+      "metrics": [
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.203511,
+          "ops_per_second": 491374,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57406079,
+          "db_directory_bytes_after_drain": 54656644
+        },
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.195946,
+          "ops_per_second": 510344,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57358410,
+          "db_directory_bytes_after_drain": 54656644
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 4550317,
+          "seconds": 0.195898,
+          "ops_per_second": 23228000.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.08,
+          "latency_samples": 71099,
+          "append_bytes_during_phase": 61541318,
+          "db_directory_bytes_after_drain": 54656644
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.6678238980239257,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats_under_write-n100000-t1-e50-r2/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 27436,
+      "metrics": [
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.435576,
+          "ops_per_second": 229581,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56951049,
+          "db_directory_bytes_after_drain": 54657568
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 9835367,
+          "seconds": 0.43553,
+          "ops_per_second": 22582500.0,
+          "p50_us": 0.03,
+          "p95_us": 0.045,
+          "p99_us": 0.074,
+          "latency_samples": 153678,
+          "append_bytes_during_phase": 62091676,
+          "db_directory_bytes_after_drain": 54657568
+        },
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.435699,
+          "ops_per_second": 229516,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57224065,
+          "db_directory_bytes_after_drain": 54657876
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.717590417014435,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats_under_write-n100000-t1-e50-r3/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 30408,
+      "metrics": [
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.436575,
+          "ops_per_second": 229056,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57397411,
+          "db_directory_bytes_after_drain": 54657876
+        },
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.436725,
+          "ops_per_second": 228977,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57336736,
+          "db_directory_bytes_after_drain": 54657876
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 10266171,
+          "seconds": 0.436678,
+          "ops_per_second": 23509700.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.067,
+          "latency_samples": 160409,
+          "append_bytes_during_phase": 62169681,
+          "db_directory_bytes_after_drain": 54657876
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 2.0185137859662063,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats_under_write-n100000-t8-e50-r1/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 16940,
+      "metrics": [
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.691817,
+          "ops_per_second": 144547,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58391795,
+          "db_directory_bytes_after_drain": 54650756
+        },
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.72008,
+          "ops_per_second": 138873,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57273921,
+          "db_directory_bytes_after_drain": 54649530
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 13752671,
+          "seconds": 0.719893,
+          "ops_per_second": 19103800.0,
+          "p50_us": 0.031,
+          "p95_us": 0.05,
+          "p99_us": 0.058,
+          "latency_samples": 214886,
+          "append_bytes_during_phase": 60024870,
+          "db_directory_bytes_after_drain": 54649530
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.918384761956986,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats_under_write-n100000-t8-e50-r2/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 19924,
+      "metrics": [
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.722582,
+          "ops_per_second": 138393,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57417086,
+          "db_directory_bytes_after_drain": 54649527
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 14396872,
+          "seconds": 0.722246,
+          "ops_per_second": 19933500.0,
+          "p50_us": 0.031,
+          "p95_us": 0.05,
+          "p99_us": 0.058,
+          "latency_samples": 224952,
+          "append_bytes_during_phase": 59874810,
+          "db_directory_bytes_after_drain": 54649527
+        },
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.685416,
+          "ops_per_second": 145897,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57375493,
+          "db_directory_bytes_after_drain": 54650190
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.8681614340166561,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_stats_under_write-n100000-t8-e50-r3/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 24300,
+      "metrics": [
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.68617,
+          "ops_per_second": 145736,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57641402,
+          "db_directory_bytes_after_drain": 54650042
+        },
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.716538,
+          "ops_per_second": 139560,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57352043,
+          "db_directory_bytes_after_drain": 54649967
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 14143748,
+          "seconds": 0.71635,
+          "ops_per_second": 19744200.0,
+          "p50_us": 0.031,
+          "p95_us": 0.048,
+          "p99_us": 0.06,
+          "latency_samples": 220997,
+          "append_bytes_during_phase": 60033282,
+          "db_directory_bytes_after_drain": 54649967
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.16463786602253094,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_gc-n10000-t1-e50-r1/run.log",
+      "case": "perf_ttl_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9572,
+      "metrics": [
+        {
+          "phase": "ttl_full_gc",
+          "ops": 10000,
+          "seconds": 0.0250282,
+          "ops_per_second": 399549,
+          "p50_us": 25022,
+          "p95_us": 25022,
+          "p99_us": 25022,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 229292,
+          "db_directory_bytes_after_drain": 17815
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.1646050590206869,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_gc-n10000-t1-e50-r2/run.log",
+      "case": "perf_ttl_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9592,
+      "metrics": [
+        {
+          "phase": "ttl_full_gc",
+          "ops": 10000,
+          "seconds": 0.025015,
+          "ops_per_second": 399760,
+          "p50_us": 25013.8,
+          "p95_us": 25013.8,
+          "p99_us": 25013.8,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 229292,
+          "db_directory_bytes_after_drain": 17815
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.16464918002020568,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_gc-n10000-t1-e50-r3/run.log",
+      "case": "perf_ttl_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9620,
+      "metrics": [
+        {
+          "phase": "ttl_full_gc",
+          "ops": 10000,
+          "seconds": 0.0241728,
+          "ops_per_second": 413689,
+          "p50_us": 24172.2,
+          "p95_us": 24172.2,
+          "p99_us": 24172.2,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 229292,
+          "db_directory_bytes_after_drain": 17815
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.4166726309922524,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_gc-n100000-t1-e50-r1/run.log",
+      "case": "perf_ttl_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 44728,
+      "metrics": [
+        {
+          "phase": "ttl_full_gc",
+          "ops": 100000,
+          "seconds": 0.280532,
+          "ops_per_second": 356466,
+          "p50_us": 280525,
+          "p95_us": 280525,
+          "p99_us": 280525,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2292570,
+          "db_directory_bytes_after_drain": 77231
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.7171661520260386,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_gc-n100000-t1-e50-r2/run.log",
+      "case": "perf_ttl_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 44784,
+      "metrics": [
+        {
+          "phase": "ttl_full_gc",
+          "ops": 100000,
+          "seconds": 0.28916,
+          "ops_per_second": 345830,
+          "p50_us": 289159,
+          "p95_us": 289159,
+          "p99_us": 289159,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2292570,
+          "db_directory_bytes_after_drain": 77231
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.7167385899811052,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_gc-n100000-t1-e50-r3/run.log",
+      "case": "perf_ttl_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 44680,
+      "metrics": [
+        {
+          "phase": "ttl_full_gc",
+          "ops": 100000,
+          "seconds": 0.282644,
+          "ops_per_second": 353802,
+          "p50_us": 282636,
+          "p95_us": 282636,
+          "p99_us": 282636,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2292570,
+          "db_directory_bytes_after_drain": 77231
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11453456699382514,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n10000-t1-e0-r1/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 9584,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.0080633,
+          "ops_per_second": 1240190.0,
+          "p50_us": 0.604,
+          "p95_us": 0.953,
+          "p99_us": 1.12,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001416
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11456315498799086,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n10000-t1-e0-r2/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 9588,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.00799839,
+          "ops_per_second": 1250250.0,
+          "p50_us": 0.59,
+          "p95_us": 0.877,
+          "p99_us": 1.139,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001416
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11451838701032102,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n10000-t1-e0-r3/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 9380,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.00812749,
+          "ops_per_second": 1230390.0,
+          "p50_us": 0.596,
+          "p95_us": 0.829,
+          "p99_us": 1.198,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001416
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11454904300626367,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n10000-t1-e50-r1/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9380,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.00753199,
+          "ops_per_second": 1327670.0,
+          "p50_us": 0.605,
+          "p95_us": 0.933,
+          "p99_us": 1.015,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001417
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11456413200357929,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n10000-t1-e50-r2/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9388,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.00739089,
+          "ops_per_second": 1353020.0,
+          "p50_us": 0.588,
+          "p95_us": 0.975,
+          "p99_us": 1.181,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001417
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11452807299792767,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n10000-t1-e50-r3/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9404,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.00729921,
+          "ops_per_second": 1370010.0,
+          "p50_us": 0.581,
+          "p95_us": 0.837,
+          "p99_us": 1.078,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001417
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11458345502614975,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n10000-t1-e100-r1/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 9404,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.00723332,
+          "ops_per_second": 1382490.0,
+          "p50_us": 0.603,
+          "p95_us": 1.088,
+          "p99_us": 1.391,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001418
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11470067402115092,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n10000-t1-e100-r2/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 9556,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.00628225,
+          "ops_per_second": 1591790.0,
+          "p50_us": 0.556,
+          "p95_us": 0.77,
+          "p99_us": 3.54,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001418
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11464391101617366,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n10000-t1-e100-r3/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 9824,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.00633196,
+          "ops_per_second": 1579290.0,
+          "p50_us": 0.556,
+          "p95_us": 0.8,
+          "p99_us": 0.942,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001418
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3650811710394919,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n100000-t1-e0-r1/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 41612,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.104824,
+          "ops_per_second": 953980,
+          "p50_us": 0.84,
+          "p95_us": 1.195,
+          "p99_us": 1.505,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937970
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3651589489891194,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n100000-t1-e0-r2/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 33976,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.101414,
+          "ops_per_second": 986061,
+          "p50_us": 0.8,
+          "p95_us": 1.157,
+          "p99_us": 1.389,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937970
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.36524517700308934,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n100000-t1-e0-r3/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 42504,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.102503,
+          "ops_per_second": 975583,
+          "p50_us": 0.821,
+          "p95_us": 1.153,
+          "p99_us": 1.495,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937970
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.36506728001404554,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n100000-t1-e50-r1/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 33992,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.0926717,
+          "ops_per_second": 1079080.0,
+          "p50_us": 0.784,
+          "p95_us": 1.125,
+          "p99_us": 1.462,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937971
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3650803850032389,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n100000-t1-e50-r2/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 34584,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.0921021,
+          "ops_per_second": 1085750.0,
+          "p50_us": 0.779,
+          "p95_us": 1.132,
+          "p99_us": 1.441,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937971
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.36497747898101807,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n100000-t1-e50-r3/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 33300,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.095326,
+          "ops_per_second": 1049030.0,
+          "p50_us": 0.81,
+          "p95_us": 1.136,
+          "p99_us": 1.496,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937971
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3649702389957383,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n100000-t1-e100-r1/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 42896,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.0816916,
+          "ops_per_second": 1224120.0,
+          "p50_us": 0.742,
+          "p95_us": 1.075,
+          "p99_us": 1.309,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937972
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3651203939807601,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n100000-t1-e100-r2/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 32536,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.081786,
+          "ops_per_second": 1222700.0,
+          "p50_us": 0.744,
+          "p95_us": 1.046,
+          "p99_us": 1.28,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937972
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3650477090268396,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_mixed-n100000-t1-e100-r3/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 41900,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.0828476,
+          "ops_per_second": 1207040.0,
+          "p50_us": 0.751,
+          "p95_us": 1.064,
+          "p99_us": 1.364,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937972
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06457432796014473,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_write-n10000-t1-e50-r1/run.log",
+      "case": "perf_ttl_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9920,
+      "metrics": [
+        {
+          "phase": "ttl_put",
+          "ops": 10000,
+          "seconds": 0.0195464,
+          "ops_per_second": 511604,
+          "p50_us": 1.697,
+          "p95_us": 3.553,
+          "p99_us": 4.512,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 3039050
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06456373899709433,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_write-n10000-t1-e50-r2/run.log",
+      "case": "perf_ttl_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9932,
+      "metrics": [
+        {
+          "phase": "ttl_put",
+          "ops": 10000,
+          "seconds": 0.0195013,
+          "ops_per_second": 512787,
+          "p50_us": 1.7,
+          "p95_us": 3.587,
+          "p99_us": 4.539,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 3039050
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06456619797972962,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_write-n10000-t1-e50-r3/run.log",
+      "case": "perf_ttl_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9940,
+      "metrics": [
+        {
+          "phase": "ttl_put",
+          "ops": 10000,
+          "seconds": 0.0194257,
+          "ops_per_second": 514782,
+          "p50_us": 1.674,
+          "p95_us": 3.448,
+          "p99_us": 4.606,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 3039050
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3650732170208357,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_write-n100000-t1-e50-r1/run.log",
+      "case": "perf_ttl_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 40212,
+      "metrics": [
+        {
+          "phase": "ttl_put",
+          "ops": 100000,
+          "seconds": 0.204185,
+          "ops_per_second": 489753,
+          "p50_us": 1.762,
+          "p95_us": 3.512,
+          "p99_us": 4.571,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 56552135,
+          "db_directory_bytes_after_drain": 29942843
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3649937980226241,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_write-n100000-t1-e50-r2/run.log",
+      "case": "perf_ttl_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 40276,
+      "metrics": [
+        {
+          "phase": "ttl_put",
+          "ops": 100000,
+          "seconds": 0.206323,
+          "ops_per_second": 484676,
+          "p50_us": 1.747,
+          "p95_us": 3.514,
+          "p99_us": 4.568,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 56469075,
+          "db_directory_bytes_after_drain": 29942843
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.4150685780332424,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_ttl_write-n100000-t1-e50-r3/run.log",
+      "case": "perf_ttl_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 40040,
+      "metrics": [
+        {
+          "phase": "ttl_put",
+          "ops": 100000,
+          "seconds": 0.224448,
+          "ops_per_second": 445537,
+          "p50_us": 1.72,
+          "p95_us": 3.494,
+          "p99_us": 4.578,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 55817054,
+          "db_directory_bytes_after_drain": 29942997
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06451776303583756,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_write-n10000-t1-e50-r1/run.log",
+      "case": "perf_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9956,
+      "metrics": [
+        {
+          "phase": "put",
+          "ops": 10000,
+          "seconds": 0.0192924,
+          "ops_per_second": 518340,
+          "p50_us": 1.678,
+          "p95_us": 3.488,
+          "p99_us": 5.604,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 2950595,
+          "db_directory_bytes_after_drain": 2959074
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06447301199659705,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_write-n10000-t1-e50-r2/run.log",
+      "case": "perf_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9796,
+      "metrics": [
+        {
+          "phase": "put",
+          "ops": 10000,
+          "seconds": 0.0197051,
+          "ops_per_second": 507482,
+          "p50_us": 1.712,
+          "p95_us": 3.813,
+          "p99_us": 10.419,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 2950595,
+          "db_directory_bytes_after_drain": 2959074
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.064444795018062,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_write-n10000-t1-e50-r3/run.log",
+      "case": "perf_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9808,
+      "metrics": [
+        {
+          "phase": "put",
+          "ops": 10000,
+          "seconds": 0.0193108,
+          "ops_per_second": 517845,
+          "p50_us": 1.674,
+          "p95_us": 3.606,
+          "p99_us": 5.77,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 2950595,
+          "db_directory_bytes_after_drain": 2959074
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.31489034299738705,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_write-n100000-t1-e50-r1/run.log",
+      "case": "perf_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 37508,
+      "metrics": [
+        {
+          "phase": "put",
+          "ops": 100000,
+          "seconds": 0.198356,
+          "ops_per_second": 504145,
+          "p50_us": 1.684,
+          "p95_us": 3.484,
+          "p99_us": 4.996,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 51871140,
+          "db_directory_bytes_after_drain": 27332521
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.36517648701556027,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_write-n100000-t1-e50-r2/run.log",
+      "case": "perf_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 37564,
+      "metrics": [
+        {
+          "phase": "put",
+          "ops": 100000,
+          "seconds": 0.202238,
+          "ops_per_second": 494468,
+          "p50_us": 1.724,
+          "p95_us": 3.467,
+          "p99_us": 4.382,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 51879808,
+          "db_directory_bytes_after_drain": 27332521
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.4150238669826649,
+      "log": "/tmp/ttl-project1-postcommit-full/perf_write-n100000-t1-e50-r3/run.log",
+      "case": "perf_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 37084,
+      "metrics": [
+        {
+          "phase": "put",
+          "ops": 100000,
+          "seconds": 0.209116,
+          "ops_per_second": 478205,
+          "p50_us": 1.67,
+          "p95_us": 3.493,
+          "p99_us": 4.565,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 51316448,
+          "db_directory_bytes_after_drain": 27332675
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.01643521199002862,
+      "log": "/tmp/ttl-project1-postcommit-full/ttl_contract-n100000-t8-e50-r1/run.log",
+      "case": "ttl_contract",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 10004,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.01629806205164641,
+      "log": "/tmp/ttl-project1-postcommit-full/ttl_contract-n100000-t8-e50-r2/run.log",
+      "case": "ttl_contract",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 10012,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.016294746019411832,
+      "log": "/tmp/ttl-project1-postcommit-full/ttl_contract-n100000-t8-e50-r3/run.log",
+      "case": "ttl_contract",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 10016,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06442288600374013,
+      "log": "/tmp/ttl-project1-postcommit-full/ttl_views-n100000-t8-e50-r1/run.log",
+      "case": "ttl_views",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 10028,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06452655902830884,
+      "log": "/tmp/ttl-project1-postcommit-full/ttl_views-n100000-t8-e50-r2/run.log",
+      "case": "ttl_views",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 10032,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.0645042090327479,
+      "log": "/tmp/ttl-project1-postcommit-full/ttl_views-n100000-t8-e50-r3/run.log",
+      "case": "ttl_views",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 10032,
+      "metrics": []
+    }
+  ],
+  "status": "pass",
+  "suite_scope": "public",
+  "selected_cases": null,
+  "regression_requested": true,
+  "sanitize": false,
+  "memory_limit_mib": 0,
+  "performance_scoring": "ungraded; calibration only",
+  "configure": {
+    "status": "pass",
+    "returncode": 0,
+    "seconds": 1.5672335179988295,
+    "log": "/tmp/ttl-project1-postcommit-full/configure.log"
+  },
+  "build": {
+    "status": "pass",
+    "returncode": 0,
+    "seconds": 18.698105589020997,
+    "log": "/tmp/ttl-project1-postcommit-full/build.log"
+  },
+  "available_cases": [
+    "combined_concurrent",
+    "combined_contract",
+    "combined_gc",
+    "combined_overwrites",
+    "combined_reopen",
+    "combined_views",
+    "metadata_contract",
+    "metadata_reopen",
+    "perf_combined_gc",
+    "perf_combined_stats_under_write",
+    "perf_concurrent",
+    "perf_read",
+    "perf_reopen",
+    "perf_scan",
+    "perf_stats",
+    "perf_stats_under_write",
+    "perf_ttl_gc",
+    "perf_ttl_mixed",
+    "perf_ttl_write",
+    "perf_write",
+    "ttl_contract",
+    "ttl_views"
+  ],
+  "executed_cases": [
+    "combined_concurrent",
+    "combined_contract",
+    "combined_gc",
+    "combined_overwrites",
+    "combined_reopen",
+    "combined_views",
+    "metadata_contract",
+    "metadata_reopen",
+    "perf_combined_gc",
+    "perf_combined_stats_under_write",
+    "perf_concurrent",
+    "perf_read",
+    "perf_reopen",
+    "perf_scan",
+    "perf_stats",
+    "perf_stats_under_write",
+    "perf_ttl_gc",
+    "perf_ttl_mixed",
+    "perf_ttl_write",
+    "perf_write",
+    "ttl_contract",
+    "ttl_views"
+  ],
+  "full_suite": true,
+  "regression_build": {
+    "status": "pass",
+    "returncode": 0,
+    "seconds": 41.09404400299536,
+    "log": "/tmp/ttl-project1-postcommit-full/regression-build.log"
+  },
+  "regression": {
+    "status": "pass",
+    "runs": [
+      {
+        "status": "pass",
+        "returncode": 0,
+        "seconds": 91.2761534670135,
+        "log": "/tmp/ttl-project1-postcommit-full/homework_regression.log"
+      },
+      {
+        "status": "pass",
+        "returncode": 0,
+        "seconds": 0.31520833796821535,
+        "log": "/tmp/ttl-project1-postcommit-full/homework_c_regression.log"
+      },
+      {
+        "status": "pass",
+        "returncode": 0,
+        "seconds": 0.016592856030911207,
+        "log": "/tmp/ttl-project1-postcommit-full/homework_env_regression.log"
+      }
+    ]
+  }
+}

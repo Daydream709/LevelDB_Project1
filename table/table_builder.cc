@@ -21,10 +21,16 @@
 
 namespace leveldb {
 
+static Options NormalizeBlockOptions(const Options& options) {
+  Options result = options;
+  if (result.block_restart_interval == 0) result.block_restart_interval = 16;
+  return result;
+}
+
 struct TableBuilder::Rep {
   Rep(const Options& opt, WritableFile* f)
-      : options(opt),
-        index_block_options(opt),
+      : options(NormalizeBlockOptions(opt)),
+        index_block_options(options),
         file(f),
         offset(0),
         data_block(&options),
@@ -36,6 +42,7 @@ struct TableBuilder::Rep {
                          : new FilterBlockBuilder(opt.filter_policy)),
         pending_index_entry(false),
         internal_stats_enabled(false),
+        automatic_restart(opt.block_restart_interval == 0),
         internal_stats_total(0),
         internal_stats_ttl(0) {
     index_block_options.block_restart_interval = 1;
@@ -66,6 +73,7 @@ struct TableBuilder::Rep {
   BlockHandle pending_handle;  // Handle to add to index block
 
   bool internal_stats_enabled;
+  bool automatic_restart;
   uint64_t internal_stats_total;
   uint64_t internal_stats_ttl;
   uint64_t internal_stats_min_expire = 0;
@@ -99,7 +107,8 @@ Status TableBuilder::ChangeOptions(const Options& options) {
 
   // Note that any live BlockBuilders point to rep_->options and therefore
   // will automatically pick up the updated options.
-  rep_->options = options;
+  rep_->automatic_restart = options.block_restart_interval == 0;
+  rep_->options = NormalizeBlockOptions(options);
   rep_->index_block_options = options;
   rep_->index_block_options.block_restart_interval = 1;
   return Status::OK();
@@ -122,6 +131,9 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
     if (type > 2) {
       r->status = Status::Corruption("invalid value type in table statistics");
       return;
+    }
+    if (r->num_entries == 0 && r->automatic_restart && type == 2) {
+      r->options.block_restart_interval = 1;
     }
     ++r->internal_stats_total;
     if (type == 2) {

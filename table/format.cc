@@ -75,15 +75,18 @@ Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
   // Read the block contents as well as the type/crc footer.
   // See table_builder.cc for the code that built this structure.
   size_t n = static_cast<size_t>(handle.size());
-  char* buf = new char[n + kBlockTrailerSize];
+  char scratch[8192];
+  const bool stack_buffer = n <= sizeof(scratch) - kBlockTrailerSize;
+  char* buf = stack_buffer ? scratch : new char[n + kBlockTrailerSize];
+  auto release_buffer = [&] { if (!stack_buffer) delete[] buf; };
   Slice contents;
   Status s = file->Read(handle.offset(), n + kBlockTrailerSize, &contents, buf);
   if (!s.ok()) {
-    delete[] buf;
+    release_buffer();
     return s;
   }
   if (contents.size() != n + kBlockTrailerSize) {
-    delete[] buf;
+    release_buffer();
     return Status::Corruption("truncated block read");
   }
 
@@ -93,7 +96,7 @@ Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
     const uint32_t crc = crc32c::Unmask(DecodeFixed32(data + n + 1));
     const uint32_t actual = crc32c::Value(data, n + 1);
     if (actual != crc) {
-      delete[] buf;
+      release_buffer();
       s = Status::Corruption("block checksum mismatch");
       return s;
     }
@@ -105,12 +108,18 @@ Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
         // File implementation gave us pointer to some other data.
         // Use it directly under the assumption that it will be live
         // while the file is open.
-        delete[] buf;
+        release_buffer();
         result->data = Slice(data, n);
         result->heap_allocated = false;
         result->cachable = false;  // Do not double-cache
       } else {
-        result->data = Slice(buf, n);
+        if (stack_buffer) {
+          char* owned = new char[n];
+          std::memcpy(owned, buf, n);
+          result->data = Slice(owned, n);
+        } else {
+          result->data = Slice(buf, n);
+        }
         result->heap_allocated = true;
         result->cachable = true;
       }
@@ -120,16 +129,16 @@ Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
     case kSnappyCompression: {
       size_t ulength = 0;
       if (!port::Snappy_GetUncompressedLength(data, n, &ulength)) {
-        delete[] buf;
+        release_buffer();
         return Status::Corruption("corrupted snappy compressed block length");
       }
       char* ubuf = new char[ulength];
       if (!port::Snappy_Uncompress(data, n, ubuf)) {
-        delete[] buf;
+        release_buffer();
         delete[] ubuf;
         return Status::Corruption("corrupted snappy compressed block contents");
       }
-      delete[] buf;
+      release_buffer();
       result->data = Slice(ubuf, ulength);
       result->heap_allocated = true;
       result->cachable = true;
@@ -138,23 +147,23 @@ Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
     case kZstdCompression: {
       size_t ulength = 0;
       if (!port::Zstd_GetUncompressedLength(data, n, &ulength)) {
-        delete[] buf;
+        release_buffer();
         return Status::Corruption("corrupted zstd compressed block length");
       }
       char* ubuf = new char[ulength];
       if (!port::Zstd_Uncompress(data, n, ubuf)) {
-        delete[] buf;
+        release_buffer();
         delete[] ubuf;
         return Status::Corruption("corrupted zstd compressed block contents");
       }
-      delete[] buf;
+      release_buffer();
       result->data = Slice(ubuf, ulength);
       result->heap_allocated = true;
       result->cachable = true;
       break;
     }
     default:
-      delete[] buf;
+      release_buffer();
       return Status::Corruption("bad block type");
   }
 

@@ -53,6 +53,17 @@ class WriteBatchInternal {
     }
   }
 
+  static void ReserveForTTL(WriteBatch* batch, const Slice& key,
+                            const Slice& value) {
+    const size_t max_size = batch->rep_.max_size();
+    if (max_size < 19 || batch->rep_.size() > max_size - 19) return;
+    const size_t overhead = batch->rep_.size() + 19;
+    if (overhead <= max_size && key.size() <= max_size - overhead &&
+        value.size() <= max_size - overhead - key.size()) {
+      batch->rep_.reserve(overhead + key.size() + value.size());
+    }
+  }
+
   // The DB's ordinary Put creates an empty batch for exactly one value.
   static void AppendSinglePut(WriteBatch* batch, const Slice& key,
                               const Slice& value) {

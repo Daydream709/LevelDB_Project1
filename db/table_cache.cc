@@ -34,6 +34,8 @@ TableCache::TableCache(const std::string& dbname, const Options& options,
     : env_(options.env),
       dbname_(dbname),
       options_(options),
+      bytewise_internal_(static_cast<const InternalKeyComparator*>(options.comparator)
+                             ->user_comparator() == BytewiseComparator()),
       cache_(NewLRUCache(entries)) {}
 
 TableCache::~TableCache() { delete cache_; }
@@ -105,7 +107,7 @@ Status TableCache::Get(const ReadOptions& options, uint64_t file_number,
   Status s = FindTable(file_number, file_size, &handle);
   if (s.ok()) {
     Table* t = reinterpret_cast<TableAndFile*>(cache_->Value(handle))->table;
-    s = t->InternalGet(options, k, arg, handle_result);
+    s = t->InternalGet(options, k, arg, handle_result, bytewise_internal_);
     cache_->Release(handle);
   }
   return s;

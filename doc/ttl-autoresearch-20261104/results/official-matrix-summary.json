@@ -1,0 +1,5483 @@
+{
+  "schema_version": 1,
+  "kind": "combined",
+  "profile": "standard",
+  "config": {
+    "keys": 100000,
+    "threads": 8,
+    "rounds": 8,
+    "repeat": 3
+  },
+  "value_bytes": 256,
+  "seed": 7774596,
+  "source": "/tmp/ttl-final-delivery",
+  "records": [
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 6.3774758980143815,
+      "log": "/tmp/ttl-final-selected-full/combined_concurrent-n100000-t8-e50-r1/run.log",
+      "case": "combined_concurrent",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 127416,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 6.375592369004153,
+      "log": "/tmp/ttl-final-selected-full/combined_concurrent-n100000-t8-e50-r2/run.log",
+      "case": "combined_concurrent",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 129516,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 6.326397210999858,
+      "log": "/tmp/ttl-final-selected-full/combined_concurrent-n100000-t8-e50-r3/run.log",
+      "case": "combined_concurrent",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 128844,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.0163540419889614,
+      "log": "/tmp/ttl-final-selected-full/combined_contract-n100000-t8-e50-r1/run.log",
+      "case": "combined_contract",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8712,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.016192501003388315,
+      "log": "/tmp/ttl-final-selected-full/combined_contract-n100000-t8-e50-r2/run.log",
+      "case": "combined_contract",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8712,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.01621022296603769,
+      "log": "/tmp/ttl-final-selected-full/combined_contract-n100000-t8-e50-r3/run.log",
+      "case": "combined_contract",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8716,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06442271103151143,
+      "log": "/tmp/ttl-final-selected-full/combined_gc-n100000-t8-e50-r1/run.log",
+      "case": "combined_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8716,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06452395103406161,
+      "log": "/tmp/ttl-final-selected-full/combined_gc-n100000-t8-e50-r2/run.log",
+      "case": "combined_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8720,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06446609302656725,
+      "log": "/tmp/ttl-final-selected-full/combined_gc-n100000-t8-e50-r3/run.log",
+      "case": "combined_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8720,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.03239421499893069,
+      "log": "/tmp/ttl-final-selected-full/combined_overwrites-n100000-t8-e50-r1/run.log",
+      "case": "combined_overwrites",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8724,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.03233303199522197,
+      "log": "/tmp/ttl-final-selected-full/combined_overwrites-n100000-t8-e50-r2/run.log",
+      "case": "combined_overwrites",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8724,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.032266508031170815,
+      "log": "/tmp/ttl-final-selected-full/combined_overwrites-n100000-t8-e50-r3/run.log",
+      "case": "combined_overwrites",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8732,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11454637203132734,
+      "log": "/tmp/ttl-final-selected-full/combined_reopen-n100000-t8-e50-r1/run.log",
+      "case": "combined_reopen",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8732,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11458278400823474,
+      "log": "/tmp/ttl-final-selected-full/combined_reopen-n100000-t8-e50-r2/run.log",
+      "case": "combined_reopen",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8736,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11455191799905151,
+      "log": "/tmp/ttl-final-selected-full/combined_reopen-n100000-t8-e50-r3/run.log",
+      "case": "combined_reopen",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8736,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06443604198284447,
+      "log": "/tmp/ttl-final-selected-full/combined_views-n100000-t8-e50-r1/run.log",
+      "case": "combined_views",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8736,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.1145156430429779,
+      "log": "/tmp/ttl-final-selected-full/combined_views-n100000-t8-e50-r2/run.log",
+      "case": "combined_views",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8740,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11453132599126548,
+      "log": "/tmp/ttl-final-selected-full/combined_views-n100000-t8-e50-r3/run.log",
+      "case": "combined_views",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8740,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.032348801963962615,
+      "log": "/tmp/ttl-final-selected-full/metadata_contract-n100000-t8-e50-r1/run.log",
+      "case": "metadata_contract",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8744,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.032249220996163785,
+      "log": "/tmp/ttl-final-selected-full/metadata_contract-n100000-t8-e50-r2/run.log",
+      "case": "metadata_contract",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8748,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.03220077697187662,
+      "log": "/tmp/ttl-final-selected-full/metadata_contract-n100000-t8-e50-r3/run.log",
+      "case": "metadata_contract",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 8752,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.6654701589723118,
+      "log": "/tmp/ttl-final-selected-full/metadata_reopen-n100000-t8-e50-r1/run.log",
+      "case": "metadata_reopen",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 42080,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.6155057389987633,
+      "log": "/tmp/ttl-final-selected-full/metadata_reopen-n100000-t8-e50-r2/run.log",
+      "case": "metadata_reopen",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 41848,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.6152673240285367,
+      "log": "/tmp/ttl-final-selected-full/metadata_reopen-n100000-t8-e50-r3/run.log",
+      "case": "metadata_reopen",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 42032,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.2648098689969629,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n10000-t1-e0-r1/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 8780,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.0319499,
+          "ops_per_second": 312990,
+          "p50_us": 31949.2,
+          "p95_us": 31949.2,
+          "p99_us": 31949.2,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2992905,
+          "db_directory_bytes_after_drain": 3011046
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.26492820802377537,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n10000-t1-e0-r2/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 8788,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.0307802,
+          "ops_per_second": 324885,
+          "p50_us": 30775,
+          "p95_us": 30775,
+          "p99_us": 30775,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2992905,
+          "db_directory_bytes_after_drain": 3011046
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.26492182997753844,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n10000-t1-e0-r3/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 8792,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.030962,
+          "ops_per_second": 322977,
+          "p50_us": 30961.3,
+          "p95_us": 30961.3,
+          "p99_us": 30961.3,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2992905,
+          "db_directory_bytes_after_drain": 3011046
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.26490712398663163,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n10000-t1-e50-r1/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 8804,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.0351124,
+          "ops_per_second": 284799,
+          "p50_us": 35111.9,
+          "p95_us": 35111.9,
+          "p99_us": 35111.9,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 1611153,
+          "db_directory_bytes_after_drain": 1514793
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.26487478002673015,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n10000-t1-e50-r2/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 8812,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.0353215,
+          "ops_per_second": 283114,
+          "p50_us": 35320.8,
+          "p95_us": 35320.8,
+          "p99_us": 35320.8,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 1611153,
+          "db_directory_bytes_after_drain": 1514793
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.2648834870196879,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n10000-t1-e50-r3/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 8824,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.0356611,
+          "ops_per_second": 280417,
+          "p50_us": 35660.5,
+          "p95_us": 35660.5,
+          "p99_us": 35660.5,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 1611153,
+          "db_directory_bytes_after_drain": 1514793
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.2648173379711807,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n10000-t1-e100-r1/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 8828,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.0330785,
+          "ops_per_second": 302312,
+          "p50_us": 33077.7,
+          "p95_us": 33077.7,
+          "p99_us": 33077.7,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 229292,
+          "db_directory_bytes_after_drain": 17816
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.2649426580173895,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n10000-t1-e100-r2/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 8836,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.0341876,
+          "ops_per_second": 292504,
+          "p50_us": 34186.7,
+          "p95_us": 34186.7,
+          "p99_us": 34186.7,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 229292,
+          "db_directory_bytes_after_drain": 17816
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.264873688982334,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n10000-t1-e100-r3/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 8844,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 10000,
+          "seconds": 0.0335921,
+          "ops_per_second": 297689,
+          "p50_us": 33590.9,
+          "p95_us": 33590.9,
+          "p99_us": 33590.9,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 229292,
+          "db_directory_bytes_after_drain": 17816
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.7674703319789842,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n100000-t1-e0-r1/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 44960,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.195578,
+          "ops_per_second": 511306,
+          "p50_us": 195577,
+          "p95_us": 195577,
+          "p99_us": 195577,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 29929173,
+          "db_directory_bytes_after_drain": 30005370
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.667589492048137,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n100000-t1-e0-r2/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 44996,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.198349,
+          "ops_per_second": 504161,
+          "p50_us": 198349,
+          "p95_us": 198349,
+          "p99_us": 198349,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 29929173,
+          "db_directory_bytes_after_drain": 30005370
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.5172394879627973,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n100000-t1-e0-r3/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 44428,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.195532,
+          "ops_per_second": 511425,
+          "p50_us": 195532,
+          "p95_us": 195532,
+          "p99_us": 195532,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 29929173,
+          "db_directory_bytes_after_drain": 30005370
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.6169546890305355,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n100000-t1-e50-r1/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 26060,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.24707,
+          "ops_per_second": 404744,
+          "p50_us": 247069,
+          "p95_us": 247069,
+          "p99_us": 247069,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 16110725,
+          "db_directory_bytes_after_drain": 15041511
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.5669209589832462,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n100000-t1-e50-r2/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 26168,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.240015,
+          "ops_per_second": 416641,
+          "p50_us": 240014,
+          "p95_us": 240014,
+          "p99_us": 240014,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 16110725,
+          "db_directory_bytes_after_drain": 15041511
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.3169835669687018,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n100000-t1-e50-r3/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 26052,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.213653,
+          "ops_per_second": 468049,
+          "p50_us": 213652,
+          "p95_us": 213652,
+          "p99_us": 213652,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 16110725,
+          "db_directory_bytes_after_drain": 15041819
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.417141990037635,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n100000-t1-e100-r1/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 15484,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.279909,
+          "ops_per_second": 357259,
+          "p50_us": 279908,
+          "p95_us": 279908,
+          "p99_us": 279908,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2292570,
+          "db_directory_bytes_after_drain": 77232
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.717670123965945,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n100000-t1-e100-r2/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 14468,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.278403,
+          "ops_per_second": 359191,
+          "p50_us": 278402,
+          "p95_us": 278402,
+          "p99_us": 278402,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2292570,
+          "db_directory_bytes_after_drain": 77232
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.7176651390036568,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_gc-n100000-t1-e100-r3/run.log",
+      "case": "perf_combined_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 14432,
+      "metrics": [
+        {
+          "phase": "ttl_gc_with_statistics",
+          "ops": 100000,
+          "seconds": 0.283727,
+          "ops_per_second": 352451,
+          "p50_us": 283727,
+          "p95_us": 283727,
+          "p99_us": 283727,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2292570,
+          "db_directory_bytes_after_drain": 77232
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.7657810150412843,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t1-e0-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 13800,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0204355,
+          "ops_per_second": 489346,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031995
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0207424,
+          "ops_per_second": 482105,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031995
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 389633,
+          "seconds": 0.020704,
+          "ops_per_second": 18819200.0,
+          "p50_us": 0.029,
+          "p95_us": 0.047,
+          "p99_us": 0.079,
+          "latency_samples": 6089,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031995
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.7657392570399679,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t1-e0-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 13604,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0212084,
+          "ops_per_second": 471511,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031995
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 427957,
+          "seconds": 0.0211675,
+          "ops_per_second": 20217700.0,
+          "p50_us": 0.03,
+          "p95_us": 0.032,
+          "p99_us": 0.075,
+          "latency_samples": 6687,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031995
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0197023,
+          "ops_per_second": 507554,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031995
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.7658910299651325,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t1-e0-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 13968,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0202234,
+          "ops_per_second": 494476,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031995
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0203815,
+          "ops_per_second": 490641,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031995
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 397957,
+          "seconds": 0.0203232,
+          "ops_per_second": 19581400.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.107,
+          "latency_samples": 6219,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031995
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.5653411119710654,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t1-e50-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 11076,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0203204,
+          "ops_per_second": 492116,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031996
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.020606,
+          "ops_per_second": 485296,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031996
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 395401,
+          "seconds": 0.0205574,
+          "ops_per_second": 19234000.0,
+          "p50_us": 0.029,
+          "p95_us": 0.031,
+          "p99_us": 0.103,
+          "latency_samples": 6179,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031996
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.5653871379909106,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t1-e50-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 11220,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0222959,
+          "ops_per_second": 448514,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031996
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 427797,
+          "seconds": 0.0222582,
+          "ops_per_second": 19219800.0,
+          "p50_us": 0.029,
+          "p95_us": 0.031,
+          "p99_us": 0.078,
+          "latency_samples": 6685,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031996
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0203567,
+          "ops_per_second": 491240,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031996
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.565486138977576,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t1-e50-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 11160,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0200235,
+          "ops_per_second": 499414,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031996
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.020371,
+          "ops_per_second": 490894,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031996
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 421957,
+          "seconds": 0.0203247,
+          "ops_per_second": 20760800.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.074,
+          "latency_samples": 6594,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031996
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3149308559950441,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t1-e100-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 11020,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0210169,
+          "ops_per_second": 475807,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031997
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0212901,
+          "ops_per_second": 469701,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031997
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 416619,
+          "seconds": 0.0212472,
+          "ops_per_second": 19608200.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.106,
+          "latency_samples": 6510,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031997
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3149916660040617,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t1-e100-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 10872,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0211847,
+          "ops_per_second": 472038,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031997
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 427397,
+          "seconds": 0.0211345,
+          "ops_per_second": 20222800.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.087,
+          "latency_samples": 6679,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031997
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0197402,
+          "ops_per_second": 506581,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031997
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.2649111619684845,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t1-e100-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 11020,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0206925,
+          "ops_per_second": 483268,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031997
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0203016,
+          "ops_per_second": 492573,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031997
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 419873,
+          "seconds": 0.0202556,
+          "ops_per_second": 20728800.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.082,
+          "latency_samples": 6561,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 6031997
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.8660689200041816,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t8-e0-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 0,
+      "peak_rss_kib": 16952,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0685176,
+          "ops_per_second": 145948,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891099,
+          "db_directory_bytes_after_drain": 5892527
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0713517,
+          "ops_per_second": 140151,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2892961,
+          "db_directory_bytes_after_drain": 5894389
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1264959,
+          "seconds": 0.0711789,
+          "ops_per_second": 17771500.0,
+          "p50_us": 0.031,
+          "p95_us": 0.048,
+          "p99_us": 0.065,
+          "latency_samples": 19765,
+          "append_bytes_during_phase": 2890291,
+          "db_directory_bytes_after_drain": 5894389
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.865997624990996,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t8-e0-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 0,
+      "peak_rss_kib": 16516,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0716259,
+          "ops_per_second": 139614,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891572,
+          "db_directory_bytes_after_drain": 5893000
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1260733,
+          "seconds": 0.071309,
+          "ops_per_second": 17679900.0,
+          "p50_us": 0.032,
+          "p95_us": 0.048,
+          "p99_us": 0.057,
+          "latency_samples": 19699,
+          "append_bytes_during_phase": 2889754,
+          "db_directory_bytes_after_drain": 5893000
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0677839,
+          "ops_per_second": 147528,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891738,
+          "db_directory_bytes_after_drain": 5893166
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.8660763000370935,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t8-e0-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 0,
+      "peak_rss_kib": 17060,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0697358,
+          "ops_per_second": 143398,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2890716,
+          "db_directory_bytes_after_drain": 5892144
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0711718,
+          "ops_per_second": 140505,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891913,
+          "db_directory_bytes_after_drain": 5893341
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1262196,
+          "seconds": 0.0709807,
+          "ops_per_second": 17782300.0,
+          "p50_us": 0.031,
+          "p95_us": 0.048,
+          "p99_us": 0.06,
+          "latency_samples": 19722,
+          "append_bytes_during_phase": 2888997,
+          "db_directory_bytes_after_drain": 5893341
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.6656594109954312,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t8-e50-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 11368,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0681027,
+          "ops_per_second": 146837,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2890149,
+          "db_directory_bytes_after_drain": 5891578
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0718062,
+          "ops_per_second": 139264,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891777,
+          "db_directory_bytes_after_drain": 5893206
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1270383,
+          "seconds": 0.0716391,
+          "ops_per_second": 17733100.0,
+          "p50_us": 0.031,
+          "p95_us": 0.048,
+          "p99_us": 0.061,
+          "latency_samples": 19850,
+          "append_bytes_during_phase": 2888577,
+          "db_directory_bytes_after_drain": 5893206
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.6655770729994401,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t8-e50-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 11588,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0712659,
+          "ops_per_second": 140319,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891365,
+          "db_directory_bytes_after_drain": 5892794
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1262763,
+          "seconds": 0.0710174,
+          "ops_per_second": 17781000.0,
+          "p50_us": 0.032,
+          "p95_us": 0.048,
+          "p99_us": 0.068,
+          "latency_samples": 19731,
+          "append_bytes_during_phase": 2890759,
+          "db_directory_bytes_after_drain": 5892794
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0677624,
+          "ops_per_second": 147574,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891266,
+          "db_directory_bytes_after_drain": 5892695
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.6656052800244652,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t8-e50-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 11336,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0682945,
+          "ops_per_second": 146425,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891156,
+          "db_directory_bytes_after_drain": 5892585
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0722874,
+          "ops_per_second": 138337,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2892334,
+          "db_directory_bytes_after_drain": 5893763
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1248696,
+          "seconds": 0.0720951,
+          "ops_per_second": 17320100.0,
+          "p50_us": 0.032,
+          "p95_us": 0.049,
+          "p99_us": 0.06,
+          "latency_samples": 19511,
+          "append_bytes_during_phase": 2888850,
+          "db_directory_bytes_after_drain": 5893763
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.41518482501851395,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t8-e100-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 100,
+      "peak_rss_kib": 11452,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0686801,
+          "ops_per_second": 145603,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2890472,
+          "db_directory_bytes_after_drain": 5891902
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0712025,
+          "ops_per_second": 140444,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2892372,
+          "db_directory_bytes_after_drain": 5893802
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1277431,
+          "seconds": 0.0710293,
+          "ops_per_second": 17984600.0,
+          "p50_us": 0.031,
+          "p95_us": 0.048,
+          "p99_us": 0.071,
+          "latency_samples": 19960,
+          "append_bytes_during_phase": 2890895,
+          "db_directory_bytes_after_drain": 5893802
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3651654339628294,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t8-e100-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 100,
+      "peak_rss_kib": 11564,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0717532,
+          "ops_per_second": 139367,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891091,
+          "db_directory_bytes_after_drain": 5892521
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1208300,
+          "seconds": 0.0714994,
+          "ops_per_second": 16899400.0,
+          "p50_us": 0.032,
+          "p95_us": 0.048,
+          "p99_us": 0.066,
+          "latency_samples": 18880,
+          "append_bytes_during_phase": 2890788,
+          "db_directory_bytes_after_drain": 5892521
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0685836,
+          "ops_per_second": 145807,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2890799,
+          "db_directory_bytes_after_drain": 5892229
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.36507985601201653,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n10000-t8-e100-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 100,
+      "peak_rss_kib": 11340,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.0683468,
+          "ops_per_second": 146313,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2891379,
+          "db_directory_bytes_after_drain": 5892809
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.070949,
+          "ops_per_second": 140946,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2892605,
+          "db_directory_bytes_after_drain": 5894035
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 1219306,
+          "seconds": 0.0707622,
+          "ops_per_second": 17231000.0,
+          "p50_us": 0.032,
+          "p95_us": 0.049,
+          "p99_us": 0.068,
+          "latency_samples": 19052,
+          "append_bytes_during_phase": 2889689,
+          "db_directory_bytes_after_drain": 5894035
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 6.175648766977247,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t1-e0-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 95676,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.226907,
+          "ops_per_second": 440710,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56805492,
+          "db_directory_bytes_after_drain": 59872381
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.212452,
+          "ops_per_second": 470695,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56606148,
+          "db_directory_bytes_after_drain": 59872381
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 3916079,
+          "seconds": 0.212413,
+          "ops_per_second": 18436200.0,
+          "p50_us": 0.03,
+          "p95_us": 0.049,
+          "p99_us": 0.087,
+          "latency_samples": 61189,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872381
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 6.475892448972445,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t1-e0-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 94196,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.30561,
+          "ops_per_second": 327215,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56373580,
+          "db_directory_bytes_after_drain": 59872689
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 5983170,
+          "seconds": 0.305566,
+          "ops_per_second": 19580600.0,
+          "p50_us": 0.03,
+          "p95_us": 0.036,
+          "p99_us": 0.071,
+          "latency_samples": 93488,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872689
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.31077,
+          "ops_per_second": 321782,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55850302,
+          "db_directory_bytes_after_drain": 59873228
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 6.777663355984259,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t1-e0-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 86784,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.36722,
+          "ops_per_second": 272316,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55704947,
+          "db_directory_bytes_after_drain": 59873151
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.331995,
+          "ops_per_second": 301209,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56095329,
+          "db_directory_bytes_after_drain": 59872843
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 6707009,
+          "seconds": 0.331957,
+          "ops_per_second": 20204500.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.08,
+          "latency_samples": 104798,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872843
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 4.172479344997555,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t1-e50-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 53312,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.293277,
+          "ops_per_second": 340975,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55895985,
+          "db_directory_bytes_after_drain": 59872690
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.36742,
+          "ops_per_second": 272168,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55949974,
+          "db_directory_bytes_after_drain": 59873306
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7524195,
+          "seconds": 0.367371,
+          "ops_per_second": 20481200.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.072,
+          "latency_samples": 117566,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59873306
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 4.1719611319713295,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t1-e50-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 54560,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.347877,
+          "ops_per_second": 287458,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56444181,
+          "db_directory_bytes_after_drain": 59872844
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 6988454,
+          "seconds": 0.347829,
+          "ops_per_second": 20091600.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.075,
+          "latency_samples": 109195,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872844
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.366854,
+          "ops_per_second": 272588,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55958280,
+          "db_directory_bytes_after_drain": 59872998
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 4.272417163010687,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t1-e50-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 46716,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.368213,
+          "ops_per_second": 271582,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55850302,
+          "db_directory_bytes_after_drain": 59872998
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.367793,
+          "ops_per_second": 271892,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55879373,
+          "db_directory_bytes_after_drain": 59873306
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7167822,
+          "seconds": 0.367755,
+          "ops_per_second": 19490700.0,
+          "p50_us": 0.03,
+          "p95_us": 0.048,
+          "p99_us": 0.078,
+          "latency_samples": 111998,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59873306
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.9178083310252987,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t1-e100-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 26984,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.361896,
+          "ops_per_second": 276323,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55862761,
+          "db_directory_bytes_after_drain": 59872999
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.354599,
+          "ops_per_second": 282008,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56012269,
+          "db_directory_bytes_after_drain": 59872845
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 7335932,
+          "seconds": 0.354553,
+          "ops_per_second": 20690700.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.068,
+          "latency_samples": 114624,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872845
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.8677075990126468,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t1-e100-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 23156,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.309239,
+          "ops_per_second": 323374,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56485711,
+          "db_directory_bytes_after_drain": 59872691
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 5975245,
+          "seconds": 0.309195,
+          "ops_per_second": 19325200.0,
+          "p50_us": 0.03,
+          "p95_us": 0.038,
+          "p99_us": 0.082,
+          "latency_samples": 93364,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872691
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.350647,
+          "ops_per_second": 285187,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55904291,
+          "db_directory_bytes_after_drain": 59872845
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.8179041509865783,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t1-e100-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 23108,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.303486,
+          "ops_per_second": 329505,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55900138,
+          "db_directory_bytes_after_drain": 59872691
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.347972,
+          "ops_per_second": 287379,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 55883526,
+          "db_directory_bytes_after_drain": 59872845
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 6718617,
+          "seconds": 0.347924,
+          "ops_per_second": 19310600.0,
+          "p50_us": 0.03,
+          "p95_us": 0.037,
+          "p99_us": 0.089,
+          "latency_samples": 104979,
+          "append_bytes_during_phase": 59796569,
+          "db_directory_bytes_after_drain": 59872845
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 7.879348040034529,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t8-e0-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 0,
+      "peak_rss_kib": 95508,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.693679,
+          "ops_per_second": 144159,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58404522,
+          "db_directory_bytes_after_drain": 59854074
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.730175,
+          "ops_per_second": 136954,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58214350,
+          "db_directory_bytes_after_drain": 59854624
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 12883772,
+          "seconds": 0.729998,
+          "ops_per_second": 17649100.0,
+          "p50_us": 0.032,
+          "p95_us": 0.049,
+          "p99_us": 0.064,
+          "latency_samples": 201309,
+          "append_bytes_during_phase": 58408991,
+          "db_directory_bytes_after_drain": 59854624
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 7.3768303749966435,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t8-e0-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 0,
+      "peak_rss_kib": 94988,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.724847,
+          "ops_per_second": 137960,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58201210,
+          "db_directory_bytes_after_drain": 59854889
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 12777110,
+          "seconds": 0.724531,
+          "ops_per_second": 17635000.0,
+          "p50_us": 0.032,
+          "p95_us": 0.048,
+          "p99_us": 0.063,
+          "latency_samples": 199643,
+          "append_bytes_during_phase": 58407022,
+          "db_directory_bytes_after_drain": 59854889
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.685703,
+          "ops_per_second": 145836,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57936508,
+          "db_directory_bytes_after_drain": 59853818
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 7.428186709992588,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t8-e0-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 0,
+      "peak_rss_kib": 95636,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.690117,
+          "ops_per_second": 144903,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58405848,
+          "db_directory_bytes_after_drain": 59853590
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.727836,
+          "ops_per_second": 137394,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57780352,
+          "db_directory_bytes_after_drain": 59853723
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 12722131,
+          "seconds": 0.72764,
+          "ops_per_second": 17484100.0,
+          "p50_us": 0.032,
+          "p95_us": 0.049,
+          "p99_us": 0.064,
+          "latency_samples": 198784,
+          "append_bytes_during_phase": 58409318,
+          "db_directory_bytes_after_drain": 59853723
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 5.023298165004235,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t8-e50-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 55032,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.68753,
+          "ops_per_second": 145448,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57688574,
+          "db_directory_bytes_after_drain": 59855816
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.722451,
+          "ops_per_second": 138418,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57940543,
+          "db_directory_bytes_after_drain": 59854388
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 12557883,
+          "seconds": 0.722274,
+          "ops_per_second": 17386600.0,
+          "p50_us": 0.032,
+          "p95_us": 0.049,
+          "p99_us": 0.063,
+          "latency_samples": 196217,
+          "append_bytes_during_phase": 58408974,
+          "db_directory_bytes_after_drain": 59854388
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 4.7735310710268095,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t8-e50-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 54552,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.722166,
+          "ops_per_second": 138472,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58056481,
+          "db_directory_bytes_after_drain": 59855112
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 12219296,
+          "seconds": 0.721917,
+          "ops_per_second": 16926200.0,
+          "p50_us": 0.033,
+          "p95_us": 0.049,
+          "p99_us": 0.062,
+          "latency_samples": 190927,
+          "append_bytes_during_phase": 58410086,
+          "db_directory_bytes_after_drain": 59855112
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.684552,
+          "ops_per_second": 146081,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57974703,
+          "db_directory_bytes_after_drain": 59854494
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 4.9243986969813704,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t8-e50-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 54124,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.69475,
+          "ops_per_second": 143937,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58209247,
+          "db_directory_bytes_after_drain": 59853785
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.724126,
+          "ops_per_second": 138098,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58410876,
+          "db_directory_bytes_after_drain": 59854029
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 12726479,
+          "seconds": 0.723955,
+          "ops_per_second": 17579100.0,
+          "p50_us": 0.032,
+          "p95_us": 0.048,
+          "p99_us": 0.068,
+          "latency_samples": 198852,
+          "append_bytes_during_phase": 58409483,
+          "db_directory_bytes_after_drain": 59854029
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 2.469486546004191,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t8-e100-r1/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 100,
+      "peak_rss_kib": 41232,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.693423,
+          "ops_per_second": 144212,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58040459,
+          "db_directory_bytes_after_drain": 59853851
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.722967,
+          "ops_per_second": 138319,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58126524,
+          "db_directory_bytes_after_drain": 59854123
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 12542789,
+          "seconds": 0.722758,
+          "ops_per_second": 17354100.0,
+          "p50_us": 0.032,
+          "p95_us": 0.048,
+          "p99_us": 0.066,
+          "latency_samples": 195982,
+          "append_bytes_during_phase": 58406645,
+          "db_directory_bytes_after_drain": 59854123
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 2.469385839009192,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t8-e100-r2/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 100,
+      "peak_rss_kib": 40568,
+      "metrics": [
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.725528,
+          "ops_per_second": 137831,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57814865,
+          "db_directory_bytes_after_drain": 59855315
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 12121172,
+          "seconds": 0.725263,
+          "ops_per_second": 16712800.0,
+          "p50_us": 0.032,
+          "p95_us": 0.048,
+          "p99_us": 0.072,
+          "latency_samples": 189394,
+          "append_bytes_during_phase": 58413793,
+          "db_directory_bytes_after_drain": 59855315
+        },
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.682418,
+          "ops_per_second": 146538,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57511392,
+          "db_directory_bytes_after_drain": 59856053
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 2.4691267409943976,
+      "log": "/tmp/ttl-final-selected-full/perf_combined_stats_under_write-n100000-t8-e100-r3/run.log",
+      "case": "perf_combined_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 100,
+      "peak_rss_kib": 43296,
+      "metrics": [
+        {
+          "phase": "ttl_put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.691894,
+          "ops_per_second": 144531,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57798984,
+          "db_directory_bytes_after_drain": 59855648
+        },
+        {
+          "phase": "ttl_put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.715826,
+          "ops_per_second": 139699,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 58357718,
+          "db_directory_bytes_after_drain": 59855346
+        },
+        {
+          "phase": "stats_under_ttl_write",
+          "ops": 12522674,
+          "seconds": 0.715642,
+          "ops_per_second": 17498500.0,
+          "p50_us": 0.032,
+          "p95_us": 0.048,
+          "p99_us": 0.064,
+          "latency_samples": 195667,
+          "append_bytes_during_phase": 58409417,
+          "db_directory_bytes_after_drain": 59855346
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06458749203011394,
+      "log": "/tmp/ttl-final-selected-full/perf_concurrent-n10000-t1-e50-r1/run.log",
+      "case": "perf_concurrent",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9468,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 10000,
+          "seconds": 0.0200035,
+          "ops_per_second": 499913,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2950595,
+          "db_directory_bytes_after_drain": 2959074
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.0644790810183622,
+      "log": "/tmp/ttl-final-selected-full/perf_concurrent-n10000-t1-e50-r2/run.log",
+      "case": "perf_concurrent",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9472,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 10000,
+          "seconds": 0.0202465,
+          "ops_per_second": 493913,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2950595,
+          "db_directory_bytes_after_drain": 2959074
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.0644461729680188,
+      "log": "/tmp/ttl-final-selected-full/perf_concurrent-n10000-t1-e50-r3/run.log",
+      "case": "perf_concurrent",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9516,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 10000,
+          "seconds": 0.0196206,
+          "ops_per_second": 509668,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2950595,
+          "db_directory_bytes_after_drain": 2959074
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.1145446709706448,
+      "log": "/tmp/ttl-final-selected-full/perf_concurrent-n10000-t8-e50-r1/run.log",
+      "case": "perf_concurrent",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9528,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 10000,
+          "seconds": 0.0684077,
+          "ops_per_second": 146182,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2810823,
+          "db_directory_bytes_after_drain": 2819302
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11467478901613504,
+      "log": "/tmp/ttl-final-selected-full/perf_concurrent-n10000-t8-e50-r2/run.log",
+      "case": "perf_concurrent",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9540,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 10000,
+          "seconds": 0.0688125,
+          "ops_per_second": 145322,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2811230,
+          "db_directory_bytes_after_drain": 2819709
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11465017800219357,
+      "log": "/tmp/ttl-final-selected-full/perf_concurrent-n10000-t8-e50-r3/run.log",
+      "case": "perf_concurrent",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9548,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 10000,
+          "seconds": 0.0692396,
+          "ops_per_second": 144426,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 2811280,
+          "db_directory_bytes_after_drain": 2819759
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3149710700381547,
+      "log": "/tmp/ttl-final-selected-full/perf_concurrent-n100000-t1-e50-r1/run.log",
+      "case": "perf_concurrent",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 40676,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 100000,
+          "seconds": 0.199801,
+          "ops_per_second": 500498,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 51927479,
+          "db_directory_bytes_after_drain": 27332521
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.31496584200067446,
+      "log": "/tmp/ttl-final-selected-full/perf_concurrent-n100000-t1-e50-r2/run.log",
+      "case": "perf_concurrent",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 39692,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 100000,
+          "seconds": 0.194811,
+          "ops_per_second": 513317,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 51910144,
+          "db_directory_bytes_after_drain": 27332521
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.36505632899934426,
+      "log": "/tmp/ttl-final-selected-full/perf_concurrent-n100000-t1-e50-r3/run.log",
+      "case": "perf_concurrent",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 40676,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 100000,
+          "seconds": 0.205455,
+          "ops_per_second": 486726,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 51923144,
+          "db_directory_bytes_after_drain": 27332521
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.8160348309902474,
+      "log": "/tmp/ttl-final-selected-full/perf_concurrent-n100000-t8-e50-r1/run.log",
+      "case": "perf_concurrent",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 36444,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 100000,
+          "seconds": 0.695882,
+          "ops_per_second": 143703,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 51025539,
+          "db_directory_bytes_after_drain": 27331050
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.8160277100396343,
+      "log": "/tmp/ttl-final-selected-full/perf_concurrent-n100000-t8-e50-r2/run.log",
+      "case": "perf_concurrent",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 36044,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 100000,
+          "seconds": 0.691544,
+          "ops_per_second": 144604,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 51245380,
+          "db_directory_bytes_after_drain": 27330598
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.8662863229983486,
+      "log": "/tmp/ttl-final-selected-full/perf_concurrent-n100000-t8-e50-r3/run.log",
+      "case": "perf_concurrent",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 36036,
+      "metrics": [
+        {
+          "phase": "parallel_put",
+          "ops": 100000,
+          "seconds": 0.698298,
+          "ops_per_second": 143205,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 51117200,
+          "db_directory_bytes_after_drain": 27329800
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11450872803106904,
+      "log": "/tmp/ttl-final-selected-full/perf_read-n10000-t1-e50-r1/run.log",
+      "case": "perf_read",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9336,
+      "metrics": [
+        {
+          "phase": "get_hit",
+          "ops": 10000,
+          "seconds": 0.0084701,
+          "ops_per_second": 1180620.0,
+          "p50_us": 0.657,
+          "p95_us": 0.959,
+          "p99_us": 1.292,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740118
+        },
+        {
+          "phase": "get_miss",
+          "ops": 10000,
+          "seconds": 0.00205335,
+          "ops_per_second": 4870100.0,
+          "p50_us": 0.188,
+          "p95_us": 0.198,
+          "p99_us": 0.206,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740118
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11454486497677863,
+      "log": "/tmp/ttl-final-selected-full/perf_read-n10000-t1-e50-r2/run.log",
+      "case": "perf_read",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9340,
+      "metrics": [
+        {
+          "phase": "get_hit",
+          "ops": 10000,
+          "seconds": 0.00828007,
+          "ops_per_second": 1207720.0,
+          "p50_us": 0.624,
+          "p95_us": 0.918,
+          "p99_us": 1.303,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740118
+        },
+        {
+          "phase": "get_miss",
+          "ops": 10000,
+          "seconds": 0.00204814,
+          "ops_per_second": 4882480.0,
+          "p50_us": 0.186,
+          "p95_us": 0.197,
+          "p99_us": 0.203,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740118
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11455761402612552,
+      "log": "/tmp/ttl-final-selected-full/perf_read-n10000-t1-e50-r3/run.log",
+      "case": "perf_read",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9344,
+      "metrics": [
+        {
+          "phase": "get_hit",
+          "ops": 10000,
+          "seconds": 0.0084282,
+          "ops_per_second": 1186490.0,
+          "p50_us": 0.643,
+          "p95_us": 0.969,
+          "p99_us": 1.322,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740118
+        },
+        {
+          "phase": "get_miss",
+          "ops": 10000,
+          "seconds": 0.00202252,
+          "ops_per_second": 4944320.0,
+          "p50_us": 0.186,
+          "p95_us": 0.196,
+          "p99_us": 0.202,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740118
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.4149694319930859,
+      "log": "/tmp/ttl-final-selected-full/perf_read-n100000-t1-e50-r1/run.log",
+      "case": "perf_read",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 32136,
+      "metrics": [
+        {
+          "phase": "get_hit",
+          "ops": 100000,
+          "seconds": 0.106873,
+          "ops_per_second": 935687,
+          "p50_us": 0.853,
+          "p95_us": 1.358,
+          "p99_us": 1.771,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325541
+        },
+        {
+          "phase": "get_miss",
+          "ops": 100000,
+          "seconds": 0.0203948,
+          "ops_per_second": 4903200.0,
+          "p50_us": 0.189,
+          "p95_us": 0.201,
+          "p99_us": 0.204,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325541
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.36493699497077614,
+      "log": "/tmp/ttl-final-selected-full/perf_read-n100000-t1-e50-r2/run.log",
+      "case": "perf_read",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 31956,
+      "metrics": [
+        {
+          "phase": "get_hit",
+          "ops": 100000,
+          "seconds": 0.10733,
+          "ops_per_second": 931703,
+          "p50_us": 0.858,
+          "p95_us": 1.387,
+          "p99_us": 1.772,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325541
+        },
+        {
+          "phase": "get_miss",
+          "ops": 100000,
+          "seconds": 0.0204212,
+          "ops_per_second": 4896880.0,
+          "p50_us": 0.187,
+          "p95_us": 0.2,
+          "p99_us": 0.203,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325541
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.4152172190370038,
+      "log": "/tmp/ttl-final-selected-full/perf_read-n100000-t1-e50-r3/run.log",
+      "case": "perf_read",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 38424,
+      "metrics": [
+        {
+          "phase": "get_hit",
+          "ops": 100000,
+          "seconds": 0.106884,
+          "ops_per_second": 935597,
+          "p50_us": 0.848,
+          "p95_us": 1.365,
+          "p99_us": 1.721,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325541
+        },
+        {
+          "phase": "get_miss",
+          "ops": 100000,
+          "seconds": 0.0204007,
+          "ops_per_second": 4901780.0,
+          "p50_us": 0.187,
+          "p95_us": 0.199,
+          "p99_us": 0.203,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325541
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.1646565879927948,
+      "log": "/tmp/ttl-final-selected-full/perf_reopen-n10000-t1-e50-r1/run.log",
+      "case": "perf_reopen",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9728,
+      "metrics": [
+        {
+          "phase": "open",
+          "ops": 1,
+          "seconds": 0.00407013,
+          "ops_per_second": 245.692,
+          "p50_us": 4069.55,
+          "p95_us": 4069.55,
+          "p99_us": 4069.55,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 246,
+          "db_directory_bytes_after_drain": 2747792
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.1647285600192845,
+      "log": "/tmp/ttl-final-selected-full/perf_reopen-n10000-t1-e50-r2/run.log",
+      "case": "perf_reopen",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9660,
+      "metrics": [
+        {
+          "phase": "open",
+          "ops": 1,
+          "seconds": 0.00623181,
+          "ops_per_second": 160.467,
+          "p50_us": 6231.16,
+          "p95_us": 6231.16,
+          "p99_us": 6231.16,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 246,
+          "db_directory_bytes_after_drain": 2747792
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.2147592809633352,
+      "log": "/tmp/ttl-final-selected-full/perf_reopen-n10000-t1-e50-r3/run.log",
+      "case": "perf_reopen",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9632,
+      "metrics": [
+        {
+          "phase": "open",
+          "ops": 1,
+          "seconds": 0.00858134,
+          "ops_per_second": 116.532,
+          "p50_us": 8580.77,
+          "p95_us": 8580.77,
+          "p99_us": 8580.77,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 246,
+          "db_directory_bytes_after_drain": 2747792
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.5673565010074526,
+      "log": "/tmp/ttl-final-selected-full/perf_reopen-n100000-t1-e50-r1/run.log",
+      "case": "perf_reopen",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 37324,
+      "metrics": [
+        {
+          "phase": "open",
+          "ops": 1,
+          "seconds": 0.00440432,
+          "ops_per_second": 227.05,
+          "p50_us": 4403.6,
+          "p95_us": 4403.6,
+          "p99_us": 4403.6,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 256,
+          "db_directory_bytes_after_drain": 27379706
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.5173275929992087,
+      "log": "/tmp/ttl-final-selected-full/perf_reopen-n100000-t1-e50-r2/run.log",
+      "case": "perf_reopen",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 37476,
+      "metrics": [
+        {
+          "phase": "open",
+          "ops": 1,
+          "seconds": 0.00415106,
+          "ops_per_second": 240.902,
+          "p50_us": 4150.53,
+          "p95_us": 4150.53,
+          "p99_us": 4150.53,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 256,
+          "db_directory_bytes_after_drain": 27379706
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.5172703710268252,
+      "log": "/tmp/ttl-final-selected-full/perf_reopen-n100000-t1-e50-r3/run.log",
+      "case": "perf_reopen",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 37412,
+      "metrics": [
+        {
+          "phase": "open",
+          "ops": 1,
+          "seconds": 0.00410025,
+          "ops_per_second": 243.888,
+          "p50_us": 4099.72,
+          "p95_us": 4099.72,
+          "p99_us": 4099.72,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 256,
+          "db_directory_bytes_after_drain": 27379706
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.0645460010273382,
+      "log": "/tmp/ttl-final-selected-full/perf_scan-n10000-t1-e50-r1/run.log",
+      "case": "perf_scan",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9464,
+      "metrics": [
+        {
+          "phase": "scan",
+          "ops": 10000,
+          "seconds": 0.0037464,
+          "ops_per_second": 2669230.0,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740118
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06448565499158576,
+      "log": "/tmp/ttl-final-selected-full/perf_scan-n10000-t1-e50-r2/run.log",
+      "case": "perf_scan",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9468,
+      "metrics": [
+        {
+          "phase": "scan",
+          "ops": 10000,
+          "seconds": 0.00376567,
+          "ops_per_second": 2655570.0,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740118
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.0644046840025112,
+      "log": "/tmp/ttl-final-selected-full/perf_scan-n10000-t1-e50-r3/run.log",
+      "case": "perf_scan",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9472,
+      "metrics": [
+        {
+          "phase": "scan",
+          "ops": 10000,
+          "seconds": 0.00478887,
+          "ops_per_second": 2088170.0,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740118
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3149779699742794,
+      "log": "/tmp/ttl-final-selected-full/perf_scan-n100000-t1-e50-r1/run.log",
+      "case": "perf_scan",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 30944,
+      "metrics": [
+        {
+          "phase": "scan",
+          "ops": 100000,
+          "seconds": 0.038507,
+          "ops_per_second": 2596930.0,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325541
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3150139829958789,
+      "log": "/tmp/ttl-final-selected-full/perf_scan-n100000-t1-e50-r2/run.log",
+      "case": "perf_scan",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 37140,
+      "metrics": [
+        {
+          "phase": "scan",
+          "ops": 100000,
+          "seconds": 0.0378537,
+          "ops_per_second": 2641750.0,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325541
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3150110720307566,
+      "log": "/tmp/ttl-final-selected-full/perf_scan-n100000-t1-e50-r3/run.log",
+      "case": "perf_scan",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 31984,
+      "metrics": [
+        {
+          "phase": "scan",
+          "ops": 100000,
+          "seconds": 0.0381272,
+          "ops_per_second": 2622800.0,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325541
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06458073802059516,
+      "log": "/tmp/ttl-final-selected-full/perf_stats-n10000-t1-e50-r1/run.log",
+      "case": "perf_stats",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9496,
+      "metrics": [
+        {
+          "phase": "stats_query",
+          "ops": 10000,
+          "seconds": 0.00509978,
+          "ops_per_second": 1960870.0,
+          "p50_us": 0.031,
+          "p95_us": 0.033,
+          "p99_us": 0.043,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740119
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.064472907979507,
+      "log": "/tmp/ttl-final-selected-full/perf_stats-n10000-t1-e50-r2/run.log",
+      "case": "perf_stats",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9536,
+      "metrics": [
+        {
+          "phase": "stats_query",
+          "ops": 10000,
+          "seconds": 0.00504368,
+          "ops_per_second": 1982680.0,
+          "p50_us": 0.031,
+          "p95_us": 0.033,
+          "p99_us": 0.035,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740119
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06447031901916489,
+      "log": "/tmp/ttl-final-selected-full/perf_stats-n10000-t1-e50-r3/run.log",
+      "case": "perf_stats",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9548,
+      "metrics": [
+        {
+          "phase": "stats_query",
+          "ops": 10000,
+          "seconds": 0.00507881,
+          "ops_per_second": 1968970.0,
+          "p50_us": 0.031,
+          "p95_us": 0.033,
+          "p99_us": 0.034,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 2740119
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3149383090203628,
+      "log": "/tmp/ttl-final-selected-full/perf_stats-n100000-t1-e50-r1/run.log",
+      "case": "perf_stats",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 14220,
+      "metrics": [
+        {
+          "phase": "stats_query",
+          "ops": 100000,
+          "seconds": 0.053536,
+          "ops_per_second": 1867900.0,
+          "p50_us": 0.031,
+          "p95_us": 0.033,
+          "p99_us": 0.034,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325542
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3148514539934695,
+      "log": "/tmp/ttl-final-selected-full/perf_stats-n100000-t1-e50-r2/run.log",
+      "case": "perf_stats",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 14452,
+      "metrics": [
+        {
+          "phase": "stats_query",
+          "ops": 100000,
+          "seconds": 0.0534882,
+          "ops_per_second": 1869570.0,
+          "p50_us": 0.031,
+          "p95_us": 0.033,
+          "p99_us": 0.034,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325542
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.31498033698881045,
+      "log": "/tmp/ttl-final-selected-full/perf_stats-n100000-t1-e50-r3/run.log",
+      "case": "perf_stats",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 14512,
+      "metrics": [
+        {
+          "phase": "stats_query",
+          "ops": 100000,
+          "seconds": 0.0536292,
+          "ops_per_second": 1864660.0,
+          "p50_us": 0.03,
+          "p95_us": 0.033,
+          "p99_us": 0.034,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 27325542
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.41520278598181903,
+      "log": "/tmp/ttl-final-selected-full/perf_stats_under_write-n10000-t1-e50-r1/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9572,
+      "metrics": [
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.114569,
+          "ops_per_second": 87283.6,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 8373829,
+          "db_directory_bytes_after_drain": 5483560
+        },
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.16215,
+          "ops_per_second": 61671.2,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 8327256,
+          "db_directory_bytes_after_drain": 5483560
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 3769157,
+          "seconds": 0.162105,
+          "ops_per_second": 23251400.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.048,
+          "latency_samples": 58894,
+          "append_bytes_during_phase": 8373906,
+          "db_directory_bytes_after_drain": 5483560
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.4653278960031457,
+      "log": "/tmp/ttl-final-selected-full/perf_stats_under_write-n10000-t1-e50-r2/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9580,
+      "metrics": [
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.159394,
+          "ops_per_second": 62737.4,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 8373829,
+          "db_directory_bytes_after_drain": 5483560
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 3738280,
+          "seconds": 0.15934,
+          "ops_per_second": 23461000.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.036,
+          "latency_samples": 58411,
+          "append_bytes_during_phase": 8373906,
+          "db_directory_bytes_after_drain": 5483560
+        },
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.161398,
+          "ops_per_second": 61958.8,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 8373829,
+          "db_directory_bytes_after_drain": 5483560
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.4652628220501356,
+      "log": "/tmp/ttl-final-selected-full/perf_stats_under_write-n10000-t1-e50-r3/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9588,
+      "metrics": [
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.160104,
+          "ops_per_second": 62459.2,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 8373829,
+          "db_directory_bytes_after_drain": 5483560
+        },
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.164818,
+          "ops_per_second": 60672.8,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 8331590,
+          "db_directory_bytes_after_drain": 5483560
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 3786309,
+          "seconds": 0.164781,
+          "ops_per_second": 22977800.0,
+          "p50_us": 0.03,
+          "p95_us": 0.038,
+          "p99_us": 0.049,
+          "latency_samples": 59162,
+          "append_bytes_during_phase": 8373906,
+          "db_directory_bytes_after_drain": 5483560
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.515410243999213,
+      "log": "/tmp/ttl-final-selected-full/perf_stats_under_write-n10000-t8-e50-r1/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9596,
+      "metrics": [
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.190176,
+          "ops_per_second": 52582.9,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 10262539,
+          "db_directory_bytes_after_drain": 5480504
+        },
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.189885,
+          "ops_per_second": 52663.4,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 10266244,
+          "db_directory_bytes_after_drain": 5480635
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 4138189,
+          "seconds": 0.189707,
+          "ops_per_second": 21813600.0,
+          "p50_us": 0.03,
+          "p95_us": 0.046,
+          "p99_us": 0.056,
+          "latency_samples": 64660,
+          "append_bytes_during_phase": 10230768,
+          "db_directory_bytes_after_drain": 5480635
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.5153912070090882,
+      "log": "/tmp/ttl-final-selected-full/perf_stats_under_write-n10000-t8-e50-r2/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9604,
+      "metrics": [
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.1885,
+          "ops_per_second": 53050.5,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 10267467,
+          "db_directory_bytes_after_drain": 5480752
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 4146786,
+          "seconds": 0.188212,
+          "ops_per_second": 22032600.0,
+          "p50_us": 0.03,
+          "p95_us": 0.043,
+          "p99_us": 0.049,
+          "latency_samples": 64794,
+          "append_bytes_during_phase": 10267249,
+          "db_directory_bytes_after_drain": 5480752
+        },
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.189059,
+          "ops_per_second": 52893.5,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 10267704,
+          "db_directory_bytes_after_drain": 5480517
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.5154212309862487,
+      "log": "/tmp/ttl-final-selected-full/perf_stats_under_write-n10000-t8-e50-r3/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9616,
+      "metrics": [
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 10000,
+          "seconds": 0.190226,
+          "ops_per_second": 52569.1,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 10268478,
+          "db_directory_bytes_after_drain": 5480685
+        },
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 10000,
+          "seconds": 0.186745,
+          "ops_per_second": 53549,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 10268411,
+          "db_directory_bytes_after_drain": 5481310
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 4162323,
+          "seconds": 0.186563,
+          "ops_per_second": 22310500.0,
+          "p50_us": 0.03,
+          "p95_us": 0.044,
+          "p99_us": 0.054,
+          "latency_samples": 65037,
+          "append_bytes_during_phase": 10268193,
+          "db_directory_bytes_after_drain": 5481310
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.9162411949946545,
+      "log": "/tmp/ttl-final-selected-full/perf_stats_under_write-n100000-t1-e50-r1/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 24848,
+      "metrics": [
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.198225,
+          "ops_per_second": 504478,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57384412,
+          "db_directory_bytes_after_drain": 54656639
+        },
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.195339,
+          "ops_per_second": 511929,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56977056,
+          "db_directory_bytes_after_drain": 54656639
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 3795702,
+          "seconds": 0.195292,
+          "ops_per_second": 19436000.0,
+          "p50_us": 0.03,
+          "p95_us": 0.049,
+          "p99_us": 0.087,
+          "latency_samples": 59308,
+          "append_bytes_during_phase": 61554320,
+          "db_directory_bytes_after_drain": 54656639
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.6678759579663165,
+      "log": "/tmp/ttl-final-selected-full/perf_stats_under_write-n100000-t1-e50-r2/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 27048,
+      "metrics": [
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.435468,
+          "ops_per_second": 229638,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57380071,
+          "db_directory_bytes_after_drain": 54657563
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 10269896,
+          "seconds": 0.435411,
+          "ops_per_second": 23586700.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.053,
+          "latency_samples": 160468,
+          "append_bytes_during_phase": 62139347,
+          "db_directory_bytes_after_drain": 54657563
+        },
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.435312,
+          "ops_per_second": 229720,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57280401,
+          "db_directory_bytes_after_drain": 54657871
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.7176622850238346,
+      "log": "/tmp/ttl-final-selected-full/perf_stats_under_write-n100000-t1-e50-r3/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 28428,
+      "metrics": [
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.435711,
+          "ops_per_second": 229510,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57367072,
+          "db_directory_bytes_after_drain": 54657717
+        },
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.434731,
+          "ops_per_second": 230028,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57458077,
+          "db_directory_bytes_after_drain": 54657948
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 10178200,
+          "seconds": 0.434684,
+          "ops_per_second": 23415200.0,
+          "p50_us": 0.03,
+          "p95_us": 0.031,
+          "p99_us": 0.049,
+          "latency_samples": 159035,
+          "append_bytes_during_phase": 62169681,
+          "db_directory_bytes_after_drain": 54657948
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 2.018426158989314,
+      "log": "/tmp/ttl-final-selected-full/perf_stats_under_write-n100000-t8-e50-r1/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 25884,
+      "metrics": [
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.695559,
+          "ops_per_second": 143769,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57646526,
+          "db_directory_bytes_after_drain": 54651699
+        },
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.718137,
+          "ops_per_second": 139249,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 56513085,
+          "db_directory_bytes_after_drain": 54653637
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 14085557,
+          "seconds": 0.717943,
+          "ops_per_second": 19619300.0,
+          "p50_us": 0.031,
+          "p95_us": 0.047,
+          "p99_us": 0.056,
+          "latency_samples": 220087,
+          "append_bytes_during_phase": 60018136,
+          "db_directory_bytes_after_drain": 54653637
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.9183109299628995,
+      "log": "/tmp/ttl-final-selected-full/perf_stats_under_write-n100000-t8-e50-r2/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 19976,
+      "metrics": [
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.72685,
+          "ops_per_second": 137580,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57231811,
+          "db_directory_bytes_after_drain": 54650024
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 14469491,
+          "seconds": 0.726541,
+          "ops_per_second": 19915600.0,
+          "p50_us": 0.031,
+          "p95_us": 0.05,
+          "p99_us": 0.059,
+          "latency_samples": 226086,
+          "append_bytes_during_phase": 59906459,
+          "db_directory_bytes_after_drain": 54650024
+        },
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.688697,
+          "ops_per_second": 145202,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57371117,
+          "db_directory_bytes_after_drain": 54649843
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.9184058120008558,
+      "log": "/tmp/ttl-final-selected-full/perf_stats_under_write-n100000-t8-e50-r3/run.log",
+      "case": "perf_stats_under_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 18636,
+      "metrics": [
+        {
+          "phase": "put_without_stats_queries",
+          "ops": 100000,
+          "seconds": 0.694985,
+          "ops_per_second": 143888,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57853691,
+          "db_directory_bytes_after_drain": 54650403
+        },
+        {
+          "phase": "put_with_stats_queries",
+          "ops": 100000,
+          "seconds": 0.725719,
+          "ops_per_second": 137794,
+          "p50_us": 0,
+          "p95_us": 0,
+          "p99_us": 0,
+          "latency_samples": 0,
+          "append_bytes_during_phase": 57373876,
+          "db_directory_bytes_after_drain": 54649079
+        },
+        {
+          "phase": "stats_under_write",
+          "ops": 14324815,
+          "seconds": 0.725507,
+          "ops_per_second": 19744600.0,
+          "p50_us": 0.031,
+          "p95_us": 0.048,
+          "p99_us": 0.06,
+          "latency_samples": 223826,
+          "append_bytes_during_phase": 60036417,
+          "db_directory_bytes_after_drain": 54649079
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.16468026902293786,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_gc-n10000-t1-e50-r1/run.log",
+      "case": "perf_ttl_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9548,
+      "metrics": [
+        {
+          "phase": "ttl_full_gc",
+          "ops": 10000,
+          "seconds": 0.024739,
+          "ops_per_second": 404220,
+          "p50_us": 24738.2,
+          "p95_us": 24738.2,
+          "p99_us": 24738.2,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 229292,
+          "db_directory_bytes_after_drain": 17810
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.21466703101759776,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_gc-n10000-t1-e50-r2/run.log",
+      "case": "perf_ttl_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9720,
+      "metrics": [
+        {
+          "phase": "ttl_full_gc",
+          "ops": 10000,
+          "seconds": 0.033681,
+          "ops_per_second": 296903,
+          "p50_us": 33680.4,
+          "p95_us": 33680.4,
+          "p99_us": 33680.4,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 229292,
+          "db_directory_bytes_after_drain": 17810
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.21466987999156117,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_gc-n10000-t1-e50-r3/run.log",
+      "case": "perf_ttl_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9716,
+      "metrics": [
+        {
+          "phase": "ttl_full_gc",
+          "ops": 10000,
+          "seconds": 0.0330435,
+          "ops_per_second": 302632,
+          "p50_us": 33042.5,
+          "p95_us": 33042.5,
+          "p99_us": 33042.5,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 229292,
+          "db_directory_bytes_after_drain": 17810
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.7169745049905032,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_gc-n100000-t1-e50-r1/run.log",
+      "case": "perf_ttl_gc",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 44920,
+      "metrics": [
+        {
+          "phase": "ttl_full_gc",
+          "ops": 100000,
+          "seconds": 0.279959,
+          "ops_per_second": 357195,
+          "p50_us": 279959,
+          "p95_us": 279959,
+          "p99_us": 279959,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2292570,
+          "db_directory_bytes_after_drain": 77226
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.7681684520212002,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_gc-n100000-t1-e50-r2/run.log",
+      "case": "perf_ttl_gc",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 44856,
+      "metrics": [
+        {
+          "phase": "ttl_full_gc",
+          "ops": 100000,
+          "seconds": 0.282999,
+          "ops_per_second": 353358,
+          "p50_us": 282998,
+          "p95_us": 282998,
+          "p99_us": 282998,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2292570,
+          "db_directory_bytes_after_drain": 77226
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 1.7177780800266191,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_gc-n100000-t1-e50-r3/run.log",
+      "case": "perf_ttl_gc",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 44764,
+      "metrics": [
+        {
+          "phase": "ttl_full_gc",
+          "ops": 100000,
+          "seconds": 0.27933,
+          "ops_per_second": 358000,
+          "p50_us": 279321,
+          "p95_us": 279321,
+          "p99_us": 279321,
+          "latency_samples": 1,
+          "append_bytes_during_phase": 2292570,
+          "db_directory_bytes_after_drain": 77226
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11454800702631474,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n10000-t1-e0-r1/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 9500,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.008095,
+          "ops_per_second": 1235330.0,
+          "p50_us": 0.614,
+          "p95_us": 0.881,
+          "p99_us": 1.136,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001411
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11455036897677928,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n10000-t1-e0-r2/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 9504,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.00811216,
+          "ops_per_second": 1232720.0,
+          "p50_us": 0.604,
+          "p95_us": 0.86,
+          "p99_us": 1.209,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001411
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11462857399601489,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n10000-t1-e0-r3/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 9512,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.00829732,
+          "ops_per_second": 1205210.0,
+          "p50_us": 0.617,
+          "p95_us": 0.961,
+          "p99_us": 1.413,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001411
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11455703398678452,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n10000-t1-e50-r1/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9300,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.00742856,
+          "ops_per_second": 1346160.0,
+          "p50_us": 0.604,
+          "p95_us": 0.956,
+          "p99_us": 1.703,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001412
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11450710601639003,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n10000-t1-e50-r2/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9308,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.00745103,
+          "ops_per_second": 1342100.0,
+          "p50_us": 0.596,
+          "p95_us": 0.973,
+          "p99_us": 1.187,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001412
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11453656200319529,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n10000-t1-e50-r3/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9316,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.00712676,
+          "ops_per_second": 1403160.0,
+          "p50_us": 0.581,
+          "p95_us": 0.757,
+          "p99_us": 0.937,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001412
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11451407696586102,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n10000-t1-e100-r1/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 9320,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.00630128,
+          "ops_per_second": 1586980.0,
+          "p50_us": 0.565,
+          "p95_us": 0.874,
+          "p99_us": 0.966,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001413
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11456924700178206,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n10000-t1-e100-r2/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 9476,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.00641034,
+          "ops_per_second": 1559980.0,
+          "p50_us": 0.567,
+          "p95_us": 0.891,
+          "p99_us": 3.288,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001413
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.11458652000874281,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n10000-t1-e100-r3/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 9484,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 10000,
+          "seconds": 0.00633695,
+          "ops_per_second": 1578050.0,
+          "p50_us": 0.563,
+          "p95_us": 0.821,
+          "p99_us": 1.072,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 3001413
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.36487330397358164,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n100000-t1-e0-r1/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 32164,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.103371,
+          "ops_per_second": 967394,
+          "p50_us": 0.821,
+          "p95_us": 1.216,
+          "p99_us": 1.484,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937965
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3648867610027082,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n100000-t1-e0-r2/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 33644,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.0996334,
+          "ops_per_second": 1003680.0,
+          "p50_us": 0.789,
+          "p95_us": 1.126,
+          "p99_us": 1.543,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937965
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.36498351802583784,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n100000-t1-e0-r3/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 0,
+      "peak_rss_kib": 41884,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.100553,
+          "ops_per_second": 994501,
+          "p50_us": 0.797,
+          "p95_us": 1.138,
+          "p99_us": 1.487,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937965
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.36493128596339375,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n100000-t1-e50-r1/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 43548,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.0983844,
+          "ops_per_second": 1016420.0,
+          "p50_us": 0.847,
+          "p95_us": 1.193,
+          "p99_us": 1.478,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937966
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.36496377299772575,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n100000-t1-e50-r2/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 42004,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.0907237,
+          "ops_per_second": 1102250.0,
+          "p50_us": 0.763,
+          "p95_us": 1.086,
+          "p99_us": 1.394,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937966
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3649923659977503,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n100000-t1-e50-r3/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 42644,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.0931047,
+          "ops_per_second": 1074060.0,
+          "p50_us": 0.791,
+          "p95_us": 1.141,
+          "p99_us": 1.391,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937966
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.365083170006983,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n100000-t1-e100-r1/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 31056,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.0830357,
+          "ops_per_second": 1204300.0,
+          "p50_us": 0.751,
+          "p95_us": 1.093,
+          "p99_us": 1.352,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937967
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.36503174499375746,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n100000-t1-e100-r2/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 39612,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.0823009,
+          "ops_per_second": 1215050.0,
+          "p50_us": 0.744,
+          "p95_us": 1.111,
+          "p99_us": 1.356,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937967
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3653734670369886,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_mixed-n100000-t1-e100-r3/run.log",
+      "case": "perf_ttl_mixed",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 100,
+      "peak_rss_kib": 32888,
+      "metrics": [
+        {
+          "phase": "ttl_mixed_get",
+          "ops": 100000,
+          "seconds": 0.0834346,
+          "ops_per_second": 1198540.0,
+          "p50_us": 0.749,
+          "p95_us": 1.125,
+          "p99_us": 1.339,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 0,
+          "db_directory_bytes_after_drain": 29937967
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06459407799411565,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_write-n10000-t1-e50-r1/run.log",
+      "case": "perf_ttl_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9824,
+      "metrics": [
+        {
+          "phase": "ttl_put",
+          "ops": 10000,
+          "seconds": 0.0197326,
+          "ops_per_second": 506775,
+          "p50_us": 1.721,
+          "p95_us": 3.53,
+          "p99_us": 4.584,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 3039045
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06450983200920746,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_write-n10000-t1-e50-r2/run.log",
+      "case": "perf_ttl_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9840,
+      "metrics": [
+        {
+          "phase": "ttl_put",
+          "ops": 10000,
+          "seconds": 0.0203207,
+          "ops_per_second": 492110,
+          "p50_us": 1.74,
+          "p95_us": 3.635,
+          "p99_us": 5.024,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 3039045
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06450844201026484,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_write-n10000-t1-e50-r3/run.log",
+      "case": "perf_ttl_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9856,
+      "metrics": [
+        {
+          "phase": "ttl_put",
+          "ops": 10000,
+          "seconds": 0.0195887,
+          "ops_per_second": 510498,
+          "p50_us": 1.707,
+          "p95_us": 3.437,
+          "p99_us": 4.549,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 3030567,
+          "db_directory_bytes_after_drain": 3039045
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.31504917197162285,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_write-n100000-t1-e50-r1/run.log",
+      "case": "perf_ttl_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 38760,
+      "metrics": [
+        {
+          "phase": "ttl_put",
+          "ops": 100000,
+          "seconds": 0.206967,
+          "ops_per_second": 483169,
+          "p50_us": 1.786,
+          "p95_us": 3.613,
+          "p99_us": 4.81,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 56489840,
+          "db_directory_bytes_after_drain": 29942838
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.36506782803917304,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_write-n100000-t1-e50-r2/run.log",
+      "case": "perf_ttl_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 40236,
+      "metrics": [
+        {
+          "phase": "ttl_put",
+          "ops": 100000,
+          "seconds": 0.197627,
+          "ops_per_second": 506004,
+          "p50_us": 1.708,
+          "p95_us": 3.45,
+          "p99_us": 4.172,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 56440004,
+          "db_directory_bytes_after_drain": 29942838
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.4652827500249259,
+      "log": "/tmp/ttl-final-selected-full/perf_ttl_write-n100000-t1-e50-r3/run.log",
+      "case": "perf_ttl_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 40432,
+      "metrics": [
+        {
+          "phase": "ttl_put",
+          "ops": 100000,
+          "seconds": 0.266428,
+          "ops_per_second": 375335,
+          "p50_us": 1.739,
+          "p95_us": 3.509,
+          "p99_us": 4.368,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 55783825,
+          "db_directory_bytes_after_drain": 29943146
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06450666702585295,
+      "log": "/tmp/ttl-final-selected-full/perf_write-n10000-t1-e50-r1/run.log",
+      "case": "perf_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9868,
+      "metrics": [
+        {
+          "phase": "put",
+          "ops": 10000,
+          "seconds": 0.0188481,
+          "ops_per_second": 530558,
+          "p50_us": 1.639,
+          "p95_us": 3.634,
+          "p99_us": 5.145,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 2950595,
+          "db_directory_bytes_after_drain": 2959069
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06451400002697483,
+      "log": "/tmp/ttl-final-selected-full/perf_write-n10000-t1-e50-r2/run.log",
+      "case": "perf_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9872,
+      "metrics": [
+        {
+          "phase": "put",
+          "ops": 10000,
+          "seconds": 0.0196146,
+          "ops_per_second": 509823,
+          "p50_us": 1.709,
+          "p95_us": 3.453,
+          "p99_us": 4.903,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 2950595,
+          "db_directory_bytes_after_drain": 2959069
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.0644493269501254,
+      "log": "/tmp/ttl-final-selected-full/perf_write-n10000-t1-e50-r3/run.log",
+      "case": "perf_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 10000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 9884,
+      "metrics": [
+        {
+          "phase": "put",
+          "ops": 10000,
+          "seconds": 0.0194511,
+          "ops_per_second": 514109,
+          "p50_us": 1.687,
+          "p95_us": 3.301,
+          "p99_us": 5.618,
+          "latency_samples": 157,
+          "append_bytes_during_phase": 2950595,
+          "db_directory_bytes_after_drain": 2959069
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.3148222190211527,
+      "log": "/tmp/ttl-final-selected-full/perf_write-n100000-t1-e50-r1/run.log",
+      "case": "perf_write",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 38208,
+      "metrics": [
+        {
+          "phase": "put",
+          "ops": 100000,
+          "seconds": 0.197623,
+          "ops_per_second": 506015,
+          "p50_us": 1.681,
+          "p95_us": 3.522,
+          "p99_us": 4.709,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 51858140,
+          "db_directory_bytes_after_drain": 27332516
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.31484566297149286,
+      "log": "/tmp/ttl-final-selected-full/perf_write-n100000-t1-e50-r2/run.log",
+      "case": "perf_write",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 37896,
+      "metrics": [
+        {
+          "phase": "put",
+          "ops": 100000,
+          "seconds": 0.202417,
+          "ops_per_second": 494030,
+          "p50_us": 1.749,
+          "p95_us": 3.56,
+          "p99_us": 4.969,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 51897142,
+          "db_directory_bytes_after_drain": 27332516
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.4651832600357011,
+      "log": "/tmp/ttl-final-selected-full/perf_write-n100000-t1-e50-r3/run.log",
+      "case": "perf_write",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 1,
+      "expired_percent": 50,
+      "peak_rss_kib": 37116,
+      "metrics": [
+        {
+          "phase": "put",
+          "ops": 100000,
+          "seconds": 0.250152,
+          "ops_per_second": 399756,
+          "p50_us": 1.688,
+          "p95_us": 3.512,
+          "p99_us": 4.567,
+          "latency_samples": 1563,
+          "append_bytes_during_phase": 51299115,
+          "db_directory_bytes_after_drain": 27332824
+        }
+      ]
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.016438749036751688,
+      "log": "/tmp/ttl-final-selected-full/ttl_contract-n100000-t8-e50-r1/run.log",
+      "case": "ttl_contract",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9928,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.01618224597768858,
+      "log": "/tmp/ttl-final-selected-full/ttl_contract-n100000-t8-e50-r2/run.log",
+      "case": "ttl_contract",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9932,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.016181476006750017,
+      "log": "/tmp/ttl-final-selected-full/ttl_contract-n100000-t8-e50-r3/run.log",
+      "case": "ttl_contract",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9936,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06431832700036466,
+      "log": "/tmp/ttl-final-selected-full/ttl_views-n100000-t8-e50-r1/run.log",
+      "case": "ttl_views",
+      "repeat": 1,
+      "seed": 7774596,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9936,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.06471266801236197,
+      "log": "/tmp/ttl-final-selected-full/ttl_views-n100000-t8-e50-r2/run.log",
+      "case": "ttl_views",
+      "repeat": 2,
+      "seed": 7774597,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9944,
+      "metrics": []
+    },
+    {
+      "status": "pass",
+      "returncode": 0,
+      "seconds": 0.03244343801634386,
+      "log": "/tmp/ttl-final-selected-full/ttl_views-n100000-t8-e50-r3/run.log",
+      "case": "ttl_views",
+      "repeat": 3,
+      "seed": 7774598,
+      "keys": 100000,
+      "threads": 8,
+      "expired_percent": 50,
+      "peak_rss_kib": 9944,
+      "metrics": []
+    }
+  ],
+  "status": "pass",
+  "suite_scope": "public",
+  "selected_cases": null,
+  "regression_requested": true,
+  "sanitize": false,
+  "memory_limit_mib": 0,
+  "performance_scoring": "ungraded; calibration only",
+  "configure": {
+    "status": "pass",
+    "returncode": 0,
+    "seconds": 1.567349405027926,
+    "log": "/tmp/ttl-final-selected-full/configure.log"
+  },
+  "build": {
+    "status": "pass",
+    "returncode": 0,
+    "seconds": 18.65201756398892,
+    "log": "/tmp/ttl-final-selected-full/build.log"
+  },
+  "available_cases": [
+    "combined_concurrent",
+    "combined_contract",
+    "combined_gc",
+    "combined_overwrites",
+    "combined_reopen",
+    "combined_views",
+    "metadata_contract",
+    "metadata_reopen",
+    "perf_combined_gc",
+    "perf_combined_stats_under_write",
+    "perf_concurrent",
+    "perf_read",
+    "perf_reopen",
+    "perf_scan",
+    "perf_stats",
+    "perf_stats_under_write",
+    "perf_ttl_gc",
+    "perf_ttl_mixed",
+    "perf_ttl_write",
+    "perf_write",
+    "ttl_contract",
+    "ttl_views"
+  ],
+  "executed_cases": [
+    "combined_concurrent",
+    "combined_contract",
+    "combined_gc",
+    "combined_overwrites",
+    "combined_reopen",
+    "combined_views",
+    "metadata_contract",
+    "metadata_reopen",
+    "perf_combined_gc",
+    "perf_combined_stats_under_write",
+    "perf_concurrent",
+    "perf_read",
+    "perf_reopen",
+    "perf_scan",
+    "perf_stats",
+    "perf_stats_under_write",
+    "perf_ttl_gc",
+    "perf_ttl_mixed",
+    "perf_ttl_write",
+    "perf_write",
+    "ttl_contract",
+    "ttl_views"
+  ],
+  "full_suite": true,
+  "regression_build": {
+    "status": "pass",
+    "returncode": 0,
+    "seconds": 41.0951732059475,
+    "log": "/tmp/ttl-final-selected-full/regression-build.log"
+  },
+  "regression": {
+    "status": "pass",
+    "runs": [
+      {
+        "status": "pass",
+        "returncode": 0,
+        "seconds": 91.48360182100441,
+        "log": "/tmp/ttl-final-selected-full/homework_regression.log"
+      },
+      {
+        "status": "pass",
+        "returncode": 0,
+        "seconds": 0.3152753789909184,
+        "log": "/tmp/ttl-final-selected-full/homework_c_regression.log"
+      },
+      {
+        "status": "pass",
+        "returncode": 0,
+        "seconds": 0.016561009048018605,
+        "log": "/tmp/ttl-final-selected-full/homework_env_regression.log"
+      }
+    ]
+  }
+}

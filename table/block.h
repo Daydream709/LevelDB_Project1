@@ -29,7 +29,8 @@ class Block {
   Iterator* NewIterator(const Comparator* comparator);
   Status SeekThen(const Comparator* comparator, const Slice& target,
                   void* arg,
-                  void (*handle_result)(void*, const Slice&, const Slice&));
+                  void (*handle_result)(void*, const Slice&, const Slice&),
+                  bool bytewise_internal = false);
 
  private:
   class Iter;

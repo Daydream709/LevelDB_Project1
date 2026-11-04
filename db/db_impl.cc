@@ -14,6 +14,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <string>
@@ -4715,9 +4716,10 @@ Status DBImpl::Put(const WriteOptions& options, const Slice& key,
   WriteBatch batch;
   {
     ProfileScope encoding("ttl.encode");
+    WriteBatchInternal::ReserveForTTL(&batch, key, value);
     WriteBatchInternal::PutWithExpiration(&batch, key, value, deadline);
   }
-  return profile.Result(Write(options, &batch));
+  return profile.Result(WriteInternal(options, &batch, true, key));
 }
 
 Status DBImpl::Delete(const WriteOptions& options, const Slice& key) {
@@ -4732,13 +4734,18 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
 Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
                              bool trusted_single_put,
                              const Slice& single_put_key) {
-  ProfileScope profile(profiler_, profiling_id_,
-                       updates ? "op.write_batch" : "internal.flush_request",
-                       false, "", -1, true);
+  std::optional<ProfileScope> profile;
+  if (profiler_ || ProfileScope::Current() != nullptr)
+    profile.emplace(profiler_, profiling_id_,
+                    updates ? "op.write_batch" : "internal.flush_request",
+                    false, "", -1, true);
+  auto profile_result = [&](const Status& s) {
+    return profile ? profile->Result(s) : s;
+  };
   if (updates != nullptr && !trusted_single_put) {
     ValidateBatch validation;
     Status validation_status = ProfileStatus("write.validate_batch", [&] { return updates->Iterate(&validation); });
-    if (!validation_status.ok()) return profile.Result(validation_status);
+    if (!validation_status.ok()) return profile_result(validation_status);
   }
 
   Writer w(&mutex_);
@@ -4752,20 +4759,26 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
       &metadata_profile_, MetadataProfileStage::kWriteQueueWait);
   MutexLock l(&mutex_);
   writers_.push_back(&w);
-  {
-  ProfileScope queue("write.queue_wait");
-  while (!w.done && &w != writers_.front()) {
-    w.cv.Wait();
-  }
+  if (ProfileScope::Current()) {
+    ProfileScope queue("write.queue_wait");
+    while (!w.done && &w != writers_.front()) w.cv.Wait();
+  } else {
+    while (!w.done && &w != writers_.front()) w.cv.Wait();
   }
   queue_wait_timer.Stop();
   if (w.done) {
-    return profile.Result(w.status);
+    return profile_result(w.status);
   }
 
   // May temporarily unlock and wait.
   Status status;
-  { ProfileScope stage("write.make_room"); status = MakeRoomForWrite(updates == nullptr); stage.SetStatus(status); }
+  if (ProfileScope::Current()) {
+    ProfileScope stage("write.make_room");
+    status = MakeRoomForWrite(updates == nullptr);
+    stage.SetStatus(status);
+  } else {
+    status = MakeRoomForWrite(updates == nullptr);
+  }
   uint64_t last_sequence = versions_->LastSequence();
   Writer* last_writer = &w;
   WriteBatch* write_batch = nullptr;
@@ -5229,7 +5242,7 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
         // Preserve small configured buffers so SST-backed size estimates
         // don't lag far behind writes when the configured buffer is small.
         const uint64_t maximum_buffer = configured_buffer < (uint64_t{1} << 18)
-            ? configured_buffer : uint64_t{3} << 20;
+            ? configured_buffer : uint64_t{6} << 20;
         if (configured_buffer < maximum_buffer) {
           const uint64_t growth_interval = configured_buffer / 4;
           const uint64_t growth_steps =
@@ -5290,7 +5303,7 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
   }
   background_work_finished_signal_.SignalAll();
 
-  return profile.Result(status);
+  return profile_result(status);
 }
 
 // REQUIRES: Writer list must be non-empty

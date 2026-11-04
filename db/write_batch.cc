@@ -154,10 +154,7 @@ class MemTableInserter : public WriteBatch::Handler {
   }
   void PutWithTTL(const Slice& key, const Slice& value,
                   uint64_t expire_time_micros) override {
-    std::string encoded;
-    PutFixed64(&encoded, expire_time_micros);
-    encoded.append(value.data(), value.size());
-    mem_->Add(sequence_, kTypeValueWithTTL, key, encoded);
+    mem_->AddWithTTL(sequence_, key, value, expire_time_micros);
     sequence_++;
   }
   void Delete(const Slice& key) override {

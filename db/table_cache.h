@@ -62,6 +62,7 @@ class TableCache {
   Env* const env_;
   const std::string dbname_;
   const Options& options_;
+  const bool bytewise_internal_;
   Cache* cache_;
 };
 

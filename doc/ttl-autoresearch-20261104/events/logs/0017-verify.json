@@ -1,0 +1,9 @@
+{
+  "command": "python3.9 /tmp/ttl_convergence_eval.py verify",
+  "cwd": "/tmp/ttl-convergence-repo",
+  "duration_seconds": 29.654173,
+  "returncode": 0,
+  "stderr": "",
+  "stdout": "1.083436585481976\n",
+  "timed_out": false
+}

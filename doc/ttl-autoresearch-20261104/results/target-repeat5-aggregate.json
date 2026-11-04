@@ -1,0 +1,98 @@
+[
+  {
+    "case": "perf_ttl_mixed",
+    "phase": "ttl_mixed_get",
+    "keys": 10000,
+    "threads": 1,
+    "expired_percent": 0,
+    "repeats": 5,
+    "median_ops_per_second": 1219100.0,
+    "min_ops_per_second": 1204580.0,
+    "max_ops_per_second": 1223250.0,
+    "median_p99_us": 1.19
+  },
+  {
+    "case": "perf_ttl_mixed",
+    "phase": "ttl_mixed_get",
+    "keys": 10000,
+    "threads": 1,
+    "expired_percent": 50,
+    "repeats": 5,
+    "median_ops_per_second": 1328780.0,
+    "min_ops_per_second": 1280420.0,
+    "max_ops_per_second": 1354210.0,
+    "median_p99_us": 1.237
+  },
+  {
+    "case": "perf_ttl_mixed",
+    "phase": "ttl_mixed_get",
+    "keys": 10000,
+    "threads": 1,
+    "expired_percent": 100,
+    "repeats": 5,
+    "median_ops_per_second": 1573270.0,
+    "min_ops_per_second": 1413390.0,
+    "max_ops_per_second": 1618970.0,
+    "median_p99_us": 1.114
+  },
+  {
+    "case": "perf_ttl_mixed",
+    "phase": "ttl_mixed_get",
+    "keys": 100000,
+    "threads": 1,
+    "expired_percent": 0,
+    "repeats": 5,
+    "median_ops_per_second": 971696,
+    "min_ops_per_second": 958586,
+    "max_ops_per_second": 989463,
+    "median_p99_us": 1.433
+  },
+  {
+    "case": "perf_ttl_mixed",
+    "phase": "ttl_mixed_get",
+    "keys": 100000,
+    "threads": 1,
+    "expired_percent": 50,
+    "repeats": 5,
+    "median_ops_per_second": 1080420.0,
+    "min_ops_per_second": 1060540.0,
+    "max_ops_per_second": 1100590.0,
+    "median_p99_us": 1.396
+  },
+  {
+    "case": "perf_ttl_mixed",
+    "phase": "ttl_mixed_get",
+    "keys": 100000,
+    "threads": 1,
+    "expired_percent": 100,
+    "repeats": 5,
+    "median_ops_per_second": 1214190.0,
+    "min_ops_per_second": 1201100.0,
+    "max_ops_per_second": 1244450.0,
+    "median_p99_us": 1.426
+  },
+  {
+    "case": "perf_ttl_write",
+    "phase": "ttl_put",
+    "keys": 10000,
+    "threads": 1,
+    "expired_percent": 50,
+    "repeats": 5,
+    "median_ops_per_second": 505084,
+    "min_ops_per_second": 487908,
+    "max_ops_per_second": 512258,
+    "median_p99_us": 4.611
+  },
+  {
+    "case": "perf_ttl_write",
+    "phase": "ttl_put",
+    "keys": 100000,
+    "threads": 1,
+    "expired_percent": 50,
+    "repeats": 5,
+    "median_ops_per_second": 474036,
+    "min_ops_per_second": 467439,
+    "max_ops_per_second": 479632,
+    "median_p99_us": 4.481
+  }
+]

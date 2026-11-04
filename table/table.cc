@@ -7,6 +7,7 @@
 
 #include <cstring>
 #include <memory>
+#include <optional>
 
 #include <limits>
 
@@ -338,7 +339,8 @@ Iterator* Table::NewIterator(const ReadOptions& options) const {
 
 Status Table::InternalGet(const ReadOptions& options, const Slice& k, void* arg,
                           void (*handle_result)(void*, const Slice&,
-                                                const Slice&)) {
+                                                const Slice&),
+                          bool bytewise_internal) {
   struct IndexResult {
     Slice value;
     bool found = false;
@@ -349,7 +351,7 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k, void* arg,
         IndexResult* result = static_cast<IndexResult*>(arg);
         result->value = value;
         result->found = true;
-      });
+      }, bytewise_internal);
   if (s.ok() && index_result.found) {
     Slice handle_value = index_result.value;
     FilterBlockReader* filter = rep_->filter;
@@ -366,6 +368,7 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k, void* arg,
       Cache* block_cache = rep_->options.block_cache;
       Cache::Handle* cache_handle = nullptr;
       Block* block = nullptr;
+      std::optional<Block> mapped_block;
       if (s.ok()) {
         BlockContents contents;
         char cache_key_buffer[16];
@@ -379,7 +382,12 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k, void* arg,
         } else {
           s = ReadBlock(rep_->file, options, data_handle, &contents);
           if (s.ok()) {
-            block = new Block(contents);
+            if (!contents.heap_allocated && !contents.cachable) {
+              mapped_block.emplace(contents);
+              block = &*mapped_block;
+            } else {
+              block = new Block(contents);
+            }
             if (block_cache != nullptr && contents.cachable && options.fill_cache) {
               cache_handle = block_cache->Insert(Slice(cache_key_buffer, 16),
                                                  block, block->size(),
@@ -389,10 +397,11 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k, void* arg,
         }
       }
       if (block != nullptr) {
-        s = block->SeekThen(rep_->options.comparator, k, arg, handle_result);
+        s = block->SeekThen(rep_->options.comparator, k, arg, handle_result,
+                            bytewise_internal);
         if (cache_handle != nullptr) {
           block_cache->Release(cache_handle);
-        } else {
+        } else if (!mapped_block) {
           delete block;
         }
       }
