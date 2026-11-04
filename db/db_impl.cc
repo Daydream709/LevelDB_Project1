@@ -2818,6 +2818,12 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
                                       children.size());
   const bool preserve_snapshots = !snapshots_.empty();
   const uint64_t read_time_micros = env_->NowMicros();
+  std::vector<int> nonempty_higher_levels;
+  if (!preserve_snapshots) {
+    for (int level = 0; level < bottom_level; ++level) {
+      if (!base->files(level).empty()) nonempty_higher_levels.push_back(level);
+    }
+  }
 
   VersionEdit edit;
   for (FileMetaData* file : files) edit.RemoveFile(bottom_level, file->number);
@@ -2986,11 +2992,71 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
     return Status::OK();
   };
 
+  // The bottom-level iterator is already grouped and sorted for the common
+  // bytewise comparator. Stream one metadata delta per user key instead of
+  // building a map entry for every key in the rewrite range.
+  const bool stream_sorted_deltas =
+      user_comparator() == BytewiseComparator();
+  WritableFile* sorted_delta_file = nullptr;
+  TableBuilder* sorted_delta_builder = nullptr;
+  MetadataFileMeta sorted_delta_run;
+  bool sorted_delta_has_key = false;
+
+  auto finish_sorted_delta_run = [&]() -> Status {
+    if (sorted_delta_builder == nullptr) return Status::OK();
+    Status run_status = sorted_delta_builder->Finish();
+    sorted_delta_run.file_size = sorted_delta_builder->FileSize();
+    if (run_status.ok()) run_status = sorted_delta_file->Close();
+    if (!run_status.ok()) sorted_delta_builder->Abandon();
+    delete sorted_delta_builder;
+    delete sorted_delta_file;
+    sorted_delta_builder = nullptr;
+    sorted_delta_file = nullptr;
+    if (!run_status.ok()) return run_status;
+    if (sorted_delta_has_key) {
+      compact->metadata_delta_runs.push_back(sorted_delta_run);
+      sorted_delta_run = MetadataFileMeta();
+      sorted_delta_has_key = false;
+      if (compact->metadata_delta_runs.size() >= 8) {
+        return merge_delta_runs();
+      }
+    }
+    return Status::OK();
+  };
+
+  auto append_sorted_delta = [&](const std::string& key, int64_t delta,
+                                 uint64_t output_records) -> Status {
+    if (delta == 0) return Status::OK();
+    if (sorted_delta_builder == nullptr) {
+      const uint64_t number = allocate_delta_file();
+      sorted_delta_run.kind = kMetadataIndex;
+      sorted_delta_run.number = number;
+      const std::string filename = MetadataFileName(dbname_, number);
+      Status run_status = env_->NewWritableFile(filename, &sorted_delta_file);
+      if (!run_status.ok()) return run_status;
+      sorted_delta_builder =
+          new TableBuilder(metadata_index_->TableOptions(), sorted_delta_file);
+    }
+    sorted_delta_builder->Add(
+        key, EncodeMetadataDelta(delta, output_records));
+    if (!sorted_delta_has_key) {
+      sorted_delta_run.smallest = key;
+      sorted_delta_has_key = true;
+    }
+    sorted_delta_run.largest = key;
+    if (sorted_delta_builder->FileSize() >= options_.metadata_workspace_size) {
+      return finish_sorted_delta_run();
+    }
+    return Status::OK();
+  };
+
 
   std::string current_user_key;
   bool have_user_key = false;
   bool current_key_in_range = false;
   bool keep_current_key = false;
+  int64_t current_key_delta = 0;
+  uint64_t current_key_output_records = 0;
   Status status = Status::OK();
 
   input->SeekToFirst();
@@ -3004,16 +3070,26 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
     }
     ProfileScope filtering("gc.iterate_filter");
     ProfileScope::Count("gc.records_checked");
-    status = add_metadata_delta(parsed.user_key.ToString(), -1, 0);
-    if (!status.ok()) break;
+    if (!stream_sorted_deltas) {
+      const std::string raw_key = parsed.user_key.ToString();
+      status = add_metadata_delta(raw_key, -1, 0);
+      if (!status.ok()) break;
+    }
 
     const bool new_user_key =
         !have_user_key ||
         user_comparator()->Compare(parsed.user_key, Slice(current_user_key)) !=
             0;
     if (new_user_key) {
+      if (stream_sorted_deltas && have_user_key) {
+        status = append_sorted_delta(current_user_key, current_key_delta,
+                                     current_key_output_records);
+        if (!status.ok()) break;
+      }
       current_user_key.assign(parsed.user_key.data(), parsed.user_key.size());
       have_user_key = true;
+      current_key_delta = 0;
+      current_key_output_records = 0;
       current_key_in_range =
           (begin == nullptr ||
            user_comparator()->Compare(parsed.user_key, *begin) >= 0) &&
@@ -3022,7 +3098,7 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
       keep_current_key = true;
       if (!preserve_snapshots && current_key_in_range) {
         bool has_higher_level_data = false;
-        for (int level = 0; level < bottom_level; ++level) {
+        for (int level : nonempty_higher_levels) {
           if (base->OverlapInLevel(level, &parsed.user_key, &parsed.user_key)) {
             has_higher_level_data = true;
             break;
@@ -3044,6 +3120,14 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
       }
     }
 
+    if (stream_sorted_deltas) {
+      if (current_key_delta == std::numeric_limits<int64_t>::min()) {
+        status = Status::Corruption("metadata rewrite delta overflow");
+        break;
+      }
+      --current_key_delta;
+    }
+
     const bool keep =
         !current_key_in_range || preserve_snapshots || keep_current_key;
     if (keep) {
@@ -3063,8 +3147,20 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
       output_meta.largest.DecodeFrom(internal_key);
       { ProfileScope emit("gc.output_add"); builder->Add(internal_key, input->value()); }
       ProfileScope::Count("gc.records_output");
-      status = add_metadata_delta(parsed.user_key.ToString(), 1, 1);
-      if (!status.ok()) break;
+      if (stream_sorted_deltas) {
+        if (current_key_delta == std::numeric_limits<int64_t>::max() ||
+            current_key_output_records ==
+                std::numeric_limits<uint64_t>::max()) {
+          status = Status::Corruption("metadata rewrite output count overflow");
+          break;
+        }
+        ++current_key_delta;
+        ++current_key_output_records;
+      } else {
+        const std::string raw_key = parsed.user_key.ToString();
+        status = add_metadata_delta(raw_key, 1, 1);
+        if (!status.ok()) break;
+      }
     }
     if (!keep) {
       ++removed_records;
@@ -3078,6 +3174,21 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
   }
   if (status.ok()) status = input->status();
   delete input;
+
+  if (status.ok() && stream_sorted_deltas && have_user_key) {
+    status = append_sorted_delta(current_user_key, current_key_delta,
+                                 current_key_output_records);
+  }
+  if (status.ok()) {
+    status = stream_sorted_deltas ? finish_sorted_delta_run()
+                                 : spill_metadata_deltas();
+  } else if (sorted_delta_builder != nullptr) {
+    sorted_delta_builder->Abandon();
+    delete sorted_delta_builder;
+    delete sorted_delta_file;
+    sorted_delta_builder = nullptr;
+    sorted_delta_file = nullptr;
+  }
 
   if (builder != nullptr) {
     if (status.ok()) {
@@ -3107,7 +3218,6 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
     }
   }
 
-  if (status.ok()) status = spill_metadata_deltas();
   bool installation_attempted = false;
   if (status.ok()) {
     installation_attempted = true;
@@ -4292,7 +4402,6 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       status = Status::Corruption("invalid internal key during compaction");
       break;
     } else {
-      std::string raw_key(ikey.user_key.data(), ikey.user_key.size());
       if (!has_current_user_key ||
           user_comparator()->Compare(ikey.user_key, Slice(current_user_key)) !=
               0) {
@@ -4316,6 +4425,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         }
         --current_key_delta;
       } else {
+        std::string raw_key(ikey.user_key.data(), ikey.user_key.size());
         status = add_metadata_delta(raw_key, -1, 0);
         if (!status.ok()) break;
       }
