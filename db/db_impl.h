@@ -111,6 +111,7 @@ class DBImpl : public DB {
 
  private:
   friend class DB;
+  friend class TTLCompactionTestPeer;  // Test-only candidate inspection.
   struct CompactionState;
   struct Writer;
 
@@ -396,6 +397,10 @@ class DBImpl : public DB {
   // that publication too, so a post-close export contains no unfinished jobs.
   unsigned profiling_callbacks_ GUARDED_BY(mutex_) = 0;
   bool bottom_rewrite_in_progress_ GUARDED_BY(mutex_) = false;
+  // A bounded negative-result cache; successful Version edits invalidate it.
+  uint64_t ttl_scan_generation_ GUARDED_BY(mutex_) = 0;
+  uint64_t ttl_cached_generation_ GUARDED_BY(mutex_) = 0;
+  uint64_t ttl_scan_not_before_micros_ GUARDED_BY(mutex_) = 0;
   int ttl_compaction_level_ GUARDED_BY(mutex_) = -1;
   std::string ttl_compaction_begin_ GUARDED_BY(mutex_);
   std::string ttl_compaction_end_ GUARDED_BY(mutex_);

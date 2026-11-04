@@ -3,6 +3,9 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/db_impl.h"
+#include "db/version_set.h"
+#include "db/table_cache.h"
+#include "util/mutexlock.h"
 #include "db/write_batch_internal.h"
 #include "util/profiler.h"
 #include "table/format.h"
@@ -12,6 +15,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <condition_variable>
 #include <map>
 #include <limits>
@@ -41,6 +45,125 @@ extern char** environ;
 #endif
 
 namespace leveldb {
+// Inspect selection without scheduling GC, so threshold tests are deterministic.
+// No production state or public API is added by this test peer.
+class TTLCompactionTestPeer {
+ public:
+  static uint64_t ScanDeadline(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    return impl->ttl_scan_not_before_micros_;
+  }
+  static void WaitForIdle(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    while (impl->background_compaction_scheduled_ || impl->profiling_callbacks_ != 0)
+      impl->background_work_finished_signal_.Wait();
+  }
+  static void Schedule(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    impl->MaybeScheduleCompaction();
+  }
+  static void EvictTables(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    for (int level = 0; level < config::kNumLevels; ++level)
+      for (const auto* file : impl->versions_->current()->files(level))
+        impl->table_cache_->Evict(file->number);
+  }
+  static Status PublishEmptyVersion(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    VersionEdit edit;
+    return impl->LogAndApply(&edit);
+  }
+  static bool BackgroundPending(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    return impl->background_compaction_scheduled_;
+  }
+  static Status BackgroundError(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    return impl->bg_error_;
+  }
+
+  static Status RewriteRange(DB* db, const Slice* begin, const Slice* end) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    return impl->RewriteBottomLevelRangeLocked(begin, end);
+  }
+  static std::vector<std::pair<std::string, std::string>> BottomBounds(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    std::vector<std::pair<std::string, std::string>> result;
+    for (const auto* f : impl->versions_->current()->files(config::kNumLevels - 1))
+      result.emplace_back(f->smallest.user_key().ToString(),
+                          f->largest.user_key().ToString());
+    return result;
+  }
+  // Reference the previous linear I/O calculation using actual SST metadata.
+  // This fixture uses uniform deadlines, so each file is either all expired
+  // TTL records or ordinary records (no histogram approximation is required).
+  static void CheckCandidateAgainstLinearScan(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    auto* version = impl->versions_->current();
+    const auto* cmp = impl->user_comparator();
+    double best = -1;
+    int expected_level = -1;
+    std::string expected_begin, expected_end;
+    for (int level = 0; level < config::kNumLevels; ++level) {
+      for (const auto* file : version->files(level)) {
+        TableInternalStats stats;
+        ASSERT_LEVELDB_OK(impl->table_cache_->GetTTLStats(file->number, file->file_size, &stats));
+        ASSERT_TRUE(stats.valid);
+        if (stats.ttl_records == 0) continue;
+        ASSERT_EQ(stats.min_expire_time_micros, stats.max_expire_time_micros);
+        ASSERT_LE(stats.max_expire_time_micros, impl->env_->NowMicros());
+        const double ratio = double(stats.ttl_records) / stats.total_records;
+        if (ratio < .30 && impl->env_->NowMicros() - stats.min_expire_time_micros < 60000000) continue;
+        const Slice low = file->smallest.user_key(), high = file->largest.user_key();
+        int target = level;
+        for (int upper = 0; upper < level; ++upper)
+          if (version->OverlapInLevel(upper, &low, &high)) { target = upper; break; }
+        uint64_t io = file->file_size;
+        if (target + 1 < config::kNumLevels)
+          for (const auto* other : version->files(target + 1))
+            if (cmp->Compare(other->largest.user_key(), low) >= 0 &&
+                cmp->Compare(other->smallest.user_key(), high) <= 0)
+              io += other->file_size;
+        const double score = double(file->file_size) * ratio / std::max<uint64_t>(io, 1);
+        if (score > best) {
+          best = score; expected_level = target;
+          expected_begin = low.ToString(); expected_end = high.ToString();
+        }
+      }
+    }
+    bool found = false;
+    ASSERT_LEVELDB_OK(impl->FindTTLCompactionCandidate(&found));
+    EXPECT_EQ(expected_level >= 0, found);
+    EXPECT_EQ(expected_level, impl->ttl_compaction_level_);
+    EXPECT_EQ(expected_begin, impl->ttl_compaction_begin_);
+    EXPECT_EQ(expected_end, impl->ttl_compaction_end_);
+    impl->ttl_compaction_level_ = -1;
+    impl->ttl_compaction_begin_.clear(); impl->ttl_compaction_end_.clear();
+  }
+
+  static Status FindCandidate(DB* db, bool* found) {
+    auto* impl = static_cast<DBImpl*>(db);
+    ProfileScope profile(impl->profiler_, impl->profiling_id_,
+                         "test.ttl_candidate");
+    impl->mutex_.Lock();
+    Status status = impl->FindTTLCompactionCandidate(found);
+    impl->ttl_compaction_level_ = -1;
+    impl->ttl_compaction_begin_.clear();
+    impl->ttl_compaction_end_.clear();
+    impl->mutex_.Unlock();
+    return status;
+  }
+};
 namespace {
 
 constexpr uint64_t kTestEpochMicros = 1700000000000000ULL;
@@ -57,6 +180,42 @@ class FaultClockEnv : public EnvWrapper {
   void Advance(uint64_t delta) { now_.fetch_add(delta); }
   void SetFault(Fault fault) { fault_.store(static_cast<int>(fault)); }
   unsigned FaultHits() const { return fault_hits_.load(); }
+
+  void BlockNextTableRead(bool fail = false) {
+    std::lock_guard<std::mutex> lock(read_mu_);
+    block_next_table_read_ = true;
+    table_read_blocked_ = false;
+    release_table_read_ = false;
+    fail_table_read_ = fail;
+  }
+  bool WaitForBlockedTableRead() {
+    std::unique_lock<std::mutex> lock(read_mu_);
+    return read_cv_.wait_for(lock, std::chrono::seconds(10),
+                            [this] { return table_read_blocked_; });
+  }
+  void ReleaseTableRead() {
+    std::lock_guard<std::mutex> lock(read_mu_);
+    release_table_read_ = true;
+    read_cv_.notify_all();
+  }
+  Status BeforeTableRead() {
+    std::unique_lock<std::mutex> lock(read_mu_);
+    if (!block_next_table_read_) return Status::OK();
+    block_next_table_read_ = false;
+    table_read_blocked_ = true;
+    read_cv_.notify_all();
+    read_cv_.wait(lock, [this] { return release_table_read_; });
+    table_read_blocked_ = false;
+    return fail_table_read_ ? Status::IOError("injected candidate read failure")
+                            : Status::OK();
+  }
+  Status NewRandomAccessFile(const std::string& fname,
+                             RandomAccessFile** result) override {
+    Status status = target()->NewRandomAccessFile(fname, result);
+    if (status.ok() && fname.size() > 4 && fname.substr(fname.size() - 4) == ".ldb")
+      *result = new GatedRandomFile(this, *result);
+    return status;
+  }
 
   void BlockNextTableSync() {
     std::lock_guard<std::mutex> lock(sync_mu_);
@@ -120,6 +279,19 @@ class FaultClockEnv : public EnvWrapper {
   }
 
  private:
+  class GatedRandomFile : public RandomAccessFile {
+   public:
+    GatedRandomFile(FaultClockEnv* env, RandomAccessFile* file)
+        : env_(env), file_(file) {}
+    Status Read(uint64_t offset, size_t n, Slice* result, char* scratch) const override {
+      Status status = env_->BeforeTableRead();
+      return status.ok() ? file_->Read(offset, n, result, scratch) : status;
+    }
+   private:
+    FaultClockEnv* env_;
+    std::unique_ptr<RandomAccessFile> file_;
+  };
+
   class FaultyWritableFile : public WritableFile {
    public:
     FaultyWritableFile(FaultClockEnv* env, std::string fname,
@@ -150,6 +322,12 @@ class FaultClockEnv : public EnvWrapper {
     std::unique_ptr<WritableFile> file_;
   };
 
+  std::mutex read_mu_;
+  std::condition_variable read_cv_;
+  bool block_next_table_read_ = false;
+  bool table_read_blocked_ = false;
+  bool release_table_read_ = false;
+  bool fail_table_read_ = false;
   std::atomic<uint64_t> now_;
   std::atomic<int> fault_{static_cast<int>(Fault::kNone)};
   std::atomic<unsigned> fault_hits_{0};
@@ -195,6 +373,43 @@ class TTLMetadataTest : public testing::TestWithParam<bool> {
 
   void Reopen() {
     db_.reset();
+    ASSERT_LEVELDB_OK(Open(false));
+  }
+
+  void MakeTTLSummariesUnavailable(bool corrupt = false) {
+    db_.reset();
+    std::vector<std::string> children;
+    ASSERT_LEVELDB_OK(env_.GetChildren(dbname_, &children));
+    size_t changed = 0;
+    for (const std::string& child : children) {
+      if (child.size() <= 4 || child.substr(child.size() - 4) != ".ldb") continue;
+      const std::string path = dbname_ + "/" + child;
+      std::string contents;
+      ASSERT_LEVELDB_OK(ReadFileToString(&env_, path, &contents));
+      if (corrupt) {
+        const size_t pos = contents.find("LDS1");
+        ASSERT_NE(pos, std::string::npos);
+        contents[pos] ^= 1;  // Optional summary checksum must fail.
+      } else {
+        Footer footer;
+        Slice bytes(contents.data() + contents.size() - Footer::kEncodedLength,
+                    Footer::kEncodedLength);
+        ASSERT_LEVELDB_OK(footer.DecodeFrom(&bytes));
+        const auto offset = footer.metaindex_handle().offset();
+        const auto size = footer.metaindex_handle().size();
+        const std::string marker = "leveldb.internal-stats.v1";
+        const size_t pos = contents.find(marker, offset);
+        ASSERT_NE(pos, std::string::npos);
+        ASSERT_LE(pos + marker.size(), offset + size);
+        contents[pos + marker.size() - 1] = '0';
+        EncodeFixed32(&contents[offset + size + 1],
+                      crc32c::Mask(crc32c::Value(contents.data() + offset,
+                                                size + 1)));
+      }
+      ASSERT_LEVELDB_OK(WriteStringToFile(&env_, contents, path));
+      ++changed;
+    }
+    ASSERT_GT(changed, 0U);
     ASSERT_LEVELDB_OK(Open(false));
   }
 
@@ -292,6 +507,155 @@ class TTLMetadataTest : public testing::TestWithParam<bool> {
     Reopen();
     EXPECT_EQ(expected, PhysicalKeys());
     ExpectMissing(keys[10]);
+  }
+
+  void CheckMultiFileRange(const Comparator* comparator) {
+    options_.comparator = comparator;
+    options_.write_buffer_size = 16 << 20;
+    ASSERT_LEVELDB_OK(Open(true));
+    std::vector<std::string> keys;
+    for (int i = 0; i < 128; ++i) {
+      char key[16]; std::snprintf(key, sizeof(key), "key-%04d", i);
+      keys.emplace_back(key);
+    }
+    std::sort(keys.begin(), keys.end(), [comparator](const std::string& a, const std::string& b) {
+      return comparator->Compare(a, b) < 0;
+    });
+    WriteBatch batch;
+    for (const auto& key : keys)
+      batch.PutWithExpiration(key, std::string(32768, 'v'), kTestEpochMicros + kMicrosPerSecond);
+    ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &batch));
+    ASSERT_NO_FATAL_FAILURE(PushToBottom());
+    const auto bounds = TTLCompactionTestPeer::BottomBounds(db_.get());
+    ASSERT_GE(bounds.size(), 3U);
+    env_.Advance(2 * kMicrosPerSecond);
+    std::set<std::string> expected(keys.begin(), keys.end());
+    // Empty range between two real keys, and an explicitly inverted range.
+    const std::string gap = "key-0063x"; const Slice gap_slice(gap);
+    ASSERT_LEVELDB_OK(TTLCompactionTestPeer::RewriteRange(db_.get(), &gap_slice, &gap_slice));
+    EXPECT_EQ(expected, PhysicalKeys());
+    const Slice inverted_begin(keys.back()), inverted_end(keys.front());
+    ASSERT_LEVELDB_OK(TTLCompactionTestPeer::RewriteRange(db_.get(), &inverted_begin, &inverted_end));
+    EXPECT_EQ(expected, PhysicalKeys());
+    const Slice begin(bounds[1].first), end(bounds[2].second);
+    ASSERT_LEVELDB_OK(TTLCompactionTestPeer::RewriteRange(db_.get(), &begin, &end));
+    for (auto it = expected.begin(); it != expected.end();) {
+      if (comparator->Compare(*it, begin) >= 0 && comparator->Compare(*it, end) <= 0) it = expected.erase(it);
+      else ++it;
+    }
+    EXPECT_EQ(expected, PhysicalKeys());
+    ExpectStatsMatchPhysicalScan(128);
+    // Open-ended prefix followed by the remaining suffix, including endpoints.
+    const Slice prefix_end(keys[2]);
+    ASSERT_LEVELDB_OK(TTLCompactionTestPeer::RewriteRange(db_.get(), nullptr, &prefix_end));
+    for (const auto& key : keys) if (comparator->Compare(key, prefix_end) <= 0) expected.erase(key);
+    EXPECT_EQ(expected, PhysicalKeys());
+    const Slice suffix_begin(keys[3]);
+    ASSERT_LEVELDB_OK(TTLCompactionTestPeer::RewriteRange(db_.get(), &suffix_begin, nullptr));
+    EXPECT_TRUE(PhysicalKeys().empty());
+    ExpectStatsMatchPhysicalScan(128);
+  }
+
+  void CheckMultiLevelCandidate(const Comparator* comparator) {
+    options_.comparator = comparator;
+    options_.write_buffer_size = 16 << 20;
+    ASSERT_LEVELDB_OK(Open(true));
+    WriteBatch bottom;
+    for (int i = 0; i < 128; ++i) {
+      char key[16]; std::snprintf(key, sizeof(key), "key-%04d", i);
+      bottom.PutWithExpiration(key, std::string(32768, 'b'), kTestEpochMicros + kMicrosPerSecond);
+    }
+    ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &bottom));
+    ASSERT_NO_FATAL_FAILURE(PushToBottom());
+    ASSERT_GE(TTLCompactionTestPeer::BottomBounds(db_.get()).size(), 3U);
+    WriteBatch upper;
+    for (int i = 0; i < 128; i += 3) {
+      char key[16]; std::snprintf(key, sizeof(key), "key-%04d", i);
+      upper.Put(key, std::string(32768, 'u'));
+    }
+    ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &upper));
+    auto* impl = static_cast<DBImpl*>(db_.get());
+    ASSERT_LEVELDB_OK(impl->TEST_CompactMemTable());
+    for (int level = 2; level < 5; ++level) impl->TEST_CompactRange(level, nullptr, nullptr);
+    std::string count;
+    ASSERT_TRUE(db_->GetProperty("leveldb.num-files-at-level5", &count));
+    ASSERT_GT(std::stoul(count), 0U);
+    env_.Advance(2 * kMicrosPerSecond);
+    TTLCompactionTestPeer::CheckCandidateAgainstLinearScan(db_.get());
+    ExpectStatsMatchPhysicalScan(171);
+  }
+
+  // 0: snapshot; 1: Version replacement; 2: I/O failure; 3: shutdown;
+  // 4: manual flush/compaction queued while the scan owns the work slot.
+  void CheckUnlockedCandidateScan(int mode) {
+    ASSERT_LEVELDB_OK(Open(true));
+    ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "ttl", "value", 1));
+    ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+    ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "hot", "before"));
+    // Memtable flush completion does not imply its background callback has
+    // finished candidate scanning/profiling. Isolate the intended scan first.
+    TTLCompactionTestPeer::WaitForIdle(db_.get());
+    TTLCompactionTestPeer::EvictTables(db_.get());
+    env_.Advance(2 * kMicrosPerSecond);
+    env_.BlockNextTableRead(mode == 2);
+    DB* raw = db_.get();
+    std::thread scanner([raw] { TTLCompactionTestPeer::Schedule(raw); });
+    const bool entered = env_.WaitForBlockedTableRead();
+    if (!entered) {
+      env_.ReleaseTableRead(); scanner.join();
+      FAIL() << "candidate scan did not enter the controlled SST read";
+    }
+    std::mutex done_mu;
+    std::condition_variable done_cv;
+    bool done = false;
+    Status foreground_status;
+    std::string value;
+    const Snapshot* snapshot = nullptr;
+    std::thread foreground([&] {
+      if (mode == 3) {
+        db_.reset();
+      } else if (mode == 4) {
+        raw->CompactRange(nullptr, nullptr);
+      } else {
+        foreground_status = raw->Get(ReadOptions(), "hot", &value);
+        if (foreground_status.ok())
+          foreground_status = raw->Put(WriteOptions(), "hot", "after");
+        if (mode == 0) snapshot = raw->GetSnapshot();
+        if (mode == 1 && foreground_status.ok())
+          foreground_status = TTLCompactionTestPeer::PublishEmptyVersion(raw);
+      }
+      std::lock_guard<std::mutex> lock(done_mu);
+      done = true; done_cv.notify_all();
+    });
+    bool finished_while_read_blocked;
+    {
+      std::unique_lock<std::mutex> lock(done_mu);
+      finished_while_read_blocked = done_cv.wait_for(
+          lock, std::chrono::milliseconds(500), [&] { return done; });
+    }
+    env_.ReleaseTableRead();
+    scanner.join(); foreground.join();
+    EXPECT_EQ(mode < 3, finished_while_read_blocked);
+    if (mode == 3) { EXPECT_EQ(nullptr, db_.get()); return; }
+    if (mode == 4) {
+      ExpectValue("hot", "before"); ExpectMissing("ttl");
+      ExpectStatsMatchPhysicalScan(2); return;
+    }
+    EXPECT_TRUE(foreground_status.ok()) << foreground_status.ToString();
+    EXPECT_EQ("before", value);
+    ExpectValue("hot", "after");
+    if (mode == 2) {
+      EXPECT_TRUE(TTLCompactionTestPeer::BackgroundError(raw).IsIOError());
+      EXPECT_TRUE(raw->Put(WriteOptions(), "later", "value").IsIOError());
+      Reopen(); ExpectValue("hot", "after");
+    } else {
+      EXPECT_FALSE(TTLCompactionTestPeer::BackgroundPending(raw));
+      EXPECT_EQ(1U, PhysicalKeys().count("ttl"));
+    }
+    if (snapshot != nullptr) raw->ReleaseSnapshot(snapshot);
+    db_->CompactRange(nullptr, nullptr);
+    ExpectMissing("ttl"); ExpectValue("hot", "after");
+    ExpectStatsMatchPhysicalScan(3);
   }
 
   void CheckCompactionFailure(FaultClockEnv::Fault fault, bool bottom) {
@@ -430,6 +794,94 @@ TEST_P(TTLMetadataTest, PartialRangeUsesCustomComparator) {
   // Static lifetime also covers fixture TearDown after an assertion failure.
   static const TTLReverseComparator comparator;
   CheckPartialRange(&comparator);
+}
+
+TEST_P(TTLMetadataTest, MultiFileRangeUsesInclusiveBounds) {
+  CheckMultiFileRange(BytewiseComparator());
+}
+TEST_P(TTLMetadataTest, MultiFileRangeUsesReverseComparator) {
+  static const TTLReverseComparator comparator;
+  CheckMultiFileRange(&comparator);
+}
+TEST_P(TTLMetadataTest, MultiLevelCandidateMatchesLinearScoring) {
+  CheckMultiLevelCandidate(BytewiseComparator());
+}
+TEST_P(TTLMetadataTest, MultiLevelCandidateMatchesReverseLinearScoring) {
+  static const TTLReverseComparator comparator;
+  CheckMultiLevelCandidate(&comparator);
+}
+
+TEST_P(TTLMetadataTest, UnlockedCandidateAllowsReadsWritesAndRejectsSnapshot) {
+  CheckUnlockedCandidateScan(0);
+}
+TEST_P(TTLMetadataTest, UnlockedCandidateRejectsChangedVersion) {
+  CheckUnlockedCandidateScan(1);
+}
+TEST_P(TTLMetadataTest, UnlockedCandidatePublishesReadError) {
+  CheckUnlockedCandidateScan(2);
+}
+TEST_P(TTLMetadataTest, ShutdownWaitsForUnlockedCandidateScan) {
+  CheckUnlockedCandidateScan(3);
+}
+TEST_P(TTLMetadataTest, NegativeScanCacheExpiresAndInvalidates) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "future", "value", 3600));
+  ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+  TTLCompactionTestPeer::WaitForIdle(db_.get());
+  env_.Advance(2000);
+  TTLCompactionTestPeer::Schedule(db_.get());
+  const uint64_t first = TTLCompactionTestPeer::ScanDeadline(db_.get());
+  EXPECT_EQ(env_.NowMicros() + 1000, first);
+  env_.Advance(500);
+  TTLCompactionTestPeer::Schedule(db_.get());
+  EXPECT_EQ(first, TTLCompactionTestPeer::ScanDeadline(db_.get()));
+  ASSERT_LEVELDB_OK(TTLCompactionTestPeer::PublishEmptyVersion(db_.get()));
+  TTLCompactionTestPeer::Schedule(db_.get());
+  EXPECT_EQ(env_.NowMicros() + 1000, TTLCompactionTestPeer::ScanDeadline(db_.get()));
+  env_.Advance(1000);
+  TTLCompactionTestPeer::Schedule(db_.get());
+  EXPECT_EQ(env_.NowMicros() + 1000, TTLCompactionTestPeer::ScanDeadline(db_.get()));
+  env_.SetTime(kTestEpochMicros - kMicrosPerSecond);
+  TTLCompactionTestPeer::Schedule(db_.get());
+  EXPECT_EQ(env_.NowMicros() + 1000, TTLCompactionTestPeer::ScanDeadline(db_.get()));
+  ExpectValue("future", "value");
+}
+
+TEST_P(TTLMetadataTest, NegativeScanCacheDoesNotDelayManualGCOrFlush) {
+  ASSERT_LEVELDB_OK(Open(true));
+  WriteBatch batch;
+  batch.PutWithExpiration("short", "value", env_.NowMicros() + 500);
+  ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &batch));
+  ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+  TTLCompactionTestPeer::WaitForIdle(db_.get());
+  env_.Advance(500);
+  ExpectMissing("short");
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "new", "value"));
+  db_->CompactRange(nullptr, nullptr);
+  EXPECT_EQ(std::set<std::string>({"new"}), PhysicalKeys());
+  ExpectStatsMatchPhysicalScan(2);
+}
+
+TEST_P(TTLMetadataTest, PrunedScoringMatchesExhaustiveSelection) {
+  options_.write_buffer_size = 16 << 20;
+  ASSERT_LEVELDB_OK(Open(true));
+  WriteBatch batch;
+  for (int i = 0; i < 192; ++i) {
+    char key[32]; std::snprintf(key, sizeof(key), "mixed-%04d", i);
+    if (i < 64 || i % 2 == 0)
+      batch.PutWithExpiration(key, std::string(32768, 'v'), kTestEpochMicros + kMicrosPerSecond);
+    else batch.Put(key, std::string(32768, 'v'));
+  }
+  ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &batch));
+  ASSERT_NO_FATAL_FAILURE(PushToBottom());
+  ASSERT_GE(TTLCompactionTestPeer::BottomBounds(db_.get()).size(), 3U);
+  env_.Advance(2 * kMicrosPerSecond);
+  ASSERT_NO_FATAL_FAILURE(TTLCompactionTestPeer::CheckCandidateAgainstLinearScan(db_.get()));
+  ExpectStatsMatchPhysicalScan(192);
+}
+
+TEST_P(TTLMetadataTest, UnlockedCandidateReschedulesManualWork) {
+  CheckUnlockedCandidateScan(4);
 }
 
 TEST_P(TTLMetadataTest, TTLCompactionTableSyncFailureIsNotPublished) {
@@ -794,6 +1246,90 @@ TEST_P(TTLMetadataTest, MissingTTLSummaryPreservesAuxiliaryCounts) {
   if (GetParam()) {
     EXPECT_GT(ProfilerTestPeer::Counter(*options_.profiler, "metadata.index_missing"), 0U);
   }
+}
+
+TEST_P(TTLMetadataTest, FallbackCountsExpiredRecordsAtThreshold) {
+  for (int expired : {0, 29, 30, 80}) {
+    SCOPED_TRACE(expired);
+    db_.reset();
+    ASSERT_LEVELDB_OK(DestroyDB(dbname_, options_));
+    env_.SetTime(kTestEpochMicros);
+    ASSERT_LEVELDB_OK(Open(true));
+    WriteBatch batch;
+    for (int i = 0; i < 100; ++i) {
+      const std::string key = "key-" + std::to_string(i);
+      if (i < 80) {
+        batch.PutWithExpiration(key, "value", kTestEpochMicros +
+            (i < expired ? 20 : 3600) * kMicrosPerSecond);
+      } else {
+        batch.Put(key, "value");  // Ordinary records belong in the denominator.
+      }
+    }
+    ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &batch));
+    ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+    MakeTTLSummariesUnavailable();
+    ASSERT_FALSE(HasFatalFailure());
+    env_.Advance(20 * kMicrosPerSecond);  // Equality means expired, age is zero.
+    bool found = false;
+    ASSERT_LEVELDB_OK(TTLCompactionTestPeer::FindCandidate(db_.get(), &found));
+    EXPECT_EQ(expired >= 30, found);
+    EXPECT_EQ(100U, PhysicalKeys().size());  // Selection itself removes nothing.
+    for (int i = 0; i < 100; ++i) {
+      const std::string key = "key-" + std::to_string(i);
+      if (i < expired) ExpectMissing(key);
+      else ExpectValue(key, "value");
+    }
+    ExpectStatsMatchPhysicalScan(100);
+  }
+}
+
+TEST_P(TTLMetadataTest, FallbackAgeThresholdAndSnapshotProtection) {
+  ASSERT_LEVELDB_OK(Open(true));
+  WriteBatch batch;
+  batch.PutWithExpiration("ttl", "value",
+                          kTestEpochMicros + 20 * kMicrosPerSecond);
+  for (int i = 0; i < 99; ++i) batch.Put("plain-" + std::to_string(i), "value");
+  ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &batch));
+  ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+  MakeTTLSummariesUnavailable();
+  ASSERT_FALSE(HasFatalFailure());
+  env_.Advance(79 * kMicrosPerSecond);
+  bool found = false;
+  ASSERT_LEVELDB_OK(TTLCompactionTestPeer::FindCandidate(db_.get(), &found));
+  EXPECT_FALSE(found);  // 1% expired, only 59 seconds old.
+  env_.Advance(kMicrosPerSecond);
+  ASSERT_LEVELDB_OK(TTLCompactionTestPeer::FindCandidate(db_.get(), &found));
+  EXPECT_TRUE(found);  // Exactly 60 seconds old overrides the ratio threshold.
+  const Snapshot* snapshot = db_->GetSnapshot();
+  const Status status = TTLCompactionTestPeer::FindCandidate(db_.get(), &found);
+  EXPECT_TRUE(status.ok()) << status.ToString();
+  EXPECT_FALSE(found);  // Automatic selection remains conservative with snapshots.
+  db_->ReleaseSnapshot(snapshot);
+  db_->CompactRange(nullptr, nullptr);
+  ExpectMissing("ttl");
+  EXPECT_EQ(99U, PhysicalKeys().size());
+  ExpectStatsMatchPhysicalScan(100);
+}
+
+TEST_P(TTLMetadataTest, CorruptSummaryFallbackHandlesMaximumDeadline) {
+  ASSERT_LEVELDB_OK(Open(true));
+  WriteBatch batch;
+  for (int i = 0; i < 10; ++i)
+    batch.PutWithExpiration("key-" + std::to_string(i), "value",
+                            std::numeric_limits<uint64_t>::max());
+  ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &batch));
+  ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+  MakeTTLSummariesUnavailable(true);
+  ASSERT_FALSE(HasFatalFailure());
+  bool found = false;
+  env_.SetTime(std::numeric_limits<uint64_t>::max() - 1);
+  ASSERT_LEVELDB_OK(TTLCompactionTestPeer::FindCandidate(db_.get(), &found));
+  EXPECT_FALSE(found);
+  env_.Advance(1);
+  ASSERT_LEVELDB_OK(TTLCompactionTestPeer::FindCandidate(db_.get(), &found));
+  EXPECT_TRUE(found);  // min == max, all expired exactly at the deadline.
+  EXPECT_EQ(10U, PhysicalKeys().size());
+  ExpectStatsMatchPhysicalScan(10);
 }
 
 TEST_P(TTLMetadataTest, SuccessfulGCCountsOnlyInstalledRecordRemoval) {

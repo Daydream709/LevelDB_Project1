@@ -306,9 +306,20 @@ TEST_F(StatsDBTest, PrimaryCompactionReconcilesConcurrentMetadataTail) {
   const PhysicalStats physical = CountPhysicalRecords(db_);
   ASSERT_EQ(stats.total_entries, physical.total_entries);
   ASSERT_EQ(stats.distinct_keys, physical.distinct_keys);
-  ASSERT_EQ(stats.total_entries, kKeys + kTailKeys);
+  // The tail may be flushed into the compaction input or remain in the
+  // memtable, depending on scheduling. Both physical counts are valid.
+  // The physical oracle above, rather than a fixed interleaving, is decisive.
+  ASSERT_GE(stats.total_entries, kKeys);
+  ASSERT_LE(stats.total_entries, kKeys + kTailKeys);
   ASSERT_EQ(stats.distinct_keys, kKeys);
   ASSERT_EQ(stats.seq, 3 * kKeys + kTailKeys);
+  for (int i = 0; i < kKeys; ++i) {
+    char key[32];
+    std::snprintf(key, sizeof(key), "key-%05d", i);
+    std::string value;
+    ASSERT_TRUE(db_->Get(ReadOptions(), key, &value).ok());
+    ASSERT_EQ(value, i < kTailKeys ? "tail" : "third");
+  }
 }
 
 TEST_F(StatsDBTest, PersistAndRecover) {

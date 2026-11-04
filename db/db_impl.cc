@@ -1803,6 +1803,7 @@ Status DBImpl::LogAndApply(VersionEdit* edit) {
   }
   manifest_commit_in_progress_ = true;
   Status s = versions_->LogAndApply(edit, &mutex_);
+  if (s.ok()) ++ttl_scan_generation_;
   manifest_commit_in_progress_ = false;
   background_work_finished_signal_.SignalAll();
   return s;
@@ -2781,14 +2782,21 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
   // files below. Removing unrelated files would turn a small TTL cleanup into
   // a rewrite of the entire bottom level.
   std::vector<FileMetaData*> files;
-  for (FileMetaData* file : base->files(bottom_level)) {
-    if (begin != nullptr &&
-        user_comparator()->Compare(file->largest.user_key(), *begin) < 0) {
-      continue;
-    }
+  const auto& bottom_files = base->files(bottom_level);
+  auto first = bottom_files.begin();
+  if (begin != nullptr) {
+    // Compare user keys so every version at an inclusive endpoint is kept.
+    first = std::lower_bound(
+        first, bottom_files.end(), *begin,
+        [this](const FileMetaData* file, const Slice& key) {
+          return user_comparator()->Compare(file->largest.user_key(), key) < 0;
+        });
+  }
+  for (; first != bottom_files.end(); ++first) {
+    FileMetaData* file = *first;
     if (end != nullptr &&
         user_comparator()->Compare(file->smallest.user_key(), *end) > 0) {
-      continue;
+      break;
     }
     files.push_back(file);
   }
@@ -3268,127 +3276,157 @@ Status DBImpl::FindTTLCompactionCandidate(bool* found) {
   std::string best_begin;
   std::string best_end;
 
-  for (int level = 0; level < config::kNumLevels; ++level) {
-    for (FileMetaData* file : current->files(level)) {
-      TableInternalStats stats;
-      ProfileScope::Count("ttl.schedule_checked_files");
-      Status status = ProfileStatus("ttl.load_summary", [&] {
-        return table_cache_->GetTTLStats(file->number, file->file_size, &stats);
-      });
-      if (!status.ok()) return profile.Result(status);
+  // File metadata in a referenced Version is immutable. Keep that Version
+  // alive while table I/O and fallback scans run without blocking the DB mutex.
+  current->Ref();
+  mutex_.Unlock();
+  const Status scan_status = [&]() -> Status {
+    for (int level = 0; level < config::kNumLevels; ++level) {
+      for (FileMetaData* file : current->files(level)) {
+        TableInternalStats stats;
+        ProfileScope::Count("ttl.schedule_checked_files");
+        Status status = ProfileStatus("ttl.load_summary", [&] {
+          return table_cache_->GetTTLStats(file->number, file->file_size, &stats);
+        });
+        if (!status.ok()) return profile.Result(status);
 
-      if (!stats.valid) {
-        ProfileScope fallback("ttl.summary_fallback_scan");
-        ProfileScope::Count("ttl.summary_fallback_files");
-        std::vector<uint64_t> expirations;
-        ReadOptions scan_options;
-        scan_options.verify_checksums = true;
-        Iterator* iter = table_cache_->NewIterator(
-            scan_options, file->number, file->file_size);
-        uint64_t total = 0;
-        Status scan_status = Status::OK();
-        for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-          ParsedInternalKey key;
-          if (!ParseInternalKey(iter->key(), &key)) {
-            scan_status = Status::Corruption(
-                "invalid internal key while scanning TTL summary");
-            break;
-          }
-          ++total;
-          if (key.type == kTypeValueWithTTL) {
-            Slice value = iter->value();
-            if (value.size() < 8) {
+        uint64_t expired_estimate = 0;
+        if (!stats.valid) {
+          ProfileScope fallback("ttl.summary_fallback_scan");
+          ProfileScope::Count("ttl.summary_fallback_files");
+          // We already inspect every record in the fallback. Count expiration
+          // exactly at this scan's safe time instead of retaining all deadlines
+          // and rebuilding an approximate histogram. This state is local only.
+          stats.total_records = 0;
+          stats.ttl_records = 0;
+          stats.min_expire_time_micros = 0;
+          stats.max_expire_time_micros = 0;
+          ReadOptions scan_options;
+          scan_options.verify_checksums = true;
+          // A maintenance scan must not evict the foreground working set.
+          // Existing cached blocks can still be reused by the iterator.
+          scan_options.fill_cache = false;
+          Iterator* iter = table_cache_->NewIterator(
+              scan_options, file->number, file->file_size);
+          Status scan_status = Status::OK();
+          for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+            ParsedInternalKey key;
+            if (!ParseInternalKey(iter->key(), &key)) {
               scan_status = Status::Corruption(
-                  "TTL value is shorter than its deadline while scanning summary");
+                  "invalid internal key while scanning TTL summary");
               break;
             }
-            expirations.push_back(DecodeFixed64(value.data()));
+            ++stats.total_records;
+            if (key.type == kTypeValueWithTTL) {
+              Slice value = iter->value();
+              if (value.size() < 8) {
+                scan_status = Status::Corruption(
+                    "TTL value is shorter than its deadline while scanning summary");
+                break;
+              }
+              const uint64_t expiry = DecodeFixed64(value.data());
+              if (stats.ttl_records == 0) {
+                stats.min_expire_time_micros = expiry;
+                stats.max_expire_time_micros = expiry;
+              } else {
+                stats.min_expire_time_micros =
+                    std::min(stats.min_expire_time_micros, expiry);
+                stats.max_expire_time_micros =
+                    std::max(stats.max_expire_time_micros, expiry);
+              }
+              ++stats.ttl_records;
+              if (expiry <= safe_time) ++expired_estimate;
+            }
           }
+          if (scan_status.ok()) scan_status = iter->status();
+          fallback.SetStatus(scan_status);
+          delete iter;
+          if (!scan_status.ok()) return scan_status;
         }
-        if (scan_status.ok()) scan_status = iter->status();
-        fallback.SetStatus(scan_status);
-        delete iter;
-        if (!scan_status.ok()) return scan_status;
-        stats.total_records = total;
-        stats.ttl_records = expirations.size();
-        if (!expirations.empty()) {
-          const auto bounds = std::minmax_element(expirations.begin(),
-                                                   expirations.end());
-          stats.min_expire_time_micros = *bounds.first;
-          stats.max_expire_time_micros = *bounds.second;
+
+        if (stats.total_records == 0 || stats.ttl_records == 0 ||
+            safe_time < stats.min_expire_time_micros) {
+          continue;
+        }
+        // Valid summaries retain their existing conservative histogram estimate.
+        // An invalid/missing summary uses the exact count computed above.
+        if (stats.valid && safe_time >= stats.max_expire_time_micros) {
+          expired_estimate = stats.ttl_records;
+        } else if (stats.valid) {
           const long double span = static_cast<long double>(
               stats.max_expire_time_micros - stats.min_expire_time_micros);
-          for (uint64_t expiry : expirations) {
-            const long double offset = static_cast<long double>(
-                expiry - stats.min_expire_time_micros);
-            const size_t bucket =
-                span == 0 ? 0 : std::min<size_t>(15, offset / span * 16);
-            ++stats.expiration_histogram[bucket];
+          for (size_t bucket = 0; bucket < 16; ++bucket) {
+            const uint64_t upper = static_cast<uint64_t>(
+                stats.min_expire_time_micros +
+                span * static_cast<long double>(bucket + 1) / 16.0L);
+            if (upper <= safe_time) {
+              expired_estimate += stats.expiration_histogram[bucket];
+            }
           }
         }
-      }
+        const bool aged =
+            safe_time >= stats.min_expire_time_micros &&
+            safe_time - stats.min_expire_time_micros >= 60ULL * 1000000ULL;
+        const double expired_ratio =
+            static_cast<double>(expired_estimate) / stats.total_records;
+        if (expired_estimate == 0 || (!aged && expired_ratio < 0.30)) continue;
 
-      if (stats.total_records == 0 || stats.ttl_records == 0 ||
-          safe_time < stats.min_expire_time_micros) {
-        continue;
-      }
-      uint64_t expired_estimate = 0;
-      if (safe_time >= stats.max_expire_time_micros) {
-        expired_estimate = stats.ttl_records;
-      } else {
-        const long double span = static_cast<long double>(
-            stats.max_expire_time_micros - stats.min_expire_time_micros);
-        for (size_t bucket = 0; bucket < 16; ++bucket) {
-          const uint64_t upper = static_cast<uint64_t>(
-              stats.min_expire_time_micros +
-              span * static_cast<long double>(bucket + 1) / 16.0L);
-          if (upper <= safe_time) {
-            expired_estimate += stats.expiration_histogram[bucket];
+        ProfileScope::Count("ttl.schedule_candidates");
+        // estimated_io includes this file, so the final score cannot exceed
+        // expired_ratio (allow a conservative floating-point rounding margin).
+        // Keep equal-score candidates on the existing first-wins path.
+        if (expired_ratio + 4 * std::numeric_limits<double>::epsilon() < best_score) {
+          ProfileScope::Count("ttl.schedule_pruned_candidates");
+          continue;
+        }
+        ProfileScope scoring("ttl.score_candidate");
+        int target_level = level;
+        const Slice smallest = file->smallest.user_key();
+        const Slice largest = file->largest.user_key();
+        for (int upper_level = 0; upper_level < level; ++upper_level) {
+          if (current->OverlapInLevel(upper_level, &smallest, &largest)) {
+            target_level = upper_level;
+            break;
           }
         }
-      }
-      const bool aged =
-          safe_time >= stats.min_expire_time_micros &&
-          safe_time - stats.min_expire_time_micros >= 60ULL * 1000000ULL;
-      const double expired_ratio =
-          static_cast<double>(expired_estimate) / stats.total_records;
-      if (expired_estimate == 0 || (!aged && expired_ratio < 0.30)) continue;
 
-      ProfileScope scoring("ttl.score_candidate");
-      ProfileScope::Count("ttl.schedule_candidates");
-      int target_level = level;
-      const Slice smallest = file->smallest.user_key();
-      const Slice largest = file->largest.user_key();
-      for (int upper_level = 0; upper_level < level; ++upper_level) {
-        if (current->OverlapInLevel(upper_level, &smallest, &largest)) {
-          target_level = upper_level;
-          break;
-        }
-      }
-      if (target_level == config::kNumLevels - 1 && !snapshots_.empty()) {
-        continue;
-      }
-
-      uint64_t estimated_io = file->file_size;
-      if (target_level + 1 < config::kNumLevels) {
-        for (FileMetaData* overlap : current->files(target_level + 1)) {
-          if (user_comparator()->Compare(overlap->largest.user_key(), smallest) >= 0 &&
-              user_comparator()->Compare(overlap->smallest.user_key(), largest) <= 0) {
-            estimated_io += overlap->file_size;
+        uint64_t estimated_io = file->file_size;
+        if (target_level + 1 < config::kNumLevels) {
+          // The next level is at least L1: its ordered ranges allow binary
+          // location followed by a bounded scan. Never apply this rule to L0.
+          const auto& next_files = current->files(target_level + 1);
+          auto overlap = std::lower_bound(
+              next_files.begin(), next_files.end(), smallest,
+              [this](const FileMetaData* file, const Slice& key) {
+                return user_comparator()->Compare(file->largest.user_key(), key) < 0;
+              });
+          for (; overlap != next_files.end(); ++overlap) {
+            if (user_comparator()->Compare((*overlap)->smallest.user_key(), largest) > 0)
+              break;
+            estimated_io += (*overlap)->file_size;
           }
         }
-      }
-      const double score =
-          static_cast<double>(file->file_size) * expired_ratio /
-          std::max<uint64_t>(estimated_io, 1);
-      if (score > best_score) {
-        best_score = score;
-        best_level = target_level;
-        best_begin.assign(smallest.data(), smallest.size());
-        best_end.assign(largest.data(), largest.size());
+        const double score =
+            static_cast<double>(file->file_size) * expired_ratio /
+            std::max<uint64_t>(estimated_io, 1);
+        if (score > best_score) {
+          best_score = score;
+          best_level = target_level;
+          best_begin.assign(smallest.data(), smallest.size());
+          best_end.assign(largest.data(), largest.size());
+        }
       }
     }
-  }
+    return Status::OK();
+  }();
+  mutex_.Lock();
+  const bool usable = current == versions_->current() && snapshots_.empty() &&
+      !shutting_down_.load(std::memory_order_acquire) && bg_error_.ok() &&
+      imm_ == nullptr && manual_compaction_ == nullptr &&
+      !versions_->NeedsCompaction();
+  current->Unref();
+  if (!scan_status.ok()) return scan_status;
+  if (!usable) return Status::OK();
 
   if (best_level >= 0) {
     ProfileScope::Count("ttl.schedule_selected");
@@ -3413,16 +3451,42 @@ void DBImpl::MaybeScheduleCompaction() {
     // replacement is installed.
   } else if (imm_ == nullptr && manual_compaction_ == nullptr &&
              !versions_->NeedsCompaction()) {
+    // Coalesce repeated unsuccessful TTL scans for at most one millisecond.
+    // Manual/size compactions and immutable memtables bypass this branch.
+    const uint64_t scan_now = env_->NowMicros();
+    if (ttl_cached_generation_ == ttl_scan_generation_ &&
+        ttl_scan_not_before_micros_ > scan_now &&
+        ttl_scan_not_before_micros_ - scan_now <= 1000) {
+      return;
+    }
+    const uint64_t scan_generation = ttl_scan_generation_;
+    // Reserve the existing background-work slot during the unlocked scan.
+    // This also makes shutdown/manual compaction wait for the pinned Version.
+    background_compaction_scheduled_ = true;
     bool ttl_candidate = false;
     Status status = FindTTLCompactionCandidate(&ttl_candidate);
+    background_compaction_scheduled_ = false;
+    if (status.ok() && !ttl_candidate && snapshots_.empty() &&
+        scan_generation == ttl_scan_generation_ && imm_ == nullptr &&
+        manual_compaction_ == nullptr && !versions_->NeedsCompaction()) {
+      ttl_cached_generation_ = scan_generation;
+      const uint64_t finished = env_->NowMicros();
+      ttl_scan_not_before_micros_ =
+          finished <= UINT64_MAX - 1000 ? finished + 1000 : UINT64_MAX;
+    }
     if (!status.ok()) {
       RecordBackgroundError(status);
-    } else if (ttl_candidate) {
+    } else if (!shutting_down_.load(std::memory_order_acquire) &&
+               bg_error_.ok() && !bottom_rewrite_in_progress_ &&
+               (ttl_candidate || imm_ != nullptr || manual_compaction_ != nullptr ||
+                versions_->NeedsCompaction())) {
+      // Foreground writers/manual work may have arrived while scanning.
       background_compaction_scheduled_ = true;
       profiling_schedule_time_ = ProfileScope::Current() ? ProfileScope::Now() : 0;
       profiling_parent_job_id_ = ProfileScope::CurrentTaskID();
       env_->Schedule(&DBImpl::BGWork, this);
     }
+    background_work_finished_signal_.SignalAll();
   } else {
     background_compaction_scheduled_ = true;
     profiling_schedule_time_ = ProfileScope::Current() ? ProfileScope::Now() : 0;
@@ -4190,6 +4254,9 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   uint64_t current_key_output_records = 0;
   bool has_current_user_key = false;
   SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
+  // Count takes std::string: avoid constructing (and allocating) counter
+  // names per record when this compaction did not capture a profiling scope.
+  const bool collect_gc_counters = profile.active();
   while (input->Valid() && !shutting_down_.load(std::memory_order_acquire)) {
     // Prioritize immutable compaction work
     if (has_imm_.load(std::memory_order_relaxed)) {
@@ -4205,7 +4272,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     }
 
     ProfileScope filtering("gc.iterate_filter");
-    ProfileScope::Count("gc.records_checked");
+    if (collect_gc_counters) ProfileScope::Count("gc.records_checked");
     Slice key = input->key();
     if (key.size() < 8) {
       status = Status::Corruption("internal key is too short during compaction");
@@ -4256,7 +4323,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       if (last_sequence_for_key <= compact->smallest_snapshot) {
         // Hidden by an newer entry for same user key
         drop = true;  // (A)
-        ProfileScope::Count("gc.dropped_hidden_version");
+        if (collect_gc_counters) ProfileScope::Count("gc.dropped_hidden_version");
       } else if (ikey.type == kTypeDeletion &&
                  ikey.sequence <= compact->smallest_snapshot &&
                  compact->compaction->IsBaseLevelForKey(ikey.user_key)) {
@@ -4268,10 +4335,9 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         //     few iterations of this loop (by rule (A) above).
         // Therefore this deletion marker is obsolete and can be dropped.
         drop = true;
-        ProfileScope::Count("gc.dropped_tombstone");
+        if (collect_gc_counters) ProfileScope::Count("gc.dropped_tombstone");
       } else if (ikey.type == kTypeValueWithTTL &&
-                 ikey.sequence <= compact->smallest_snapshot &&
-                 compact->compaction->IsBaseLevelForKey(ikey.user_key)) {
+                 ikey.sequence <= compact->smallest_snapshot) {
         const Slice raw_value = input->value();
         if (raw_value.size() < 8) {
           status = Status::Corruption(
@@ -4282,18 +4348,22 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
             compact->smallest_snapshot_time_micros) {
           // The expired value acts as a deletion barrier. Older records in
           // this compaction are hidden by the normal sequence rule above.
-          drop = true;
-          ProfileScope::Count("gc.dropped_expired_ttl");
+          // Only expired records need the lower-level safety check. Its
+          // cursors can skip live keys because input user keys are ordered.
+          if (compact->compaction->IsBaseLevelForKey(ikey.user_key)) {
+            drop = true;
+            if (collect_gc_counters) ProfileScope::Count("gc.dropped_expired_ttl");
+          }
         } else {
-          ProfileScope::Count("gc.ttl_retained_time_boundary");
+          if (collect_gc_counters) ProfileScope::Count("gc.ttl_retained_time_boundary");
         }
       }
 
       if (!drop && ikey.type == kTypeValueWithTTL) {
-        if (ikey.sequence > compact->smallest_snapshot)
+        if (collect_gc_counters && ikey.sequence > compact->smallest_snapshot)
           ProfileScope::Count("gc.ttl_retained_sequence_boundary");
-        // The preceding TTL branch already checked base level and records its
-        // time-bound retention; do not call IsBaseLevelForKey a second time.
+        // Live TTL values need no lower-level lookup. Expired values already
+        // received the base-level check above; do not repeat it here.
       }
       last_sequence_for_key = ikey.sequence;
     }
@@ -4307,12 +4377,12 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         (int)last_sequence_for_key, (int)compact->smallest_snapshot);
 #endif
 
-    if (drop) {
+    if (drop && collect_gc_counters) {
       ProfileScope::Count("gc.records_dropped");
       ProfileScope::Count("gc.dropped_encoded_bytes", key.size() + input->value().size());
     }
     if (!drop) {
-      ProfileScope::Count("gc.records_output");
+      if (collect_gc_counters) ProfileScope::Count("gc.records_output");
       // Open output file if necessary
       if (compact->builder == nullptr) {
         status = OpenCompactionOutputFile(compact);

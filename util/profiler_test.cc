@@ -63,6 +63,27 @@ TEST(ProfilerTest, DisabledDoesNotReadClockAndToggleKeepsInflightWork) {
   EXPECT_EQ(Field(*p, "root"), 2U);
 }
 
+TEST(ProfilerTest, ProfileStatusFastPathKeepsResultsAndCapturedScopes) {
+  auto p = std::make_shared<Profiler>();
+  unsigned calls = 0;
+  {
+    ProfileScope off(p, 1, "off");
+    auto s = ProfileStatus("child", [&] { ++calls; return Status::IOError("test"); });
+    EXPECT_TRUE(s.IsIOError());
+  }
+  EXPECT_EQ(calls, 1U);
+  EXPECT_EQ(Field(*p, "child"), 0U);
+  p->SetEnabled(true);
+  {
+    ProfileScope root(p, 1, "root");
+    p->SetEnabled(false);
+    auto s = ProfileStatus("child", [&] { ++calls; return Status::NotFound("test"); });
+    EXPECT_TRUE(s.IsNotFound());
+  }
+  EXPECT_EQ(calls, 2U);
+  EXPECT_EQ(Field(*p, "child"), 1U);
+}
+
 TEST(ProfilerTest, SamplingNeverSamplesCountsOrBackgroundTasks) {
   ProfilerOptions opt;
   opt.foreground_sample_interval = 4;
