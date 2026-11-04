@@ -326,6 +326,11 @@ void Version::ForEachOverlapping(Slice user_key, Slice internal_key, void* arg,
     size_t num_files = files_[level].size();
     if (num_files == 0) continue;
 
+    // Ordered levels cannot contain keys after the last file's user range.
+    if (ucmp->Compare(user_key, files_[level].back()->largest.user_key()) > 0) {
+      continue;
+    }
+
     // Binary search to find earliest index whose largest key >= internal_key.
     uint32_t index = FindFile(vset_->icmp_, files_[level], internal_key);
     if (index < num_files) {

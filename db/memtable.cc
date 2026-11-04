@@ -36,8 +36,19 @@ int MemTable::KeyComparator::operator()(const char* aptr,
       static_cast<unsigned char>(bptr[0]) == 24) {
     const char* a_key = aptr + 1;
     const char* b_key = bptr + 1;
+#if defined(__GNUC__) || defined(__clang__)
+    // DecodeFixed64 is unaligned-safe. Reversing its little-endian numeric
+    // result makes unsigned comparisons follow lexicographic byte order.
+    const uint64_t a_first = __builtin_bswap64(DecodeFixed64(a_key));
+    const uint64_t b_first = __builtin_bswap64(DecodeFixed64(b_key));
+    if (a_first != b_first) return a_first < b_first ? -1 : 1;
+    const uint64_t a_second = __builtin_bswap64(DecodeFixed64(a_key + 8));
+    const uint64_t b_second = __builtin_bswap64(DecodeFixed64(b_key + 8));
+    if (a_second != b_second) return a_second < b_second ? -1 : 1;
+#else
     const int user_order = std::memcmp(a_key, b_key, 16);
     if (user_order != 0) return user_order;
+#endif
     const uint64_t a_tag = DecodeFixed64(a_key + 16);
     const uint64_t b_tag = DecodeFixed64(b_key + 16);
     if (a_tag > b_tag) return -1;
@@ -115,6 +126,7 @@ void MemTable::Add(SequenceNumber s, ValueType type, const Slice& key,
   assert(p + val_size == buf + encoded_len);
   table_.Insert(buf);
   ++num_entries_;
+  if (num_entries_ == 1) has_entries_.store(true, std::memory_order_release);
 }
 
 uint64_t MemTable::CountUserKeyRecords(const Slice& key) const {

@@ -98,6 +98,13 @@ class DBImpl : public DB {
   uint64_t profiling_id() const { return profiling_id_; }
 
  protected:
+  Status PutUnprofiled(const WriteOptions& options, const Slice& key,
+                       const Slice& value);
+  Status GetUnprofiled(const ReadOptions& options, const Slice& key,
+                       std::string* value);
+  template <bool kProfile>
+  Status GetImpl(const ReadOptions& options, const Slice& key,
+                 std::string* value);
   Status GetCurrentStatsUnprofiled(Stats* stats) {
     return GetCurrentStatsSnapshot(stats);
   }
@@ -208,7 +215,8 @@ class DBImpl : public DB {
   Status RebuildMetadata() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status PersistPrimaryMetadataCheckpoint()
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  Status CountPrimaryRecordsForKey(const Slice& key, uint64_t* count)
+  Status CountPrimaryRecordsForKey(const Slice& key, uint64_t* count,
+                                   bool filter_already_checked = false)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status InitializePrimaryUserKeyBound() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status EnablePrimaryWriteKeyFilter() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -216,7 +224,8 @@ class DBImpl : public DB {
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   bool PrimaryWriteKeyFilterMayContain(const Slice& key)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
-  void RememberPrimaryWriteKey(const Slice& key)
+  // Returns false only when the key was definitely absent before insertion.
+  bool RememberPrimaryWriteKey(const Slice& key)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status LogAndApply(VersionEdit* edit) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void UpdatePublishedStatsSnapshot() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
@@ -307,6 +316,9 @@ class DBImpl : public DB {
   bool metadata_primary_user_key_bound_initialized_ GUARDED_BY(mutex_);
   bool metadata_primary_user_key_bound_has_value_ GUARDED_BY(mutex_);
   std::string metadata_primary_user_key_bound_ GUARDED_BY(mutex_);
+  // Packed state: 0 is unknown, 1 is initialized empty, and 256 + byte is
+  // the largest first byte seen under the bytewise comparator.
+  std::atomic<uint16_t> metadata_primary_user_key_first_byte_bound_;
   bool metadata_primary_write_key_filter_active_ GUARDED_BY(mutex_);
   bool metadata_primary_write_key_filter_floor_has_value_ GUARDED_BY(mutex_);
   std::string metadata_primary_write_key_filter_floor_ GUARDED_BY(mutex_);

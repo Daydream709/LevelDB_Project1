@@ -5,6 +5,7 @@
 #ifndef STORAGE_LEVELDB_DB_MEMTABLE_H_
 #define STORAGE_LEVELDB_DB_MEMTABLE_H_
 
+#include <atomic>
 #include <string>
 
 #include "db/dbformat.h"
@@ -44,6 +45,8 @@ class MemTable {
 
   // Number of physical records stored in this primary memtable.
   uint64_t NumEntries() const { return num_entries_; }
+
+  bool HasEntries() const { return has_entries_.load(std::memory_order_acquire); }
 
   // Count records for the exact raw user key. Tombstones and expired TTL
   // values are included because both remain physical records.
@@ -90,6 +93,7 @@ class MemTable {
   KeyComparator comparator_;
   int refs_;
   uint64_t num_entries_;
+  std::atomic<bool> has_entries_{false};
   Arena arena_;
   Table table_;
 };

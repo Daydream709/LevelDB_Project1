@@ -49,7 +49,26 @@ int InternalKeyComparator::Compare(const Slice& akey, const Slice& bkey) const {
   //    increasing user key (according to user-supplied comparator)
   //    decreasing sequence number
   //    decreasing type (though sequence# should be enough to disambiguate)
-  int r = user_comparator_->Compare(ExtractUserKey(akey), ExtractUserKey(bkey));
+  const Slice auser = ExtractUserKey(akey);
+  const Slice buser = ExtractUserKey(bkey);
+  int r;
+#if defined(__GNUC__) || defined(__clang__)
+  if (bytewise_comparator_ && auser.size() == 16 && buser.size() == 16) {
+    const uint64_t a_first = __builtin_bswap64(DecodeFixed64(auser.data()));
+    const uint64_t b_first = __builtin_bswap64(DecodeFixed64(buser.data()));
+    if (a_first != b_first) {
+      r = a_first < b_first ? -1 : 1;
+    } else {
+      const uint64_t a_second = __builtin_bswap64(DecodeFixed64(auser.data() + 8));
+      const uint64_t b_second = __builtin_bswap64(DecodeFixed64(buser.data() + 8));
+      r = a_second == b_second ? 0 : (a_second < b_second ? -1 : 1);
+    }
+  } else
+#endif
+  {
+    r = bytewise_comparator_ ? auser.compare(buser)
+                             : user_comparator_->Compare(auser, buser);
+  }
   if (r == 0) {
     const uint64_t anum = DecodeFixed64(akey.data() + akey.size() - 8);
     const uint64_t bnum = DecodeFixed64(bkey.data() + bkey.size() - 8);

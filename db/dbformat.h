@@ -108,9 +108,11 @@ inline Slice ExtractUserKey(const Slice& internal_key) {
 class InternalKeyComparator : public Comparator {
  private:
   const Comparator* user_comparator_;
+  const bool bytewise_comparator_;
 
  public:
-  explicit InternalKeyComparator(const Comparator* c) : user_comparator_(c) {}
+  explicit InternalKeyComparator(const Comparator* c)
+      : user_comparator_(c), bytewise_comparator_(c == BytewiseComparator()) {}
   const char* Name() const override;
   int Compare(const Slice& a, const Slice& b) const override;
   void FindShortestSeparator(std::string* start,

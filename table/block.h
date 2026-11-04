@@ -27,6 +27,9 @@ class Block {
 
   size_t size() const { return size_; }
   Iterator* NewIterator(const Comparator* comparator);
+  Status SeekThen(const Comparator* comparator, const Slice& target,
+                  void* arg,
+                  void (*handle_result)(void*, const Slice&, const Slice&));
 
  private:
   class Iter;

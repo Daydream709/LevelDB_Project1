@@ -94,6 +94,7 @@ class DBIter : public Iterator {
   void SeekToLast() override;
 
  private:
+  void NextImpl();
   void FindNextUserEntry(bool skipping, std::string* skip);
   void FindPrevUserEntry();
   bool ParseKey(ParsedInternalKey* key);
@@ -150,7 +151,18 @@ inline bool DBIter::ParseKey(ParsedInternalKey* ikey) {
 }
 
 void DBIter::Next() {
+  // A disabled DB can be called from another DB's profiling scope. In that
+  // case construct the scope to suppress and then restore inherited context.
+  if (!db_->profiler() && ProfileScope::Current() == nullptr) {
+    NextImpl();
+    return;
+  }
   ProfileScope profile(db_->profiler(), db_->profiling_id(), "op.iterator.next");
+  NextImpl();
+  profile.SetStatus(status());
+}
+
+void DBIter::NextImpl() {
   assert(valid_);
 
   if (direction_ == kReverse) {  // Switch directions?
@@ -166,7 +178,7 @@ void DBIter::Next() {
     if (!iter_->Valid()) {
       valid_ = false;
       saved_key_.clear();
-      profile.SetStatus(status()); return;
+      return;
     }
     // saved_key_ already contains the key to skip past.
   } else {
@@ -179,13 +191,12 @@ void DBIter::Next() {
     if (!iter_->Valid()) {
       valid_ = false;
       saved_key_.clear();
-      profile.SetStatus(status()); return;
+      return;
     }
   }
 
   FindNextUserEntry(true, &saved_key_);
 
-  profile.SetStatus(status());
 }
 
 void DBIter::FindNextUserEntry(bool skipping, std::string* skip) {

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include "leveldb/comparator.h"
@@ -62,6 +63,13 @@ static inline const char* DecodeEntry(const char* p, const char* limit,
   if ((*shared | *non_shared | *value_length) < 128) {
     // Fast path: all three values are encoded in one byte each
     p += 3;
+  } else if ((*shared | *non_shared) < 128 && *value_length >= 128 &&
+             limit - p >= 4 &&
+             (static_cast<uint8_t>(p[3]) & 128) == 0) {
+    // Common case: short key deltas and a two-byte value length.
+    *value_length = (*value_length & 127) |
+                    (static_cast<uint32_t>(static_cast<uint8_t>(p[3])) << 7);
+    p += 4;
   } else {
     if ((p = GetVarint32Ptr(p, limit, shared)) == nullptr) return nullptr;
     if ((p = GetVarint32Ptr(p, limit, non_shared)) == nullptr) return nullptr;
@@ -76,6 +84,43 @@ static inline const char* DecodeEntry(const char* p, const char* limit,
 
 class Block::Iter : public Iterator {
  private:
+  // Most internal keys fit here. Long keys retain std::string's general
+  // allocation behavior and the returned Slice remains valid until movement.
+  class KeyBuffer {
+   public:
+    void clear() {
+      if (large_) overflow_.clear();
+      size_ = 0;
+    }
+    size_t size() const { return size_; }
+    void resize(size_t size) {
+      assert(size <= size_);
+      if (large_) overflow_.resize(size);
+      size_ = size;
+    }
+    void append(const char* data, size_t size) {
+      if (large_) {
+        overflow_.append(data, size);
+      } else if (size <= sizeof(inline_) - size_) {
+        std::memcpy(inline_ + size_, data, size);
+      } else {
+        overflow_.assign(inline_, size_);
+        overflow_.append(data, size);
+        large_ = true;
+      }
+      size_ += size;
+    }
+    Slice slice() const {
+      return Slice(large_ ? overflow_.data() : inline_, size_);
+    }
+
+   private:
+    char inline_[32];
+    std::string overflow_;
+    size_t size_ = 0;
+    bool large_ = false;
+  };
+
   const Comparator* const comparator_;
   const char* const data_;       // underlying block contents
   uint32_t const restarts_;      // Offset of restart array (list of fixed32)
@@ -84,7 +129,7 @@ class Block::Iter : public Iterator {
   // current_ is offset in data_ of current entry.  >= restarts_ if !Valid
   uint32_t current_;
   uint32_t restart_index_;  // Index of restart block in which current_ falls
-  std::string key_;
+  KeyBuffer key_;
   Slice value_;
   Status status_;
 
@@ -128,7 +173,7 @@ class Block::Iter : public Iterator {
   Status status() const override { return status_; }
   Slice key() const override {
     assert(Valid());
-    return key_;
+    return key_.slice();
   }
   Slice value() const override {
     assert(Valid());
@@ -172,7 +217,7 @@ class Block::Iter : public Iterator {
       // If we're already scanning, use the current position as a starting
       // point. This is beneficial if the key we're seeking to is ahead of the
       // current position.
-      current_key_compare = Compare(key_, target);
+      current_key_compare = Compare(key_.slice(), target);
       if (current_key_compare < 0) {
         // key_ is smaller than target
         left = restart_index_;
@@ -220,7 +265,7 @@ class Block::Iter : public Iterator {
       if (!ParseNextKey()) {
         return;
       }
-      if (Compare(key_, target) >= 0) {
+      if (Compare(key_.slice(), target) >= 0) {
         return;
       }
     }
@@ -287,6 +332,21 @@ Iterator* Block::NewIterator(const Comparator* comparator) {
   } else {
     return new Iter(comparator, data_, restart_offset_, num_restarts);
   }
+}
+
+Status Block::SeekThen(const Comparator* comparator, const Slice& target,
+                       void* arg,
+                       void (*handle_result)(void*, const Slice&,
+                                             const Slice&)) {
+  if (size_ < sizeof(uint32_t)) {
+    return Status::Corruption("bad block contents");
+  }
+  const uint32_t num_restarts = NumRestarts();
+  if (num_restarts == 0) return Status::OK();
+  Iter iter(comparator, data_, restart_offset_, num_restarts);
+  iter.Seek(target);
+  if (iter.Valid()) (*handle_result)(arg, iter.key(), iter.value());
+  return iter.status();
 }
 
 }  // namespace leveldb

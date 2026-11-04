@@ -211,6 +211,13 @@ Status DecodeMetadataWALRecord(const Slice& record, MetadataWALRecord* out) {
   return Status::OK();
 }
 
+struct BatchKeyLess {
+  bool operator()(const Slice& a, const Slice& b) const {
+    return a.compare(b) < 0;
+  }
+};
+using BatchValueMap = std::map<Slice, MetadataValue, BatchKeyLess>;
+
 template <class SpillCallback>
 class BatchMetadataCounter final : public WriteBatch::Handler {
  public:
@@ -238,16 +245,48 @@ class BatchMetadataCounter final : public WriteBatch::Handler {
       return;
     }
     ++total_records_;
-    auto iter = counts.find(key.ToString());
+    const size_t entry_charge = key.size() + sizeof(uint64_t) + 64;
+    if (counts.empty()) {
+      size_t pos = 0;
+      while (pos < inline_size_ && inline_entries_[pos].key.compare(key) < 0) {
+        ++pos;
+      }
+      if (pos < inline_size_ && inline_entries_[pos].key == key) {
+        if (inline_entries_[pos].count == std::numeric_limits<uint64_t>::max()) {
+          count_overflow_ = true;
+        } else {
+          ++inline_entries_[pos].count;
+        }
+        return;
+      }
+      if (inline_size_ != 0 &&
+          entry_charge > budget_ - std::min(budget_, memory_usage_)) {
+        status_ = SpillNow();
+        if (!status_.ok()) return;
+        pos = 0;
+      }
+      if (inline_size_ < kInlineCapacity) {
+        for (size_t i = inline_size_; i > pos; --i) {
+          inline_entries_[i] = inline_entries_[i - 1];
+        }
+        inline_entries_[pos].key = key;
+        inline_entries_[pos].count = 1;
+        ++inline_size_;
+        memory_usage_ += entry_charge;
+        if (memory_usage_ >= budget_) status_ = SpillNow();
+        return;
+      }
+      MoveInlineToMap();
+    }
+    auto iter = counts.find(key);
     if (iter == counts.end()) {
-      const size_t entry_charge = key.size() + sizeof(uint64_t) + 64;
       if (!counts.empty() &&
           (counts.size() >= kMaxMetadataWALUpdates ||
            entry_charge > budget_ - std::min(budget_, memory_usage_))) {
         status_ = SpillNow();
         if (!status_.ok()) return;
       }
-      iter = counts.emplace(key.ToString(), MetadataValue()).first;
+      iter = counts.emplace(key, MetadataValue()).first;
       memory_usage_ += key.size() + sizeof(uint64_t) + 64;
     }
     if (iter->second.count == std::numeric_limits<uint64_t>::max()) {
@@ -259,6 +298,7 @@ class BatchMetadataCounter final : public WriteBatch::Handler {
   }
 
   Status SpillNow() {
+    MoveInlineToMap();
     if (counts.empty()) return Status::OK();
     Status s = spill_(counts);
     if (s.ok()) {
@@ -269,14 +309,27 @@ class BatchMetadataCounter final : public WriteBatch::Handler {
     return s;
   }
 
+  void MoveInlineToMap() {
+    for (size_t i = 0; i < inline_size_; ++i) {
+      MetadataValue value;
+      value.count = inline_entries_[i].count;
+      counts.emplace_hint(counts.end(), inline_entries_[i].key, value);
+    }
+    inline_size_ = 0;
+  }
+
   bool spilled() const { return spilled_; }
   const Status& status() const { return status_; }
   uint64_t total_records() const { return total_records_; }
   bool count_overflow() const { return count_overflow_; }
   bool has_largest_user_key() const { return has_largest_user_key_; }
   const Slice& largest_user_key() const { return largest_user_key_; }
+  size_t inline_size() const { return inline_size_; }
+  const Slice& inline_key(size_t index) const { return inline_entries_[index].key; }
 
-  MetadataValueMap counts;
+  // The grouped writers and their batches remain alive until this counter is
+  // destroyed, including while a spill or compaction wait releases the mutex.
+  BatchValueMap counts;
 
  private:
   const size_t budget_;
@@ -285,6 +338,10 @@ class BatchMetadataCounter final : public WriteBatch::Handler {
   size_t memory_usage_;
   uint64_t total_records_;
   bool count_overflow_;
+  static constexpr size_t kInlineCapacity = 4;
+  struct InlineEntry { Slice key; uint64_t count; };
+  InlineEntry inline_entries_[kInlineCapacity];
+  size_t inline_size_ = 0;
   Slice largest_user_key_;
   bool has_largest_user_key_ = false;
   bool spilled_ = false;
@@ -515,6 +572,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname,
       metadata_distinct_keys_(0),
       metadata_primary_user_key_bound_initialized_(false),
       metadata_primary_user_key_bound_has_value_(false),
+      metadata_primary_user_key_first_byte_bound_(0),
       metadata_primary_write_key_filter_active_(false),
       metadata_primary_write_key_filter_floor_has_value_(false),
       published_stats_compact_snapshot_(kCompactStatsFallback),
@@ -1021,14 +1079,20 @@ Status DBImpl::SyncMetadataWALPrefix(uint64_t through_log) {
 
   const uint64_t active_log_number = logfile_number_;
   WritableFile* const active_log = logfile_;
+  bool syncs_active_log = false;
   metadata_wal_prefix_sync_in_progress_ = true;
   for (const auto& log : dirty_logs) {
     metadata_wal_sync_pins_.insert(log.first);
+    if (log.first == active_log_number && active_log != nullptr) {
+      syncs_active_log = true;
+    }
   }
   mutex_.Unlock();
   MetadataProfile::Timer wal_io_wait_timer(
       &metadata_profile_, MetadataProfileStage::kWalIoWait);
-  metadata_wal_io_mutex_.Lock();
+  // Closed, pinned logs are immutable and use independent file handles.
+  // Only an active-log Sync shares its handle with foreground appends.
+  if (syncs_active_log) metadata_wal_io_mutex_.Lock();
   wal_io_wait_timer.Stop();
   Status s;
   for (const auto& log : dirty_logs) {
@@ -1048,7 +1112,7 @@ Status DBImpl::SyncMetadataWALPrefix(uint64_t through_log) {
       delete file;
     }
   }
-  metadata_wal_io_mutex_.Unlock();
+  if (syncs_active_log) metadata_wal_io_mutex_.Unlock();
   mutex_.Lock();
   if (s.ok()) {
     for (const auto& log : dirty_logs) {
@@ -1613,6 +1677,16 @@ Status DBImpl::InitializePrimaryUserKeyBound() {
   metadata_primary_user_key_bound_.swap(maximum);
   metadata_primary_user_key_bound_has_value_ = has_value;
   metadata_primary_user_key_bound_initialized_ = true;
+  if (user_comparator() == BytewiseComparator()) {
+    const uint16_t state = has_value
+        ? static_cast<uint16_t>(
+              256 + (metadata_primary_user_key_bound_.empty() ? 0 :
+                         static_cast<unsigned char>(
+                             metadata_primary_user_key_bound_[0])))
+        : uint16_t{1};
+    metadata_primary_user_key_first_byte_bound_.store(
+        state, std::memory_order_release);
+  }
   return Status::OK();
 }
 
@@ -1657,19 +1731,24 @@ bool DBImpl::PrimaryWriteKeyFilterMayContain(const Slice& key) {
   return true;
 }
 
-void DBImpl::RememberPrimaryWriteKey(const Slice& key) {
+bool DBImpl::RememberPrimaryWriteKey(const Slice& key) {
   mutex_.AssertHeld();
-  if (!PrimaryWriteKeyFilterApplies(key)) return;
+  if (!PrimaryWriteKeyFilterApplies(key)) return true;
   const uint64_t hash = PrimaryWriteKeyFilterHash(key);
   const uint64_t delta = (hash >> 17) | 1;
+  bool may_contain = true;
   for (size_t i = 0; i < kPrimaryWriteKeyFilterHashes; ++i) {
     const uint64_t bit = (hash + i * delta) & kPrimaryWriteKeyFilterMask;
-    metadata_primary_write_key_filter_bits_[bit >> 6] |=
-        uint64_t{1} << (bit & 63);
+    const uint64_t mask = uint64_t{1} << (bit & 63);
+    uint64_t& word = metadata_primary_write_key_filter_bits_[bit >> 6];
+    may_contain &= (word & mask) != 0;
+    word |= mask;
   }
+  return may_contain;
 }
 
-Status DBImpl::CountPrimaryRecordsForKey(const Slice& key, uint64_t* count) {
+Status DBImpl::CountPrimaryRecordsForKey(const Slice& key, uint64_t* count,
+                                         bool filter_already_checked) {
   mutex_.AssertHeld();
   if (count == nullptr) {
     return Status::InvalidArgument("record count output pointer is null");
@@ -1682,7 +1761,7 @@ Status DBImpl::CountPrimaryRecordsForKey(const Slice& key, uint64_t* count) {
     *count = 0;
     return Status::OK();
   }
-  if (PrimaryWriteKeyFilterApplies(key) &&
+  if (!filter_already_checked && PrimaryWriteKeyFilterApplies(key) &&
       !PrimaryWriteKeyFilterMayContain(key)) {
     *count = 0;
     return Status::OK();
@@ -3096,7 +3175,10 @@ Status DBImpl::TEST_CompactMemTable() {
   if (s.ok()) {
     // Wait until the compaction completes
     MutexLock l(&mutex_);
-    while (imm_ != nullptr && bg_error_.ok()) {
+    // A flush can clear imm_ before its profiling callback is published.
+    while ((imm_ != nullptr ||
+            (profiler_ != nullptr && profiling_callbacks_ != 0)) &&
+           bg_error_.ok()) {
       background_work_finished_signal_.Wait();
     }
     if (imm_ != nullptr) {
@@ -4361,15 +4443,15 @@ Iterator* DBImpl::NewInternalIterator(const ReadOptions& options,
 
   // Collect together all needed child iterators
   std::vector<Iterator*> list;
-  list.push_back(mem_->NewIterator());
+  if (mem_->HasEntries()) list.push_back(mem_->NewIterator());
   mem_->Ref();
   if (imm_ != nullptr) {
-    list.push_back(imm_->NewIterator());
+    if (imm_->HasEntries()) list.push_back(imm_->NewIterator());
     imm_->Ref();
   }
   versions_->current()->AddIterators(options, &list);
   Iterator* internal_iter =
-      NewMergingIterator(&internal_comparator_, &list[0], list.size());
+      NewMergingIterator(&internal_comparator_, list.data(), list.size());
   versions_->current()->Ref();
 
   IterState* cleanup = new IterState(&mutex_, mem_, imm_, versions_->current());
@@ -4396,7 +4478,29 @@ int64_t DBImpl::TEST_MaxNextLevelOverlappingBytes() {
 Status DBImpl::Get(const ReadOptions& options, const Slice& key,
                    std::string* value) {
   ProfileScope profile(profiler_, profiling_id_, "op.get");
+  return profile.Result(GetImpl<true>(options, key, value));
+}
+
+Status DBImpl::GetUnprofiled(const ReadOptions& options, const Slice& key,
+                             std::string* value) {
+  return GetImpl<false>(options, key, value);
+}
+
+template <bool kProfile>
+Status DBImpl::GetImpl(const ReadOptions& options, const Slice& key,
+                       std::string* value) {
   Status s;
+  if constexpr (!kProfile) {
+    if (user_comparator() == BytewiseComparator()) {
+      const uint16_t bound = metadata_primary_user_key_first_byte_bound_.load(
+          std::memory_order_acquire);
+      if (bound == 1 ||
+          (bound >= 256 && !key.empty() &&
+           static_cast<unsigned char>(key[0]) > bound - 256)) {
+        return Status::NotFound(Slice());
+      }
+    }
+  }
   MutexLock l(&mutex_);
   SequenceNumber snapshot;
   uint64_t read_time_micros;
@@ -4412,6 +4516,7 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
   MemTable* mem = mem_;
   MemTable* imm = imm_;
   Version* current = versions_->current();
+  const bool search_mem = mem->HasEntries();
   mem->Ref();
   if (imm != nullptr) imm->Ref();
   current->Ref();
@@ -4424,18 +4529,34 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
     mutex_.Unlock();
     // First look in the memtable, then in the immutable memtable (if any).
     LookupKey lkey(key, snapshot);
-    bool found;
-    { ProfileScope lookup("read.memtable"); found = mem->Get(lkey, read_time_micros, value, &s); lookup.SetStatus(s); }
+    bool found = false;
+    if (search_mem || (kProfile && profiler_)) {
+      if constexpr (kProfile) {
+        ProfileScope lookup("read.memtable");
+        found = mem->Get(lkey, read_time_micros, value, &s);
+        lookup.SetStatus(s);
+      } else {
+        found = mem->Get(lkey, read_time_micros, value, &s);
+      }
+    }
     if (found) {
       // Done
     } else if (imm != nullptr && [&] {
-      ProfileScope lookup("read.immutable_memtable");
-      bool found_imm = imm->Get(lkey, read_time_micros, value, &s);
-      lookup.SetStatus(s); return found_imm;
+      if constexpr (kProfile) {
+        ProfileScope lookup("read.immutable_memtable");
+        bool found_imm = imm->Get(lkey, read_time_micros, value, &s);
+        lookup.SetStatus(s); return found_imm;
+      } else {
+        return imm->Get(lkey, read_time_micros, value, &s);
+      }
     }()) {
       // Done
     } else {
-      s = ProfileStatus("read.sst", [&] { return current->Get(options, lkey, value, read_time_micros, &stats); });
+      if constexpr (kProfile) {
+        s = ProfileStatus("read.sst", [&] { return current->Get(options, lkey, value, read_time_micros, &stats); });
+      } else {
+        s = current->Get(options, lkey, value, read_time_micros, &stats);
+      }
       have_stat_update = true;
     }
     mutex_.Lock();
@@ -4447,7 +4568,7 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
   mem->Unref();
   if (imm != nullptr) imm->Unref();
   current->Unref();
-  return profile.Result(s);
+  return s;
 }
 
 Iterator* DBImpl::NewIterator(const ReadOptions& options) {
@@ -4492,8 +4613,17 @@ void DBImpl::ReleaseSnapshot(const Snapshot* snapshot) {
 Status DBImpl::Put(const WriteOptions& o, const Slice& key, const Slice& val) {
   ProfileScope profile(profiler_, profiling_id_, "op.put");
   WriteBatch batch;
-  batch.Put(key, val);
+  WriteBatchInternal::ReserveForPut(&batch, key, val);
+  WriteBatchInternal::AppendSinglePut(&batch, key, val);
   return profile.Result(WriteInternal(o, &batch, true, key));
+}
+
+Status DBImpl::PutUnprofiled(const WriteOptions& options, const Slice& key,
+                             const Slice& value) {
+  WriteBatch batch;
+  WriteBatchInternal::ReserveForPut(&batch, key, value);
+  WriteBatchInternal::AppendSinglePut(&batch, key, value);
+  return WriteInternal(options, &batch, true, key);
 }
 
 Status DBImpl::Put(const WriteOptions& options, const Slice& key,
@@ -4595,7 +4725,7 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
     std::function<Status(const std::vector<MetadataFileMeta>&,
                          MetadataFileMeta*)>
         merge_batch_runs;
-    auto spill_batch_counts = [&](const MetadataValueMap& counts) -> Status {
+    auto spill_batch_counts = [&](const BatchValueMap& counts) -> Status {
       const uint64_t number = versions_->NewFileNumber();
       pending_outputs_.insert(number);
       const std::string filename = MetadataFileName(dbname_, number);
@@ -4614,10 +4744,10 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
           value.count = entry.second.count;
           builder.Add(entry.first, MetadataIndex::EncodeValue(value));
           if (!have_key) {
-            run.smallest = entry.first;
+            run.smallest = entry.first.ToString();
             have_key = true;
           }
-          run.largest = entry.first;
+          run.largest = entry.first.ToString();
         }
         spill_status = builder.Finish();
         run.file_size = builder.FileSize();
@@ -4756,6 +4886,13 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
       if (compact == nullptr || !compact->has_metadata_delta_range) {
         return false;
       }
+      for (size_t i = 0; i < batch_counter.inline_size(); ++i) {
+        if (MetadataKeyInRange(batch_counter.inline_key(i),
+                               compact->metadata_delta_smallest,
+                               compact->metadata_delta_largest)) {
+          return true;
+        }
+      }
       for (const MetadataFileMeta& run : batch_runs) {
         if (!run.smallest.empty() &&
             MetadataRangesOverlap(run.smallest, run.largest,
@@ -4775,11 +4912,22 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
     };
     auto overlapping_journal_bytes = [&](CompactionState* compact) {
       size_t bytes = 0;
+      for (size_t i = 0; i < batch_counter.inline_size(); ++i) {
+        const Slice& key = batch_counter.inline_key(i);
+        if (MetadataKeyInRange(key, compact->metadata_delta_smallest,
+                               compact->metadata_delta_largest) &&
+            compact->metadata_journal_values.find(key.ToString()) ==
+                compact->metadata_journal_values.end()) {
+          const size_t charge = key.size() + sizeof(MetadataValue) + 48;
+          bytes = charge > std::numeric_limits<size_t>::max() - bytes
+                      ? std::numeric_limits<size_t>::max() : bytes + charge;
+        }
+      }
       for (const auto& entry : batch_counter.counts) {
         if (!MetadataKeyInRange(entry.first,
                                 compact->metadata_delta_smallest,
                                 compact->metadata_delta_largest) ||
-            compact->metadata_journal_values.find(entry.first) !=
+            compact->metadata_journal_values.find(entry.first.ToString()) !=
                 compact->metadata_journal_values.end()) {
           continue;
         }
@@ -4861,8 +5009,11 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
           (!metadata_primary_user_key_bound_has_value_ ||
            CompareUserKeys(user_comparator(), key,
                            metadata_primary_user_key_bound_) > 0);
-      if (!known_absent) {
-        Status count_status = CountPrimaryRecordsForKey(key, &old_count);
+      // The filter is advisory: a failed write can leave extra bits set,
+      // which only creates false positives. A definite miss is safe to use.
+      const bool filter_may_contain = RememberPrimaryWriteKey(key);
+      if (!known_absent && filter_may_contain) {
+        Status count_status = CountPrimaryRecordsForKey(key, &old_count, true);
         if (!count_status.ok()) return count_status;
       }
       if (old_count == 0) {
@@ -4871,7 +5022,6 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
         }
         ++next_distinct_keys;
       }
-      RememberPrimaryWriteKey(key);
       return Status::OK();
     };
 
@@ -4892,7 +5042,11 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
       if (status.ok()) status = keys->status();
       delete keys;
     } else if (status.ok()) {
+      for (size_t i = 0; i < batch_counter.inline_size() && status.ok(); ++i) {
+        status = account_key(batch_counter.inline_key(i));
+      }
       for (const auto& key_count : batch_counter.counts) {
+        if (!status.ok()) break;
         status = account_key(key_count.first);
         if (!status.ok()) break;
       }
@@ -4906,11 +5060,12 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
     batch_runs.clear();
 
     prepare_timer.Stop();
-    std::string wal_record;
+    Slice wal_record;
     if (status.ok()) {
       // Primary WriteBatch bytes are the complete recovery record. Statistics
       // are rebuilt from primary internal records after recovery.
-      wal_record = WriteBatchInternal::Contents(write_batch).ToString();
+      // The group leader keeps the batch alive through WAL append and insert.
+      wal_record = WriteBatchInternal::Contents(write_batch);
     }
 
     // Add to log and apply to memtable.  We can release the lock
@@ -5001,9 +5156,12 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
           write_bytes_since_open_ += batch_bytes;
         }
         const uint64_t configured_buffer = options_.write_buffer_size;
-        const uint64_t maximum_buffer = uint64_t{1} << 20;
+        // Preserve small configured buffers so SST-backed size estimates
+        // don't lag far behind writes when the configured buffer is small.
+        const uint64_t maximum_buffer = configured_buffer < (uint64_t{1} << 18)
+            ? configured_buffer : uint64_t{3} << 20;
         if (configured_buffer < maximum_buffer) {
-          const uint64_t growth_interval = configured_buffer * 16;
+          const uint64_t growth_interval = configured_buffer / 4;
           const uint64_t growth_steps =
               write_bytes_since_open_ / growth_interval;
           const uint64_t max_multiplier = maximum_buffer / configured_buffer;
@@ -5023,6 +5181,18 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
                                                  batch_max_key.size());
           metadata_primary_user_key_bound_has_value_ = true;
           metadata_primary_user_key_bound_initialized_ = true;
+          if (user_comparator() == BytewiseComparator()) {
+            const uint16_t candidate = static_cast<uint16_t>(
+                256 + (batch_max_key.empty() ? 0 :
+                    static_cast<unsigned char>(batch_max_key[0])));
+            const uint16_t current =
+                metadata_primary_user_key_first_byte_bound_.load(
+                    std::memory_order_relaxed);
+            if (current == 0 || current == 1 || candidate > current) {
+              metadata_primary_user_key_first_byte_bound_.store(
+                  candidate, std::memory_order_release);
+            }
+          }
         }
       }
       UpdatePublishedStatsSnapshot();
@@ -5144,7 +5314,12 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       Log(options_.info_log, "Metadata generations full; waiting...\n");
       background_work_finished_signal_.Wait();
     } else if (!force &&
-               (mem_->ApproximateMemoryUsage() <= write_buffer_limit_)) {
+               (mem_->ApproximateMemoryUsage() <=
+                (!snapshots_.empty() &&
+                         write_bytes_since_open_ <
+                             static_cast<uint64_t>(options_.write_buffer_size) * 16
+                     ? options_.write_buffer_size
+                     : write_buffer_limit_))) {
       // There is room in current memtable
       break;
     } else if (imm_ != nullptr) {
@@ -5435,6 +5610,16 @@ class DBImplUnprofiled final : public DBImpl {
       : DBImpl(options, dbname, profiling_id) {}
 
   Status GetCurrentStats(const ReadOptions& options, Stats* stats) override;
+  Status Get(const ReadOptions& options, const Slice& key,
+             std::string* value) override {
+    if (ProfileScope::Current() != nullptr) return DBImpl::Get(options, key, value);
+    return GetUnprofiled(options, key, value);
+  }
+  Status Put(const WriteOptions& options, const Slice& key,
+             const Slice& value) override {
+    if (ProfileScope::Current() != nullptr) return DBImpl::Put(options, key, value);
+    return PutUnprofiled(options, key, value);
+  }
 };
 
 #if defined(__GNUC__)

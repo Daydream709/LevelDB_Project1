@@ -136,6 +136,9 @@ class SkipList {
   std::atomic<int> max_height_;  // Height of the entire list
 
   // Read/written only by Insert().
+  // Last node at each level, or head_ when that level is empty.
+  // Insert is externally synchronized, so readers never access these hints.
+  Node* tails_[kMaxHeight];
   Random rnd_;
 };
 
@@ -328,6 +331,7 @@ SkipList<Key, Comparator>::SkipList(Comparator cmp, Arena* arena)
       rnd_(0xdeadbeef) {
   for (int i = 0; i < kMaxHeight; i++) {
     head_->SetNext(i, nullptr);
+    tails_[i] = head_;
   }
 }
 
@@ -336,7 +340,13 @@ void SkipList<Key, Comparator>::Insert(const Key& key) {
   // TODO(opt): We can use a barrier-free variant of FindGreaterOrEqual()
   // here since Insert() is externally synchronized.
   Node* prev[kMaxHeight];
-  Node* x = FindGreaterOrEqual(key, prev);
+  Node* x;
+  if (tails_[0] == head_ || compare_(tails_[0]->key, key) < 0) {
+    for (int i = 0; i < GetMaxHeight(); ++i) prev[i] = tails_[i];
+    x = nullptr;
+  } else {
+    x = FindGreaterOrEqual(key, prev);
+  }
 
   // Our data structure does not allow duplicate insertion
   assert(x == nullptr || !Equal(key, x->key));
@@ -360,8 +370,10 @@ void SkipList<Key, Comparator>::Insert(const Key& key) {
   for (int i = 0; i < height; i++) {
     // NoBarrier_SetNext() suffices since we will add a barrier when
     // we publish a pointer to "x" in prev[i].
-    x->NoBarrier_SetNext(i, prev[i]->NoBarrier_Next(i));
+    Node* next = prev[i]->NoBarrier_Next(i);
+    x->NoBarrier_SetNext(i, next);
     prev[i]->SetNext(i, x);
+    if (next == nullptr) tails_[i] = x;
   }
 }
 

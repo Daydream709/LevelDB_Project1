@@ -339,30 +339,65 @@ Iterator* Table::NewIterator(const ReadOptions& options) const {
 Status Table::InternalGet(const ReadOptions& options, const Slice& k, void* arg,
                           void (*handle_result)(void*, const Slice&,
                                                 const Slice&)) {
-  Status s;
-  Iterator* iiter = rep_->index_block->NewIterator(rep_->options.comparator);
-  iiter->Seek(k);
-  if (iiter->Valid()) {
-    Slice handle_value = iiter->value();
+  struct IndexResult {
+    Slice value;
+    bool found = false;
+  } index_result;
+  Status s = rep_->index_block->SeekThen(
+      rep_->options.comparator, k, &index_result,
+      [](void* arg, const Slice&, const Slice& value) {
+        IndexResult* result = static_cast<IndexResult*>(arg);
+        result->value = value;
+        result->found = true;
+      });
+  if (s.ok() && index_result.found) {
+    Slice handle_value = index_result.value;
     FilterBlockReader* filter = rep_->filter;
     BlockHandle handle;
     if (filter != nullptr && handle.DecodeFrom(&handle_value).ok() &&
         !filter->KeyMayMatch(handle.offset(), k)) {
       // Not found
     } else {
-      Iterator* block_iter = BlockReader(this, options, iiter->value());
-      block_iter->Seek(k);
-      if (block_iter->Valid()) {
-        (*handle_result)(arg, block_iter->key(), block_iter->value());
+      // A point lookup does not need to retain a heap iterator. Keep the
+      // cache reference (or owned block) alive until the callback returns.
+      Slice input = index_result.value;
+      BlockHandle data_handle;
+      s = data_handle.DecodeFrom(&input);
+      Cache* block_cache = rep_->options.block_cache;
+      Cache::Handle* cache_handle = nullptr;
+      Block* block = nullptr;
+      if (s.ok()) {
+        BlockContents contents;
+        char cache_key_buffer[16];
+        if (block_cache != nullptr) {
+          EncodeFixed64(cache_key_buffer, rep_->cache_id);
+          EncodeFixed64(cache_key_buffer + 8, data_handle.offset());
+          cache_handle = block_cache->Lookup(Slice(cache_key_buffer, 16));
+        }
+        if (cache_handle != nullptr) {
+          block = reinterpret_cast<Block*>(block_cache->Value(cache_handle));
+        } else {
+          s = ReadBlock(rep_->file, options, data_handle, &contents);
+          if (s.ok()) {
+            block = new Block(contents);
+            if (block_cache != nullptr && contents.cachable && options.fill_cache) {
+              cache_handle = block_cache->Insert(Slice(cache_key_buffer, 16),
+                                                 block, block->size(),
+                                                 &DeleteCachedBlock);
+            }
+          }
+        }
       }
-      s = block_iter->status();
-      delete block_iter;
+      if (block != nullptr) {
+        s = block->SeekThen(rep_->options.comparator, k, arg, handle_result);
+        if (cache_handle != nullptr) {
+          block_cache->Release(cache_handle);
+        } else {
+          delete block;
+        }
+      }
     }
   }
-  if (s.ok()) {
-    s = iiter->status();
-  }
-  delete iiter;
   return s;
 }
 

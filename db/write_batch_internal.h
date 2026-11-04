@@ -5,6 +5,9 @@
 #ifndef STORAGE_LEVELDB_DB_WRITE_BATCH_INTERNAL_H_
 #define STORAGE_LEVELDB_DB_WRITE_BATCH_INTERNAL_H_
 
+#include <cassert>
+#include <limits>
+
 #include "db/dbformat.h"
 #include "leveldb/write_batch.h"
 
@@ -32,6 +35,43 @@ class WriteBatchInternal {
   static Slice Contents(const WriteBatch* batch) { return Slice(batch->rep_); }
 
   static size_t ByteSize(const WriteBatch* batch) { return batch->rep_.size(); }
+
+  static void ReserveForPut(WriteBatch* batch, const Slice& key,
+                            const Slice& value) {
+    auto varint_length = [](size_t n) {
+      size_t length = 1;
+      while (n >= 128) { n >>= 7; ++length; }
+      return length;
+    };
+    const size_t prefix = 1 + varint_length(key.size()) + varint_length(value.size());
+    const size_t max_size = std::numeric_limits<size_t>::max();
+    if (batch->rep_.size() > max_size - prefix) return;
+    const size_t overhead = batch->rep_.size() + prefix;
+    const size_t limit = max_size - overhead;
+    if (key.size() <= limit && value.size() <= limit - key.size()) {
+      batch->rep_.reserve(overhead + key.size() + value.size());
+    }
+  }
+
+  // The DB's ordinary Put creates an empty batch for exactly one value.
+  static void AppendSinglePut(WriteBatch* batch, const Slice& key,
+                              const Slice& value) {
+    assert(batch->rep_.size() == 12 && Count(batch) == 0);
+    std::string& out = batch->rep_;
+    out[8] = 1;  // The fresh batch count is zero in the other three bytes.
+    out.push_back(static_cast<char>(kTypeValue));
+    auto append_length = [&out](uint32_t n) {
+      while (n >= 128) {
+        out.push_back(static_cast<char>(n | 128));
+        n >>= 7;
+      }
+      out.push_back(static_cast<char>(n));
+    };
+    append_length(static_cast<uint32_t>(key.size()));
+    if (!key.empty()) out.append(key.data(), key.size());
+    append_length(static_cast<uint32_t>(value.size()));
+    if (!value.empty()) out.append(value.data(), value.size());
+  }
 
   static void SetContents(WriteBatch* batch, const Slice& contents);
 
