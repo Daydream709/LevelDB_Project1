@@ -2671,6 +2671,146 @@ void DBImpl::CompactMemTable() {
   profile.SetStatus(s);
 }
 
+Status DBImpl::VerifyFullGCTables(Version* version) {
+  Options verify_options = options_;
+  verify_options.paranoid_checks = true;
+  verify_options.block_cache = nullptr;
+  ReadOptions read_options;
+  read_options.verify_checksums = true;
+  Status status;
+  for (int level = 0; level < config::kNumLevels && status.ok(); ++level) {
+    for (FileMetaData* meta : version->files(level)) {
+      RandomAccessFile* file = nullptr;
+      const std::string ldb = TableFileName(dbname_, meta->number);
+      const std::string sst = SSTTableFileName(dbname_, meta->number);
+      status = env_->NewRandomAccessFile(
+          !env_->FileExists(ldb) && env_->FileExists(sst) ? sst : ldb, &file);
+      Table* table = nullptr;
+      if (status.ok()) status = Table::Open(verify_options, file, meta->file_size, &table);
+      if (status.ok()) {
+        Iterator* check = table->NewIterator(read_options);
+        for (check->SeekToFirst(); check->Valid(); check->Next()) {}
+        status = check->status();
+        delete check;
+      }
+      delete table;
+      delete file;
+      if (!status.ok()) break;
+    }
+  }
+  return status;
+}
+
+Status DBImpl::RunFullGC(GCResult* result) {
+  if (result == nullptr) return Status::InvalidArgument("GC result must not be null");
+  *result = GCResult();
+  mutex_.Lock();
+  if (!bg_error_.ok()) { Status s = bg_error_; mutex_.Unlock(); return s; }
+  if (shutting_down_.load(std::memory_order_acquire)) {
+    mutex_.Unlock();
+    return Status::IOError("DB is shutting down");
+  }
+  result->entry_sequence = versions_->LastSequence();
+  result->entry_time_micros = env_->NowMicros();
+  result->snapshots_blocked = !snapshots_.empty();
+  result->iterators_blocked = active_user_iterators_.load(std::memory_order_acquire) != 0;
+  if (full_gc_active_) {
+    result->concurrent_state_changed = true;
+    mutex_.Unlock();
+    return Status::OK();
+  }
+  full_gc_active_ = true;
+  full_gc_sequence_ = result->entry_sequence;
+  full_gc_time_micros_ = result->entry_time_micros;
+  Version* entry_version = versions_->current();
+  entry_version->Ref();
+  mutex_.Unlock();
+
+  Status status = VerifyFullGCTables(entry_version);
+  mutex_.Lock();
+  result->concurrent_state_changed = versions_->current() != entry_version;
+  entry_version->Unref();
+  mutex_.Unlock();
+  if (status.ok()) CompactRange(nullptr, nullptr);
+  mutex_.Lock();
+  if (status.ok()) status = bg_error_;
+  if (status.ok() && shutting_down_.load(std::memory_order_acquire))
+    status = Status::IOError("DB is shutting down");
+  result->snapshots_blocked = result->snapshots_blocked || !snapshots_.empty();
+  result->iterators_blocked = result->iterators_blocked ||
+      active_user_iterators_.load(std::memory_order_acquire) != 0;
+  result->concurrent_state_changed = result->concurrent_state_changed ||
+      versions_->LastSequence() != result->entry_sequence;
+  Version* verified_version = nullptr;
+  if (status.ok() && !result->snapshots_blocked && !result->iterators_blocked &&
+      !result->concurrent_state_changed) {
+    verified_version = versions_->current();
+    verified_version->Ref();
+  }
+  mutex_.Unlock();
+
+  bool clean = true;
+  if (status.ok() && !result->snapshots_blocked && !result->iterators_blocked &&
+      !result->concurrent_state_changed) {
+    ReadOptions options;
+    options.verify_checksums = true;
+    // Verify independently of blocks that may have entered the shared cache
+    // without checksums, both before rewriting and before declaring success.
+    status = VerifyFullGCTables(verified_version);
+    SequenceNumber sequence;
+    uint64_t read_time;
+    uint32_t seed;
+    Iterator* iter = status.ok()
+        ? NewInternalIterator(options, &sequence, &read_time, &seed) : nullptr;
+    std::string previous;
+    bool have_previous = false;
+    if (iter != nullptr) for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      ParsedInternalKey key;
+      if (!ParseInternalKey(iter->key(), &key)) {
+        status = Status::Corruption("invalid internal key during full GC verification");
+        break;
+      }
+      if ((have_previous && user_comparator()->Compare(key.user_key, previous) == 0) ||
+          key.type == kTypeDeletion) clean = false;
+      if (key.type == kTypeValueWithTTL) {
+        if (iter->value().size() < 8) {
+          status = Status::Corruption("invalid TTL value during full GC verification");
+          break;
+        }
+        if (DecodeFixed64(iter->value().data()) <= result->entry_time_micros) clean = false;
+      }
+      previous.assign(key.user_key.data(), key.user_key.size());
+      have_previous = true;
+    }
+    if (iter != nullptr && status.ok()) status = iter->status();
+    delete iter;
+    if (status.ok() && sequence != result->entry_sequence)
+      result->concurrent_state_changed = true;
+  } else {
+    clean = false;
+  }
+  mutex_.Lock();
+  if (status.ok() && !bg_error_.ok()) status = bg_error_;
+  if (status.ok() && shutting_down_.load(std::memory_order_acquire))
+    status = Status::IOError("DB is shutting down");
+  result->snapshots_blocked = result->snapshots_blocked || !snapshots_.empty();
+  result->iterators_blocked = result->iterators_blocked ||
+      active_user_iterators_.load(std::memory_order_acquire) != 0;
+  result->concurrent_state_changed = result->concurrent_state_changed ||
+      versions_->LastSequence() != result->entry_sequence;
+  if (verified_version != nullptr) {
+    if (versions_->current() != verified_version)
+      result->concurrent_state_changed = true;
+    verified_version->Unref();
+  }
+  result->complete = status.ok() && clean && !result->snapshots_blocked &&
+      !result->iterators_blocked && !result->concurrent_state_changed;
+  full_gc_active_ = false;
+  background_work_finished_signal_.SignalAll();
+  mutex_.Unlock();
+  return status;
+}
+
 void DBImpl::CompactRange(const Slice* begin, const Slice* end) {
   ProfileScope profile(profiler_, profiling_id_, "op.compact_range");
   // Flush before choosing the levels: this call may create the first SST,
@@ -2706,7 +2846,9 @@ void DBImpl::CompactRange(const Slice* begin, const Slice* end) {
     {
       MutexLock l(&mutex_);
       status = bg_error_;
-      const uint64_t now = env_->NowMicros();
+      const uint64_t current_time = env_->NowMicros();
+      const uint64_t now = full_gc_active_
+          ? std::min(current_time, full_gc_time_micros_) : current_time;
       if (status.ok()) {
         for (FileMetaData* file : versions_->current()->files(max_level_with_files)) {
           if ((begin != nullptr &&
@@ -2817,8 +2959,10 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
   }
   Iterator* input = NewMergingIterator(&internal_comparator_, children.data(),
                                       children.size());
-  const bool preserve_snapshots = !snapshots_.empty();
-  const uint64_t read_time_micros = env_->NowMicros();
+  const bool preserve_snapshots = !snapshots_.empty() ||
+      (full_gc_active_ && versions_->LastSequence() > full_gc_sequence_);
+  const uint64_t read_time_micros = full_gc_active_
+      ? std::min(env_->NowMicros(), full_gc_time_micros_) : env_->NowMicros();
   std::vector<int> nonempty_higher_levels;
   if (!preserve_snapshots) {
     for (int level = 0; level < bottom_level; ++level) {
@@ -3379,7 +3523,9 @@ Status DBImpl::FindTTLCompactionCandidate(bool* found) {
   // TTL work waits for snapshots to be released so it cannot spin on a record
   // whose older view is still protected.
   if (!snapshots_.empty()) { ProfileScope::Count("ttl.schedule_snapshot_skips"); return Status::OK(); }
-  const uint64_t now = env_->NowMicros();
+  const uint64_t current_time = env_->NowMicros();
+  const uint64_t now = full_gc_active_
+      ? std::min(current_time, full_gc_time_micros_) : current_time;
   const uint64_t safe_time = snapshots_.oldest_read_time_micros(now);
   Version* current = versions_->current();
   double best_score = -1.0;
@@ -4131,9 +4277,14 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   } else {
     compact->smallest_snapshot = snapshots_.oldest()->sequence_number();
   }
+  if (full_gc_active_)
+    compact->smallest_snapshot = std::min(compact->smallest_snapshot, full_gc_sequence_);
   const uint64_t compaction_time_micros = env_->NowMicros();
   compact->smallest_snapshot_time_micros =
       snapshots_.oldest_read_time_micros(compaction_time_micros);
+  if (full_gc_active_)
+    compact->smallest_snapshot_time_micros =
+        std::min(compact->smallest_snapshot_time_micros, full_gc_time_micros_);
 
   Iterator* input = versions_->MakeInputIterator(compact->compaction);
 
@@ -4752,8 +4903,14 @@ Status DBImpl::GetImpl(const ReadOptions& options, const Slice& key,
   return s;
 }
 
+void DBImpl::CleanupUserIterator(void* db, void*) {
+  static_cast<DBImpl*>(db)->active_user_iterators_.fetch_sub(
+      1, std::memory_order_release);
+}
+
 Iterator* DBImpl::NewIterator(const ReadOptions& options) {
   ProfileScope profile(profiler_, profiling_id_, "op.new_iterator");
+  active_user_iterators_.fetch_add(1, std::memory_order_acq_rel);
   SequenceNumber latest_snapshot;
   uint64_t latest_read_time_micros;
   uint32_t seed;
@@ -4766,8 +4923,10 @@ Iterator* DBImpl::NewIterator(const ReadOptions& options) {
     sequence = snap->sequence_number();
     read_time_micros = snap->read_time_micros();
   }
-  return NewDBIterator(this, user_comparator(), iter,
-                       sequence, read_time_micros, seed);
+  Iterator* result = NewDBIterator(this, user_comparator(), iter,
+                                   sequence, read_time_micros, seed);
+  result->RegisterCleanup(&DBImpl::CleanupUserIterator, this, nullptr);
+  return result;
 }
 
 void DBImpl::RecordReadSample(Slice key) {
@@ -5758,6 +5917,12 @@ void DBImpl::GetApproximateSizes(const Range* range, int n, uint64_t* sizes) {
 
 // Default implementations of convenience methods that subclasses of DB
 // can call if they wish
+Status DB::RunFullGC(GCResult* result) {
+  if (result == nullptr) return Status::InvalidArgument("GC result must not be null");
+  *result = GCResult();
+  return Status::NotSupported("full GC is not implemented");
+}
+
 Status DB::GetCurrentStats(const ReadOptions& options, Stats* stats) {
   (void)options;
   (void)stats;

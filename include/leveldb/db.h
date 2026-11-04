@@ -29,6 +29,17 @@ struct Stats {
     uint64_t seq = 0;     
 };
 
+// Outcome of a full garbage collection at its captured entry boundary.
+// A successful Status does not imply completion; inspect complete as well.
+struct GCResult {
+  uint64_t entry_sequence = 0;
+  uint64_t entry_time_micros = 0;
+  bool complete = false;
+  bool snapshots_blocked = false;
+  bool iterators_blocked = false;
+  bool concurrent_state_changed = false;
+};
+
 
 // Abstract handle to particular state of a DB.
 // A Snapshot is an immutable object and can therefore be safely
@@ -93,19 +104,25 @@ class LEVELDB_EXPORT DB {
   // May return some other Status on an error.
   virtual Status Get(const ReadOptions& options, const Slice& key,
                      std::string* value) = 0;
+  // Return one consistent current state, ignoring options.snapshot. Counts
+  // include unreclaimed internal versions, tombstones and expired values;
+  // distinct keys are compared by their original bytes.
   virtual Status GetCurrentStats(const ReadOptions& options, Stats* stats);
 
   // Return a heap-allocated iterator over the contents of the database.
   // The result of NewIterator() is initially invalid (caller must
   // call one of the Seek methods on the iterator before using it).
   //
+  // Without an explicit snapshot the iterator fixes both sequence and time
+  // at creation, including for TTL visibility.
   // Caller should delete the iterator when it is no longer needed.
   // The returned iterator should be deleted before this db is deleted.
   virtual Iterator* NewIterator(const ReadOptions& options) = 0;
 
   // Return a handle to the current DB state.  Iterators created with
   // this handle will all observe a stable snapshot of the current DB
-  // state.  The caller must call ReleaseSnapshot(result) when the
+  // state, including the physical time used to evaluate TTL. The caller must
+  // call ReleaseSnapshot(result) when the
   // snapshot is no longer needed.
   virtual const Snapshot* GetSnapshot() = 0;
 
@@ -153,6 +170,13 @@ class LEVELDB_EXPORT DB {
   // Therefore the following call will compact the entire database:
   //    db->CompactRange(nullptr, nullptr);
   virtual void CompactRange(const Slice* begin, const Slice* end) = 0;
+
+  // Reclaim safely obsolete records in the state captured at entry. Existing
+  // views and concurrent updates can prevent proof of complete reclamation.
+  // OK with result->complete == false means reclamation could not be proven;
+  // I/O, checksum and background failures are returned as errors. Old files
+  // still needed by readers or recovery may remain after successful GC.
+  virtual Status RunFullGC(GCResult* result);
 
   // Write a value that expires ttl seconds after this call. A zero TTL is
   // accepted and makes the value immediately invisible. Implementations that

@@ -790,6 +790,56 @@ class TTLReverseComparator : public Comparator {
   void FindShortSuccessor(std::string*) const override {}
 };
 
+class TTLCaseFoldComparator : public Comparator {
+ public:
+  int Compare(const Slice& a, const Slice& b) const override {
+    const size_t n = std::min(a.size(), b.size());
+    for (size_t i = 0; i < n; ++i) {
+      auto fold = [](unsigned char c) {
+        return c >= 'A' && c <= 'Z' ? static_cast<unsigned char>(c + 32) : c;
+      };
+      const auto x = fold(static_cast<unsigned char>(a[i]));
+      const auto y = fold(static_cast<unsigned char>(b[i]));
+      if (x != y) return x < y ? -1 : 1;
+    }
+    return a.size() < b.size() ? -1 : (a.size() > b.size() ? 1 : 0);
+  }
+  const char* Name() const override { return "test.TTLCaseFoldComparator"; }
+  void FindShortestSeparator(std::string*, const Slice&) const override {}
+  void FindShortSuccessor(std::string*) const override {}
+};
+
+TEST_P(TTLMetadataTest, RawDistinctKeysWithEquivalentComparatorAndSnapshot) {
+  static const TTLCaseFoldComparator comparator;
+  options_.comparator = &comparator;
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "A", "old"));
+  const Snapshot* snapshot = db_->GetSnapshot();
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "a", "new", 2));
+  ReadOptions options;
+  options.snapshot = snapshot;
+  Stats stats;
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(options, &stats));
+  EXPECT_EQ(2U, stats.total_entries);
+  EXPECT_EQ(2U, stats.distinct_keys);
+  EXPECT_EQ(2U, stats.seq);
+  ExpectValue("A", "old", snapshot);
+  ExpectValue("A", "new");
+  ExpectStatsMatchPhysicalScan(2);
+  ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+  ExpectStatsMatchPhysicalScan(2);
+  db_->ReleaseSnapshot(snapshot);
+  env_.Advance(2 * kMicrosPerSecond);
+  GCResult result;
+  ASSERT_LEVELDB_OK(db_->RunFullGC(&result));
+  EXPECT_TRUE(result.complete);
+  ExpectMissing("A");
+  ExpectStatsMatchPhysicalScan(2);
+  Reopen();
+  ExpectMissing("a");
+  ExpectStatsMatchPhysicalScan(2);
+}
+
 TEST_P(TTLMetadataTest, PartialRangeUsesCustomComparator) {
   // Static lifetime also covers fixture TearDown after an assertion failure.
   static const TTLReverseComparator comparator;
@@ -1046,6 +1096,204 @@ TEST_P(TTLMetadataTest, FixedTimeSnapshotsAndBidirectionalIterator) {
 
   db_->ReleaseSnapshot(before_ttl);
   db_->ReleaseSnapshot(after_expiry);
+}
+
+TEST_P(TTLMetadataTest, OverwriteDeadlinesRemainBarriersAfterRecovery) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "old"));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "short", 2));
+  env_.Advance(kMicrosPerSecond);
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "long", 4));
+  env_.Advance(3 * kMicrosPerSecond);
+  ExpectValue("key", "long");
+  env_.Advance(kMicrosPerSecond);
+  ExpectMissing("key");
+  ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+  db_->CompactRange(nullptr, nullptr);
+  ExpectMissing("key");
+  Reopen();
+  ExpectMissing("key");
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "permanent"));
+  env_.Advance(10 * kMicrosPerSecond);
+  ExpectValue("key", "permanent");
+  Reopen();
+  ExpectValue("key", "permanent");
+}
+
+TEST_P(TTLMetadataTest, FullGCReportsPinnedViewsAndThenReclaims) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_TRUE(db_->RunFullGC(nullptr).IsInvalidArgument());
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "expired", "old"));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "expired", "new", 1));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "deleted", "value"));
+  ASSERT_LEVELDB_OK(db_->Delete(WriteOptions(), "deleted"));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "live", "value"));
+  const Snapshot* snapshot = db_->GetSnapshot();
+  std::unique_ptr<Iterator> iter(db_->NewIterator(ReadOptions()));
+  env_.Advance(kMicrosPerSecond);
+  GCResult result;
+  ASSERT_LEVELDB_OK(db_->RunFullGC(&result));
+  EXPECT_FALSE(result.complete);
+  EXPECT_TRUE(result.snapshots_blocked);
+  EXPECT_TRUE(result.iterators_blocked);
+  ExpectValue("expired", "new", snapshot);
+  ExpectMissing("expired");
+  db_->ReleaseSnapshot(snapshot);
+  iter.reset();
+  ASSERT_LEVELDB_OK(db_->RunFullGC(&result));
+  EXPECT_TRUE(result.complete);
+  EXPECT_EQ(5U, result.entry_sequence);
+  ExpectMissing("expired");
+  ExpectMissing("deleted");
+  ExpectValue("live", "value");
+  Stats stats;
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
+  EXPECT_EQ(1U, stats.total_entries);
+  EXPECT_EQ(1U, stats.distinct_keys);
+  EXPECT_EQ(5U, stats.seq);
+  ExpectStatsMatchPhysicalScan(5);
+  Reopen();
+  ExpectMissing("expired");
+  ExpectMissing("deleted");
+  ExpectValue("live", "value");
+  ExpectStatsMatchPhysicalScan(5);
+}
+
+TEST_P(TTLMetadataTest, FullGCUsesEntryTimeDespiteClockAdvance) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "value", 2));
+  env_.BlockNextTableSync();
+  GCResult result;
+  Status gc_status;
+  std::thread gc([&] { gc_status = db_->RunFullGC(&result); });
+  if (!env_.WaitForBlockedTableSync()) {
+    env_.ReleaseTableSync();
+    gc.join();
+    FAIL() << "full GC did not reach table sync";
+    return;
+  }
+  env_.Advance(2 * kMicrosPerSecond);
+  env_.ReleaseTableSync();
+  gc.join();
+  ASSERT_LEVELDB_OK(gc_status);
+  EXPECT_TRUE(result.complete);
+  ExpectMissing("key");
+  Stats stats;
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
+  EXPECT_EQ(1U, stats.total_entries);
+  ASSERT_LEVELDB_OK(db_->RunFullGC(&result));
+  EXPECT_TRUE(result.complete);
+  ExpectStatsMatchPhysicalScan(1);
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
+  EXPECT_EQ(0U, stats.total_entries);
+}
+
+TEST_P(TTLMetadataTest, FullGCReportsConcurrentWrite) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "old"));
+  env_.BlockNextTableSync();
+  GCResult result;
+  Status gc_status;
+  std::thread gc([&] { gc_status = db_->RunFullGC(&result); });
+  if (!env_.WaitForBlockedTableSync()) {
+    env_.ReleaseTableSync();
+    gc.join();
+    FAIL() << "full GC did not reach table sync";
+    return;
+  }
+  const Status write_status = db_->Put(WriteOptions(), "key", "new");
+  env_.ReleaseTableSync();
+  gc.join();
+  ASSERT_LEVELDB_OK(write_status);
+  ASSERT_LEVELDB_OK(gc_status);
+  EXPECT_FALSE(result.complete);
+  EXPECT_TRUE(result.concurrent_state_changed);
+  ExpectValue("key", "new");
+  ExpectStatsMatchPhysicalScan(2);
+}
+
+TEST_P(TTLMetadataTest, FullGCReportsFlushFailure) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "value"));
+  env_.SetFault(FaultClockEnv::Fault::kTableSync);
+  GCResult result;
+  const Status status = db_->RunFullGC(&result);
+  env_.SetFault(FaultClockEnv::Fault::kNone);
+  EXPECT_TRUE(status.IsIOError()) << status.ToString();
+  EXPECT_FALSE(result.complete);
+  Reopen();
+  ExpectValue("key", "value");
+  ExpectStatsMatchPhysicalScan(1);
+}
+
+TEST_P(TTLMetadataTest, ConcurrentFullGCReportsItsEntryBoundary) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "value"));
+  env_.BlockNextTableSync();
+  GCResult first;
+  Status first_status;
+  std::thread gc([&] { first_status = db_->RunFullGC(&first); });
+  if (!env_.WaitForBlockedTableSync()) {
+    env_.ReleaseTableSync();
+    gc.join();
+    FAIL() << "full GC did not reach table sync";
+    return;
+  }
+  GCResult second;
+  const Status second_status = db_->RunFullGC(&second);
+  env_.ReleaseTableSync();
+  gc.join();
+  ASSERT_LEVELDB_OK(first_status);
+  ASSERT_LEVELDB_OK(second_status);
+  EXPECT_FALSE(second.complete);
+  EXPECT_TRUE(second.concurrent_state_changed);
+  EXPECT_EQ(second.entry_sequence, first.entry_sequence);
+  EXPECT_GE(second.entry_time_micros, first.entry_time_micros);
+}
+
+TEST_P(TTLMetadataTest, FullGCReportsManifestFailureAndRecovers) {
+  ASSERT_LEVELDB_OK(Open(true));
+  WriteOptions durable;
+  durable.sync = true;
+  ASSERT_LEVELDB_OK(db_->Put(durable, "key", "old"));
+  ASSERT_LEVELDB_OK(db_->Put(durable, "key", "expiring", 1));
+  env_.Advance(kMicrosPerSecond);
+  env_.SetFault(FaultClockEnv::Fault::kManifestAppend);
+  GCResult result;
+  const Status status = db_->RunFullGC(&result);
+  env_.SetFault(FaultClockEnv::Fault::kNone);
+  EXPECT_TRUE(status.IsIOError()) << status.ToString();
+  EXPECT_FALSE(result.complete);
+  EXPECT_GT(env_.FaultHits(), 0U);
+  Reopen();
+  ExpectMissing("key");
+  ExpectStatsMatchPhysicalScan(2);
+  ASSERT_LEVELDB_OK(db_->RunFullGC(&result));
+  EXPECT_TRUE(result.complete);
+  ExpectMissing("key");
+  ExpectStatsMatchPhysicalScan(2);
+}
+
+TEST_P(TTLMetadataTest, FullGCReportsTableReadFailure) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "value"));
+  ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+  TTLCompactionTestPeer::WaitForIdle(db_.get());
+  TTLCompactionTestPeer::EvictTables(db_.get());
+  env_.BlockNextTableRead(true);
+  GCResult result;
+  Status status;
+  std::thread gc([&] { status = db_->RunFullGC(&result); });
+  if (!env_.WaitForBlockedTableRead()) {
+    env_.ReleaseTableRead();
+    gc.join();
+    FAIL() << "full GC did not read a table";
+    return;
+  }
+  env_.ReleaseTableRead();
+  gc.join();
+  EXPECT_FALSE(status.ok());
+  EXPECT_FALSE(result.complete);
 }
 
 TEST_P(TTLMetadataTest, ZeroTTLAndOverflowDoNotResurrectOrConsumeSequence) {

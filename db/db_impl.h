@@ -56,6 +56,8 @@ class DBImpl : public DB {
 
   Status GetCurrentStats(const ReadOptions& options, Stats* stats) override;
 
+  Status RunFullGC(GCResult* result) override;
+
   Iterator* NewIterator(const ReadOptions&) override;
   const Snapshot* GetSnapshot() override;
   void ReleaseSnapshot(const Snapshot* snapshot) override;
@@ -110,6 +112,8 @@ class DBImpl : public DB {
   }
 
  private:
+  static void CleanupUserIterator(void* db, void* unused);
+  Status VerifyFullGCTables(Version* version);
   friend class DB;
   friend class TTLCompactionTestPeer;  // Test-only candidate inspection.
   struct CompactionState;
@@ -299,6 +303,11 @@ class DBImpl : public DB {
   // particular, prefix sync must not race a foreground append to logfile_.
   port::Mutex metadata_wal_io_mutex_;
   std::atomic<bool> shutting_down_;
+  // User iterators pin an immutable view independently of explicit snapshots.
+  std::atomic<uint64_t> active_user_iterators_{0};
+  bool full_gc_active_ GUARDED_BY(mutex_) = false;
+  uint64_t full_gc_sequence_ GUARDED_BY(mutex_) = 0;
+  uint64_t full_gc_time_micros_ GUARDED_BY(mutex_) = 0;
   port::CondVar background_work_finished_signal_ GUARDED_BY(mutex_);
   port::CondVar metadata_work_signal_ GUARDED_BY(mutex_);
   port::CondVar metadata_worker_finished_signal_ GUARDED_BY(mutex_);
