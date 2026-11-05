@@ -153,9 +153,18 @@ class DBImpl : public DB {
   Status GetCurrentStatsProfiled(Stats* stats);
   Status GetCurrentStatsWideSnapshot(Stats* stats);
   static constexpr uint64_t kCompactStatsFallback = uint64_t{1} << 63;
-  static constexpr uint64_t kCompactStatsFieldBits = 21;
-  static constexpr uint64_t kCompactStatsFieldMask =
-      (uint64_t{1} << kCompactStatsFieldBits) - 1;
+  static constexpr uint64_t kCompactStatsTotalBits = 21;
+  static constexpr uint64_t kCompactStatsDistinctBits = 19;
+  static constexpr uint64_t kCompactStatsSequenceBits = 23;
+  static_assert(kCompactStatsTotalBits + kCompactStatsDistinctBits +
+                    kCompactStatsSequenceBits == 63,
+                "compact statistics must leave one bit for fallback");
+  static constexpr uint64_t kCompactStatsTotalMask =
+      (uint64_t{1} << kCompactStatsTotalBits) - 1;
+  static constexpr uint64_t kCompactStatsDistinctMask =
+      (uint64_t{1} << kCompactStatsDistinctBits) - 1;
+  static constexpr uint64_t kCompactStatsSequenceMask =
+      (uint64_t{1} << kCompactStatsSequenceBits) - 1;
   static constexpr uint64_t kPublishedStatsWideCounts = uint64_t{1} << 63;
   static constexpr uint64_t kPublishedStatsVersionMask =
       kPublishedStatsWideCounts - 1;
@@ -164,11 +173,12 @@ class DBImpl : public DB {
     const uint64_t compact_snapshot =
         published_stats_compact_snapshot_.load(std::memory_order_relaxed);
     if ((compact_snapshot & kCompactStatsFallback) == 0) {
-      stats->total_entries = compact_snapshot & kCompactStatsFieldMask;
+      stats->total_entries = compact_snapshot & kCompactStatsTotalMask;
       stats->distinct_keys =
-          (compact_snapshot >> kCompactStatsFieldBits) &
-          kCompactStatsFieldMask;
-      stats->seq = compact_snapshot >> (2 * kCompactStatsFieldBits);
+          (compact_snapshot >> kCompactStatsTotalBits) &
+          kCompactStatsDistinctMask;
+      stats->seq = compact_snapshot >>
+                   (kCompactStatsTotalBits + kCompactStatsDistinctBits);
       return Status::OK();
     }
     return GetCurrentStatsWideSnapshot(stats);

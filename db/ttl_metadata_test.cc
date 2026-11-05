@@ -53,6 +53,19 @@ namespace leveldb {
 // No production state or public API is added by this test peer.
 class TTLCompactionTestPeer {
  public:
+  // Exercise snapshot representation boundaries without creating millions of
+  // records. The caller uses a disposable database with no pending work.
+  static bool PublishSyntheticStats(DB* db, uint64_t total, uint64_t distinct,
+                                    uint64_t sequence) {
+    auto* impl = static_cast<DBImpl*>(db);
+    MutexLock lock(&impl->mutex_);
+    impl->metadata_total_entries_ = total;
+    impl->metadata_distinct_keys_ = distinct;
+    impl->versions_->SetLastSequence(sequence);
+    impl->UpdatePublishedStatsSnapshot();
+    return (impl->published_stats_compact_snapshot_.load(
+                std::memory_order_relaxed) & DBImpl::kCompactStatsFallback) == 0;
+  }
   static uint64_t ScanDeadline(DB* db) {
     auto* impl = static_cast<DBImpl*>(db);
     MutexLock lock(&impl->mutex_);
@@ -1444,6 +1457,58 @@ TEST_P(TTLMetadataTest, SameKeyAcrossSSTImmutableAndActiveMemtable) {
   Reopen();
   ExpectValue("shared", "active");
   ExpectStatsMatchPhysicalScan(4);
+}
+
+TEST_P(TTLMetadataTest, CompactStatsFieldBoundariesAndWideFallback) {
+  ASSERT_LEVELDB_OK(Open(true));
+  constexpr uint64_t kMaxT = (uint64_t{1} << 21) - 1;
+  constexpr uint64_t kMaxD = (uint64_t{1} << 19) - 1;
+  constexpr uint64_t kMaxS = (uint64_t{1} << 23) - 1;
+  auto check = [&](uint64_t t, uint64_t d, uint64_t s, bool compact) {
+    EXPECT_EQ(compact, TTLCompactionTestPeer::PublishSyntheticStats(db_.get(), t, d, s));
+    Stats stats;
+    ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
+    EXPECT_EQ(t, stats.total_entries);
+    EXPECT_EQ(d, stats.distinct_keys);
+    EXPECT_EQ(s, stats.seq);
+  };
+  check(kMaxT, kMaxD, kMaxS, true);
+  check(kMaxT + 1, kMaxD, kMaxS, false);
+  check(kMaxT, kMaxD, kMaxS, true);
+  check(kMaxT, kMaxD + 1, kMaxS, false);
+  check(kMaxT, kMaxD, kMaxS, true);
+  check(kMaxT, kMaxD, kMaxS + 1, false);
+}
+
+TEST_P(TTLMetadataTest, CompactStatsSequenceBoundaryPublishesAtomically) {
+  ASSERT_LEVELDB_OK(Open(true));
+  constexpr uint64_t start = (uint64_t{1} << 23) - 5000;
+  TTLCompactionTestPeer::PublishSyntheticStats(db_.get(), 17, 1 + start % 2, start);
+  std::atomic<bool> done{false}, failed{false};
+  std::atomic<uint64_t> reads{0};
+  std::vector<std::thread> readers;
+  for (int i = 0; i < 4; ++i) {
+    readers.emplace_back([&] {
+      while (!done.load()) {
+        Stats stats;
+        if (!db_->GetCurrentStats(ReadOptions(), &stats).ok() ||
+            stats.total_entries != 17 || stats.distinct_keys != 1 + stats.seq % 2 ||
+            stats.seq < start || stats.seq > start + 10000) {
+          failed.store(true);
+          break;
+        }
+        ++reads;
+      }
+    });
+  }
+  while (reads.load() == 0 && !failed.load()) std::this_thread::yield();
+  for (uint64_t s = start + 1; s <= start + 10000; ++s) {
+    TTLCompactionTestPeer::PublishSyntheticStats(db_.get(), 17, 1 + s % 2, s);
+  }
+  done.store(true);
+  for (auto& reader : readers) reader.join();
+  EXPECT_GT(reads.load(), 0U);
+  EXPECT_FALSE(failed.load());
 }
 
 TEST_P(TTLMetadataTest, ConcurrentWriterHandoffPreservesStatsAndRecovery) {

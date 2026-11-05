@@ -1608,15 +1608,15 @@ void DBImpl::UpdatePublishedStatsSnapshot() {
   mutex_.AssertHeld();
   const uint64_t sequence = versions_->LastSequence();
   const bool compact_counts =
-      metadata_total_entries_ <= kCompactStatsFieldMask &&
-      metadata_distinct_keys_ <= kCompactStatsFieldMask &&
-      sequence <= kCompactStatsFieldMask;
+      metadata_total_entries_ <= kCompactStatsTotalMask &&
+      metadata_distinct_keys_ <= kCompactStatsDistinctMask &&
+      sequence <= kCompactStatsSequenceMask;
   if (published_stats_available_.load(std::memory_order_relaxed) &&
       compact_counts && !published_stats_wide_snapshot_current_) {
     const uint64_t compact_snapshot =
         metadata_total_entries_ |
-        (metadata_distinct_keys_ << kCompactStatsFieldBits) |
-        (sequence << (2 * kCompactStatsFieldBits));
+        (metadata_distinct_keys_ << kCompactStatsTotalBits) |
+        (sequence << (kCompactStatsTotalBits + kCompactStatsDistinctBits));
     published_stats_compact_snapshot_.store(compact_snapshot,
                                             std::memory_order_relaxed);
     return;
@@ -1659,13 +1659,13 @@ void DBImpl::UpdatePublishedStatsCompactSnapshot() {
   mutex_.AssertHeld();
   const uint64_t sequence = versions_->LastSequence();
   if (published_stats_available_.load(std::memory_order_relaxed) &&
-      metadata_total_entries_ <= kCompactStatsFieldMask &&
-      metadata_distinct_keys_ <= kCompactStatsFieldMask &&
-      sequence <= kCompactStatsFieldMask) {
+      metadata_total_entries_ <= kCompactStatsTotalMask &&
+      metadata_distinct_keys_ <= kCompactStatsDistinctMask &&
+      sequence <= kCompactStatsSequenceMask) {
     const uint64_t compact_snapshot =
         metadata_total_entries_ |
-        (metadata_distinct_keys_ << kCompactStatsFieldBits) |
-        (sequence << (2 * kCompactStatsFieldBits));
+        (metadata_distinct_keys_ << kCompactStatsTotalBits) |
+        (sequence << (kCompactStatsTotalBits + kCompactStatsDistinctBits));
     published_stats_compact_snapshot_.store(compact_snapshot,
                                             std::memory_order_relaxed);
   } else {
