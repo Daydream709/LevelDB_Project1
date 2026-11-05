@@ -83,6 +83,7 @@ class Version {
   // Count physical records for an exact raw user key. Files in exclude are
   // ignored; this is used to reconcile compaction output against the latest
   // installed version.
+  Status HasUserKeyRecords(const Slice& user_key, bool* exists) const;
   Status CountUserKeyRecords(const Slice& user_key,
                              const std::set<uint64_t>* exclude,
                              uint64_t* count) const;
@@ -90,6 +91,9 @@ class Version {
   // The returned file pointers remain valid while this Version is pinned.
   void CollectFilesExcept(const std::set<uint64_t>& exclude,
                           std::vector<FileMetaData*>* files) const;
+  Status HasUserKeyRecordsInFiles(const Slice& key,
+                                  const std::vector<FileMetaData*>& files,
+                                  bool* exists) const;
   Status CountUserKeyRecordsInFiles(const Slice& user_key,
                                    const std::vector<FileMetaData*>& files,
                                    uint64_t* count) const;

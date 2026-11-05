@@ -220,6 +220,8 @@ class DBImpl : public DB {
   Status RebuildMetadata() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status PersistPrimaryMetadataCheckpoint()
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Status HasPrimaryRecordsForKey(const Slice& key, bool* exists,
+                                 bool filter_already_checked = false);
   Status CountPrimaryRecordsForKey(const Slice& key, uint64_t* count,
                                    bool filter_already_checked = false)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);

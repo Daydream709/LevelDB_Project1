@@ -4,6 +4,18 @@
 
 #include "db/db_impl.h"
 
+#include "db/builder.h"
+#include "db/db_iter.h"
+#include "db/dbformat.h"
+#include "db/filename.h"
+#include "db/log_reader.h"
+#include "db/log_writer.h"
+#include "db/memtable.h"
+#include "db/metadata_index.h"
+#include "db/metadata_log.h"
+#include "db/table_cache.h"
+#include "db/version_set.h"
+#include "db/write_batch_internal.h"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -21,26 +33,16 @@
 #include <thread>
 #include <vector>
 
-#include "db/builder.h"
-#include "db/db_iter.h"
-#include "db/dbformat.h"
-#include "db/filename.h"
-#include "db/log_reader.h"
-#include "db/log_writer.h"
-#include "db/memtable.h"
-#include "db/metadata_log.h"
-#include "db/metadata_index.h"
-#include "db/table_cache.h"
-#include "db/version_set.h"
-#include "db/write_batch_internal.h"
-#include "leveldb/db.h"
 #include "leveldb/comparator.h"
+#include "leveldb/db.h"
 #include "leveldb/env.h"
 #include "leveldb/status.h"
 #include "leveldb/table.h"
 #include "leveldb/table_builder.h"
+
 #include "port/port.h"
 #include "table/block.h"
+#include "table/local_count_index.h"
 #include "table/merger.h"
 #include "table/two_level_iterator.h"
 #include "util/coding.h"
@@ -946,6 +948,23 @@ Status DBImpl::Recover(VersionEdit* edit, bool* save_manifest) {
   FileType type;
   std::vector<uint64_t> logs;
   for (size_t i = 0; i < filenames.size(); i++) {
+    const std::string& candidate = filenames[i];
+    const size_t marker = candidate.find(".counts.");
+    if (marker != std::string::npos && candidate.size() > marker + 14 &&
+        candidate.compare(candidate.size() - 6, 6, ".dbtmp") == 0) {
+      const std::string run =
+          candidate.substr(marker + 8, candidate.size() - marker - 14);
+      uint64_t owner;
+      FileType owner_type;
+      if (!run.empty() &&
+          run.find_first_not_of("0123456789") == std::string::npos &&
+          ParseFileName(candidate.substr(0, marker), &owner, &owner_type) &&
+          owner_type == kTableFile) {
+        Status cleanup = env_->RemoveFile(dbname_ + "/" + candidate);
+        if (!cleanup.ok()) return cleanup;
+        continue;
+      }
+    }
     if (ParseFileName(filenames[i], &number, &type)) {
       expected.erase(number);
       if (type == kLogFile) {
@@ -1754,6 +1773,36 @@ bool DBImpl::RememberPrimaryWriteKey(const Slice& key) {
   return may_contain;
 }
 
+Status DBImpl::HasPrimaryRecordsForKey(const Slice& key, bool* exists,
+                                       bool filter_already_checked) {
+  mutex_.AssertHeld();
+  *exists = false;
+  Status s = InitializePrimaryUserKeyBound();
+  if (!s.ok()) return s;
+  if (metadata_primary_user_key_bound_has_value_ &&
+      CompareUserKeys(user_comparator(), key,
+                      metadata_primary_user_key_bound_) > 0)
+    return Status::OK();
+  if (!filter_already_checked && PrimaryWriteKeyFilterApplies(key) &&
+      !PrimaryWriteKeyFilterMayContain(key))
+    return Status::OK();
+  if (mem_) {
+    s = mem_->HasUserKeyRecords(key, exists);
+    if (!s.ok() || *exists) {
+      if (*exists) ProfileScope::Count("metadata.presence_early_stop");
+      return s;
+    }
+  }
+  if (imm_) {
+    s = imm_->HasUserKeyRecords(key, exists);
+    if (!s.ok() || *exists) {
+      if (*exists) ProfileScope::Count("metadata.presence_early_stop");
+      return s;
+    }
+  }
+  return versions_->current()->HasUserKeyRecords(key, exists);
+}
+
 Status DBImpl::CountPrimaryRecordsForKey(const Slice& key, uint64_t* count,
                                          bool filter_already_checked) {
   mutex_.AssertHeld();
@@ -1774,9 +1823,14 @@ Status DBImpl::CountPrimaryRecordsForKey(const Slice& key, uint64_t* count,
     return Status::OK();
   }
   uint64_t result = 0;
-  if (mem_ != nullptr) result = mem_->CountUserKeyRecords(key);
+  if (mem_ != nullptr) {
+    s = mem_->CountUserKeyRecords(key, &result);
+    if (!s.ok()) return s;
+  }
   if (imm_ != nullptr) {
-    const uint64_t immutable_count = imm_->CountUserKeyRecords(key);
+    uint64_t immutable_count = 0;
+    s = imm_->CountUserKeyRecords(key, &immutable_count);
+    if (!s.ok()) return s;
     if (std::numeric_limits<uint64_t>::max() - result < immutable_count) {
       return Status::Corruption("user key record count overflow");
     }
@@ -3350,6 +3404,8 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
           gc_output_options.block_size = 8192;
         builder = new TableBuilder(gc_output_options, outfile);
         builder->EnableInternalStatsMetadata();
+        LocalCountTableAccess::Enable(
+            builder, TableFileName(dbname_, output_meta.number));
         output_meta.smallest.DecodeFrom(internal_key);
       }
       output_meta.largest.DecodeFrom(internal_key);
@@ -4145,6 +4201,7 @@ Status DBImpl::OpenCompactionOutputFile(CompactionState* compact) {
   if (s.ok()) {
     compact->builder = new TableBuilder(options_, compact->outfile);
     compact->builder->EnableInternalStatsMetadata();
+    LocalCountTableAccess::Enable(compact->builder, fname);
   }
   return s;
 }
@@ -4343,32 +4400,28 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
       // remains distinct without a lookup. Only a key with no output can cross
       // to zero, so probe the current primary state for those keys only.
       if (output_records == 0) {
-        uint64_t before = 0;
+        bool removed_key = false;
         if (use_scanned_bottom) {
-          // The negative delta is the exact number scanned in the input.
-          // Search all other sources, including writes committed since scan.
-          const uint64_t active = active_has_records ? mem_->CountUserKeyRecords(key) : 0;
-          const uint64_t frozen = immutable_has_records ? imm_->CountUserKeyRecords(key) : 0;
-          uint64_t other_tables = 0;
-          status = versions_->current()->CountUserKeyRecordsInFiles(
-              key, other_bottom_files, &other_tables);
-          if (status.ok() &&
-              (UINT64_MAX - amount < active ||
-               UINT64_MAX - (amount + active) < frozen ||
-               UINT64_MAX - (amount + active + frozen) < other_tables)) {
-            status = Status::Corruption("primary compaction count overflow");
-          }
-          if (status.ok()) before = amount + active + frozen + other_tables;
+          // Input count is known from the complete scan. Only presence in
+          // sources outside that input determines whether the key survives.
+          bool survives = false;
+          if (active_has_records)
+            status = mem_->HasUserKeyRecords(key, &survives);
+          if (status.ok() && !survives && immutable_has_records)
+            status = imm_->HasUserKeyRecords(key, &survives);
+          if (status.ok() && !survives)
+            status = versions_->current()->HasUserKeyRecordsInFiles(
+                key, other_bottom_files, &survives);
+          removed_key = !survives;
         } else {
+          uint64_t before = 0;
           status = CountPrimaryRecordsForKey(key, &before);
+          if (status.ok() && before < amount)
+            status = Status::Corruption("primary compaction count underflow");
+          removed_key = before == amount;
         }
         if (!status.ok()) break;
-        if (before < amount) {
-          status = Status::Corruption(
-              "primary compaction count underflow");
-          break;
-        }
-        if (before == amount) {
+        if (removed_key) {
           if (removed_distinct == std::numeric_limits<uint64_t>::max()) {
             status = Status::Corruption("distinct key count overflow");
             break;
@@ -5529,7 +5582,7 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
 
     auto account_key = [&](const Slice& key) -> Status {
       metadata_profile_.Count(MetadataProfileCounter::kWriteDistinctKeys);
-      uint64_t old_count = 0;
+      bool existed = false;
       const bool known_absent = metadata_primary_user_key_bound_initialized_ &&
           (!metadata_primary_user_key_bound_has_value_ ||
            CompareUserKeys(user_comparator(), key,
@@ -5538,10 +5591,10 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
       // which only creates false positives. A definite miss is safe to use.
       const bool filter_may_contain = RememberPrimaryWriteKey(key);
       if (!known_absent && filter_may_contain) {
-        Status count_status = CountPrimaryRecordsForKey(key, &old_count, true);
+        Status count_status = HasPrimaryRecordsForKey(key, &existed, true);
         if (!count_status.ok()) return count_status;
       }
-      if (old_count == 0) {
+      if (!existed) {
         if (next_distinct_keys == std::numeric_limits<uint64_t>::max()) {
           return Status::Corruption("distinct key count overflow");
         }
@@ -5955,7 +6008,8 @@ bool DBImpl::GetProperty(const Slice& property, std::string* value) {
     return true;
   } else if (in == "metadata-stats") {
     char buf[1024];
-    const size_t memory = metadata_index_->ApproximateMemoryUsage();
+    const size_t memory = metadata_index_->ApproximateMemoryUsage() +
+                          table_cache_->LocalCountCacheCharge();
     const size_t journal_bytes = metadata_compaction_prepare_ == nullptr
                                      ? 0
                                      : metadata_compaction_prepare_
@@ -5972,27 +6026,29 @@ bool DBImpl::GetProperty(const Slice& property, std::string* value) {
         "wal_budget_bytes=%llu checkpoint_interval_us=%llu "
         "pending_change_bytes=%llu pending_change_files=%zu rebuild_pending=%d "
         "compaction_prepare=%d compaction_finishing=%d "
-        "compaction_journal_bytes=%zu compaction_journal_files=%zu",
+        "compaction_journal_bytes=%zu compaction_journal_files=%zu "
+        "local_count_cache_bytes=%zu local_count_cache_budget_bytes=%zu",
         static_cast<unsigned long long>(metadata_mseq_),
         static_cast<unsigned long long>(versions_->metadata_checkpoint_mseq()),
         static_cast<unsigned long long>(metadata_total_entries_),
         static_cast<unsigned long long>(metadata_distinct_keys_),
         versions_->metadata_files().size(), metadata_index_->ImmutableCount(),
-        memory, options_.metadata_memtable_size + options_.metadata_cache_size +
-                    options_.metadata_workspace_size,
+        memory,
+        options_.metadata_memtable_size + options_.metadata_cache_size +
+            options_.metadata_workspace_size,
         static_cast<unsigned long long>(UncheckpointedMetadataWALBytes()),
         static_cast<unsigned long long>(options_.metadata_wal_size_limit),
         static_cast<unsigned long long>(
             options_.metadata_checkpoint_interval_micros),
         static_cast<unsigned long long>(PendingMetadataChangeBytes()),
-        PendingMetadataChangeFiles(),
-        metadata_needs_rebuild_ ? 1 : 0,
+        PendingMetadataChangeFiles(), metadata_needs_rebuild_ ? 1 : 0,
         metadata_compaction_prepare_ != nullptr ? 1 : 0,
         metadata_compaction_prepare_ != nullptr &&
                 metadata_compaction_prepare_->metadata_journal_finishing
             ? 1
             : 0,
-        journal_bytes, journal_files);
+        journal_bytes, journal_files, table_cache_->LocalCountCacheCharge(),
+        options_.metadata_cache_size / 2);
     *value = buf;
     return true;
   } else if (in == "metadata-profile") {

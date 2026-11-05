@@ -1,3 +1,4 @@
+#include "table/local_count_index.h"
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
@@ -315,6 +316,7 @@ class Repairer {
     }
     TableBuilder* builder = new TableBuilder(options_, file);
     builder->EnableInternalStatsMetadata();
+    LocalCountTableAccess::Enable(builder, copy);
 
     // Copy data.
     Iterator* iter = NewTableIterator(t.meta);

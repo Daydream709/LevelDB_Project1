@@ -3,27 +3,33 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "leveldb/table.h"
-#include "util/profiler.h"
 
+#include <atomic>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <optional>
-
-#include <limits>
 
 #include "leveldb/cache.h"
 #include "leveldb/comparator.h"
 #include "leveldb/env.h"
 #include "leveldb/filter_policy.h"
 #include "leveldb/options.h"
+
 #include "table/block.h"
 #include "table/filter_block.h"
 #include "table/format.h"
+#include "table/local_count_index.h"
 #include "table/two_level_iterator.h"
 #include "util/coding.h"
 #include "util/crc32c.h"
+#include "util/profiler.h"
 
 namespace leveldb {
+
+namespace {
+std::atomic<uint64_t> next_local_table_id{1};
+}
 
 struct Table::Rep {
   ~Rep() {
@@ -39,9 +45,16 @@ struct Table::Rep {
   FilterBlockReader* filter;
   const char* filter_data;
 
+  BlockHandle primary_index_handle;
+  std::once_flag primary_index_check;
+  Status primary_index_status;
   BlockHandle metaindex_handle;  // Handle to metaindex_block: saved from footer
   Block* index_block;
   TableInternalStats internal_stats;
+  uint64_t file_size;
+  uint64_t local_id = next_local_table_id.fetch_add(1);
+  std::string local_descriptor;
+  std::atomic<bool> local_disabled{false};
 };
 
 Status Table::Open(const Options& options, RandomAccessFile* file,
@@ -76,7 +89,9 @@ Status Table::Open(const Options& options, RandomAccessFile* file,
     Rep* rep = new Table::Rep;
     rep->options = options;
     rep->file = file;
+    rep->file_size = size;
     rep->metaindex_handle = footer.metaindex_handle();
+    rep->primary_index_handle = footer.index_handle();
     rep->index_block = index_block;
     rep->cache_id = (options.block_cache ? options.block_cache->NewId() : 0);
     rep->filter_data = nullptr;
@@ -90,9 +105,7 @@ Status Table::Open(const Options& options, RandomAccessFile* file,
 
 void Table::ReadMeta(const Footer& footer) {
   ReadOptions opt;
-  if (rep_->options.paranoid_checks) {
-    opt.verify_checksums = true;
-  }
+  opt.verify_checksums = true;
   BlockContents contents;
   if (!ReadBlock(rep_->file, opt, footer.metaindex_handle(), &contents).ok()) {
     // Do not propagate errors since meta info is not needed for operation.
@@ -108,6 +121,21 @@ void Table::ReadMeta(const Footer& footer) {
       std::string filter_key = "filter.";
       filter_key.append(rep_->options.filter_policy->Name());
       if (iter->key() == Slice(filter_key)) ReadFilter(iter->value());
+    }
+    if (iter->key() == Slice("leveldb.local-counts.v1")) {
+      Slice input = iter->value();
+      BlockHandle descriptor_handle;
+      if (descriptor_handle.DecodeFrom(&input).ok() && input.empty() &&
+          descriptor_handle.size() <= 64 &&
+          descriptor_handle.offset() <= rep_->file_size &&
+          descriptor_handle.size() + kBlockTrailerSize <=
+              rep_->file_size - descriptor_handle.offset()) {
+        BlockContents descriptor;
+        if (ReadBlock(rep_->file, opt, descriptor_handle, &descriptor).ok()) {
+          rep_->local_descriptor = descriptor.data.ToString();
+          if (descriptor.heap_allocated) delete[] descriptor.data.data();
+        }
+      }
     }
     if (iter->key() == Slice("leveldb.internal-stats.v1")) {
       found_stats = true;
@@ -487,6 +515,94 @@ uint64_t Table::ApproximateOffsetOf(const Slice& key) const {
   }
   delete index_iter;
   return result;
+}
+
+namespace {
+void DeleteLocalCountBlock(const Slice&, void* value) {
+  delete static_cast<std::shared_ptr<LocalCountBlock>*>(value);
+}
+}  // namespace
+
+Status Table::VerifyPrimaryIndex() {
+  std::call_once(rep_->primary_index_check, [&] {
+    ReadOptions read;
+    read.verify_checksums = true;
+    BlockContents contents;
+    rep_->primary_index_status =
+        ReadBlock(rep_->file, read, rep_->primary_index_handle, &contents);
+    if (rep_->primary_index_status.ok() && contents.heap_allocated)
+      delete[] contents.data.data();
+  });
+  return rep_->primary_index_status;
+}
+
+Status LocalCountTableAccess::Lookup(Table* table, Cache* cache,
+                                     const Slice& key, uint64_t* count) {
+  return table->LookupLocalCounts(cache, key, count);
+}
+Status Table::LookupLocalCounts(Cache* cache, const Slice& key,
+                                uint64_t* count) {
+  *count = 0;
+  if (rep_->local_descriptor.empty() || rep_->local_disabled.load()) {
+    return Status::NotSupported("optional local count index unavailable");
+  }
+  Status s = LookupLocalCount(
+      rep_->local_descriptor, key, rep_->file_size,
+      [&](const BlockHandle& handle, std::shared_ptr<LocalCountBlock>* output) {
+        char encoded[16];
+        EncodeFixed64(encoded, rep_->local_id);
+        EncodeFixed64(encoded + 8, handle.offset());
+        Slice cache_key(encoded, sizeof(encoded));
+        Cache::Handle* hit = cache->Lookup(cache_key);
+        if (hit) {
+          ProfileScope::Count("metadata.local_count_cache_hit");
+          *output = *static_cast<std::shared_ptr<LocalCountBlock>*>(
+              cache->Value(hit));
+          cache->Release(hit);
+          return Status::OK();
+        }
+        ProfileScope::Count("metadata.local_count_cache_miss");
+        ProfileScope::Count("metadata.local_count_block_read");
+        ReadOptions read;
+        read.verify_checksums = true;
+        BlockContents contents;
+        Status result = ReadBlock(rep_->file, read, handle, &contents);
+        if (!result.ok()) return result;
+        output->reset(new LocalCountBlock);
+        (*output)->bytes.assign(contents.data.data(), contents.data.size());
+        if (contents.heap_allocated) delete[] contents.data.data();
+        ProfileScope::Count("metadata.local_count_decoded_bytes",
+                            (*output)->bytes.size());
+        size_t charge = (*output)->bytes.capacity() + sizeof(LocalCountBlock) +
+                        sizeof(std::shared_ptr<LocalCountBlock>) +
+                        2 * sizeof(void*);
+        // LevelDB shards its LRU 16 ways. Oversized entries can remain
+        // pinned through insertion, so admission must fit one shard.
+        if (charge + (*output)->bytes.size() <=
+            rep_->options.metadata_cache_size / 32) {
+          // Reserve the validation boundary before admission: its capacity
+          // is included even before the once-only structural check runs.
+          (*output)->last_key.reserve((*output)->bytes.size());
+          charge += (*output)->last_key.capacity();
+          auto* stored = new std::shared_ptr<LocalCountBlock>(*output);
+          auto* entry =
+              cache->Insert(cache_key, stored, charge, DeleteLocalCountBlock);
+          cache->Release(entry);
+          ProfileScope::Count("metadata.local_count_cache_admitted_bytes",
+                              charge);
+        } else {
+          ProfileScope::Count("metadata.local_count_oversize_bypass");
+        }
+        return Status::OK();
+      },
+      count);
+  if (!s.ok()) {
+    rep_->local_disabled.store(true);
+    *count = 0;
+    ProfileScope::Count("metadata.local_count_index_invalid");
+  } else
+    ProfileScope::Count("metadata.local_count_index_hit");
+  return s;
 }
 
 }  // namespace leveldb

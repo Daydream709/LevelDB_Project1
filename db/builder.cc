@@ -3,15 +3,18 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/builder.h"
-#include "util/profiler.h"
 
 #include "db/dbformat.h"
 #include "db/filename.h"
 #include "db/table_cache.h"
 #include "db/version_edit.h"
+
 #include "leveldb/db.h"
 #include "leveldb/env.h"
 #include "leveldb/iterator.h"
+
+#include "table/local_count_index.h"
+#include "util/profiler.h"
 
 namespace leveldb {
 
@@ -31,6 +34,7 @@ Status BuildTable(const std::string& dbname, Env* env, const Options& options,
 
     TableBuilder* builder = new TableBuilder(options, file);
     builder->EnableInternalStatsMetadata();
+    LocalCountTableAccess::Enable(builder, fname);
     meta->smallest.DecodeFrom(iter->key());
     Slice key;
     for (; iter->Valid(); iter->Next()) {

@@ -4,29 +4,114 @@
 
 #include "leveldb/table.h"
 
-#include <map>
+#include "db/dbformat.h"
+#include "db/filename.h"
+#include "db/memtable.h"
+#include "db/table_cache.h"
+#include "db/write_batch_internal.h"
+#include <algorithm>
+#include <cstdio>
 #include <limits>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "gtest/gtest.h"
-#include "db/dbformat.h"
-#include "db/memtable.h"
-#include "db/write_batch_internal.h"
+#include "leveldb/cache.h"
 #include "leveldb/db.h"
 #include "leveldb/env.h"
 #include "leveldb/iterator.h"
 #include "leveldb/options.h"
 #include "leveldb/table_builder.h"
+
 #include "table/block.h"
 #include "table/block_builder.h"
 #include "table/format.h"
-#include "util/random.h"
+#include "table/local_count_index.h"
 #include "util/coding.h"
+#include "util/crc32c.h"
+#include "util/random.h"
 #include "util/testutil.h"
 
+#include "gtest/gtest.h"
+
 namespace leveldb {
+
+TEST(LocalCountIndexTest, MultiLevelLookupAndCorruption) {
+  std::map<uint64_t, std::string> blocks;
+  uint64_t offset = 0;
+  LocalCountIndexBuilder builder(1024, [&](const Slice& bytes, BlockHandle* h) {
+    h->set_offset(offset);
+    h->set_size(bytes.size());
+    blocks.emplace(offset, bytes.ToString());
+    offset += bytes.size() + kBlockTrailerSize;
+    return Status::OK();
+  });
+  for (uint64_t i = 0; i < 10000; ++i) {
+    char key[32];
+    std::snprintf(key, sizeof(key), "key/%012llu",
+                  static_cast<unsigned long long>(i));
+    ASSERT_TRUE(builder.Add(key, i + 1).ok());
+  }
+  std::string descriptor;
+  ASSERT_TRUE(builder.Finish(&descriptor).ok());
+  ASSERT_GT(blocks.size(), 100);
+  const uint64_t file_size = offset + Footer::kEncodedLength;
+  auto read = [&](const BlockHandle& h,
+                  std::shared_ptr<LocalCountBlock>* data) {
+    auto it = blocks.find(h.offset());
+    if (it == blocks.end() || it->second.size() != h.size())
+      return Status::Corruption("test block");
+    data->reset(new LocalCountBlock);
+    (*data)->bytes = it->second;
+    return Status::OK();
+  };
+  for (uint64_t i : {uint64_t{0}, uint64_t{511}, uint64_t{9999}}) {
+    char key[32];
+    std::snprintf(key, sizeof(key), "key/%012llu",
+                  static_cast<unsigned long long>(i));
+    uint64_t count = 0;
+    ASSERT_TRUE(
+        LookupLocalCount(descriptor, key, file_size, read, &count).ok());
+    ASSERT_EQ(i + 1, count);
+  }
+  uint64_t count = 99;
+  ASSERT_TRUE(
+      LookupLocalCount(descriptor, "missing", file_size, read, &count).ok());
+  ASSERT_EQ(0, count);
+  std::string unknown = descriptor;
+  unknown[3] = '9';
+  ASSERT_FALSE(
+      LookupLocalCount(unknown, "key/000000000000", file_size, read, &count)
+          .ok());
+  ASSERT_FALSE(LookupLocalCount(Slice(descriptor.data(), descriptor.size() - 1),
+                                "x", file_size, read, &count)
+                   .ok());
+  std::string leaf = blocks.begin()->second;
+  blocks.begin()->second.assign(1, '\0');
+  ASSERT_FALSE(
+      LookupLocalCount(descriptor, "key/000000000000", file_size, read, &count)
+          .ok());
+  ASSERT_EQ(0, count);
+  blocks.begin()->second = leaf;
+  blocks.rbegin()->second.assign(1, '\0');
+  ASSERT_FALSE(
+      LookupLocalCount(descriptor, "missing", file_size, read, &count).ok());
+  ASSERT_EQ(0, count);
+}
+
+TEST(LocalCountIndexTest, RejectsInvalidCountsAndOrder) {
+  LocalCountIndexBuilder builder(1024, [](const Slice&, BlockHandle*) {
+    return Status::IOError("test output failure");
+  });
+  ASSERT_FALSE(builder.Add("x", 0).ok());
+  ASSERT_TRUE(builder.Add("", 1).ok());
+  ASSERT_FALSE(builder.Add("", 1).ok());
+  ASSERT_FALSE(builder.Add("z", std::numeric_limits<uint64_t>::max()).ok());
+  std::string descriptor;
+  ASSERT_TRUE(builder.Finish(&descriptor).IsIOError());
+  ASSERT_TRUE(descriptor.empty());
+}
 
 // Return reverse of "key".
 // Used to test non-lexicographic comparators.
@@ -119,9 +204,11 @@ class StringSource : public RandomAccessFile {
   ~StringSource() override = default;
 
   uint64_t Size() const { return contents_.size(); }
+  uint64_t Reads() const { return reads_; }
 
   Status Read(uint64_t offset, size_t n, Slice* result,
               char* scratch) const override {
+    ++reads_;
     if (offset >= contents_.size()) {
       return Status::InvalidArgument("invalid Read offset");
     }
@@ -135,7 +222,428 @@ class StringSource : public RandomAccessFile {
 
  private:
   std::string contents_;
+  mutable uint64_t reads_ = 0;
 };
+
+class RawEquivalentComparator : public Comparator {
+ public:
+  const char* Name() const override { return "local-count-test-equivalent"; }
+  int Compare(const Slice&, const Slice&) const override { return 0; }
+  void FindShortestSeparator(std::string*, const Slice&) const override {}
+  void FindShortSuccessor(std::string*) const override {}
+};
+
+TEST(LocalCountIndexTest, PrimarySSTBytewiseAndCustomSpill) {
+  RawEquivalentComparator equivalent;
+  for (bool custom : {false, true}) {
+    InternalKeyComparator internal(
+        custom ? static_cast<const Comparator*>(&equivalent)
+               : BytewiseComparator());
+    Options options;
+    options.comparator = &internal;
+    options.compression = kNoCompression;
+    options.metadata_workspace_size = 256;  // Exercise multiple merge passes.
+    options.metadata_cache_size = 8192;
+    options.block_size = 128;
+    StringSink sink;
+    TableBuilder builder(options, &sink);
+    builder.EnableInternalStatsMetadata();
+    std::string prefix =
+        testing::TempDir() + "local-count-" + std::to_string(custom) + ".ldb";
+    LocalCountTableAccess::Enable(&builder, prefix);
+    std::map<std::string, uint64_t> expected;
+    std::vector<std::pair<std::string, std::string>> records;
+    uint64_t seq = 100000;
+    for (int i = 0; i < 1200; ++i) {
+      std::string key =
+          i == 0 ? ""
+                 : std::string("raw\0", 4) + std::to_string((i * 43) % 317);
+      if (i == 1) key = std::string(10000, 'z');
+      ValueType type = static_cast<ValueType>(i % 3);
+      InternalKey ikey(key, seq--, type);
+      std::string value = "value";
+      if (type == kTypeValueWithTTL) {
+        value.clear();
+        PutFixed64(&value, 1234);
+        value += "ttl";
+      }
+      records.emplace_back(ikey.Encode().ToString(), value);
+      ++expected[key];
+    }
+    std::sort(records.begin(), records.end(),
+              [&](const auto& a, const auto& b) {
+                return internal.Compare(a.first, b.first) < 0;
+              });
+    for (const auto& record : records) builder.Add(record.first, record.second);
+    ASSERT_TRUE(builder.Finish().ok()) << builder.status().ToString();
+    StringSource source(sink.contents());
+    Table* raw = nullptr;
+    ASSERT_TRUE(Table::Open(options, &source, source.Size(), &raw).ok());
+    std::unique_ptr<Table> table(raw);
+    std::unique_ptr<Cache> cache(NewLRUCache(options.metadata_cache_size / 2));
+    for (const auto& entry : expected) {
+      uint64_t count = 99;
+      ASSERT_TRUE(LocalCountTableAccess::Lookup(table.get(), cache.get(),
+                                                entry.first, &count)
+                      .ok());
+      ASSERT_EQ(entry.second, count) << entry.first;
+    }
+    uint64_t absent = 99;
+    ASSERT_TRUE(LocalCountTableAccess::Lookup(table.get(), cache.get(),
+                                              "absent", &absent)
+                    .ok());
+    ASSERT_EQ(0, absent);
+    TableInternalStats stats;
+    ASSERT_TRUE(table->GetInternalStats(&stats).ok());
+    ASSERT_TRUE(stats.valid);
+    ASSERT_EQ(records.size(), stats.total_records);
+    std::unique_ptr<Iterator> iter(table->NewIterator(ReadOptions()));
+    size_t n = 0;
+    for (iter->SeekToFirst(); iter->Valid(); iter->Next(), ++n) {
+      ASSERT_EQ(records[n].first, iter->key().ToString());
+      ASSERT_EQ(records[n].second, iter->value().ToString());
+    }
+    ASSERT_TRUE(iter->status().ok());
+    ASSERT_EQ(records.size(), n);
+    ASSERT_LE(cache->TotalCharge(), options.metadata_cache_size / 2);
+    std::vector<std::string> files;
+    ASSERT_TRUE(options.env->GetChildren(testing::TempDir(), &files).ok());
+    for (const auto& file : files)
+      ASSERT_EQ(
+          std::string::npos,
+          file.find("local-count-" + std::to_string(custom) + ".ldb.counts."));
+  }
+}
+
+TEST(LocalCountIndexTest, OptionalCorruptionKeepsFileSummary) {
+  InternalKeyComparator internal(BytewiseComparator());
+  Options options;
+  options.comparator = &internal;
+  options.compression = kNoCompression;
+  StringSink sink;
+  {
+    TableBuilder builder(options, &sink);
+    builder.EnableInternalStatsMetadata();
+    LocalCountTableAccess::Enable(&builder, "unused-bytewise");
+    builder.Add(InternalKey("a", 1, kTypeValue).Encode(), "v");
+    ASSERT_TRUE(builder.Finish().ok());
+  }
+  Footer footer;
+  Slice encoded(
+      sink.contents().data() + sink.contents().size() - Footer::kEncodedLength,
+      Footer::kEncodedLength);
+  ASSERT_TRUE(footer.DecodeFrom(&encoded).ok());
+  // Decode the descriptor from the independently checksummed metaindex.
+  StringSource original(sink.contents());
+  BlockContents contents;
+  ReadOptions read;
+  read.verify_checksums = true;
+  ASSERT_TRUE(
+      ReadBlock(&original, read, footer.metaindex_handle(), &contents).ok());
+  Block block(contents);
+  std::unique_ptr<Iterator> meta(block.NewIterator(BytewiseComparator()));
+  meta->Seek("leveldb.local-counts.v1");
+  ASSERT_TRUE(meta->Valid());
+  BlockHandle descriptor_handle;
+  Slice dh = meta->value();
+  ASSERT_TRUE(descriptor_handle.DecodeFrom(&dh).ok());
+  BlockContents descriptor;
+  ASSERT_TRUE(ReadBlock(&original, read, descriptor_handle, &descriptor).ok());
+  std::unique_ptr<char[]> descriptor_owner(
+      descriptor.heap_allocated ? const_cast<char*>(descriptor.data.data())
+                                : nullptr);
+  Slice d = descriptor.data;
+  d.remove_prefix(4);
+  uint32_t height;
+  uint64_t entries, records;
+  ASSERT_TRUE(GetVarint32(&d, &height));
+  ASSERT_TRUE(GetVarint64(&d, &entries));
+  ASSERT_TRUE(GetVarint64(&d, &records));
+  BlockHandle root;
+  ASSERT_TRUE(root.DecodeFrom(&d).ok());
+  std::unique_ptr<Cache> cache(NewLRUCache(1 << 20));
+  // Populate a cache with a valid table; later instances must never reuse it.
+  {
+    Table* valid = nullptr;
+    ASSERT_TRUE(Table::Open(options, &original, original.Size(), &valid).ok());
+    std::unique_ptr<Table> table(valid);
+    uint64_t count = 0;
+    ASSERT_TRUE(
+        LocalCountTableAccess::Lookup(table.get(), cache.get(), "a", &count)
+            .ok());
+    ASSERT_EQ(1, count);
+  }
+  for (int corruption = 0; corruption < 3; ++corruption) {
+    std::string damaged = sink.contents();
+    if (corruption == 0)
+      damaged[root.offset()] ^= 0x40;
+    else {
+      damaged[descriptor_handle.offset() + 3] = '9';
+      if (corruption == 2) {
+        // Unknown but checksummed descriptor version.
+        const auto off = descriptor_handle.offset();
+        const auto size = descriptor_handle.size();
+        uint32_t crc = crc32c::Value(damaged.data() + off, size + 1);
+        EncodeFixed32(&damaged[off + size + 1], crc32c::Mask(crc));
+      }
+    }
+    StringSource source(damaged);
+    Table* raw = nullptr;
+    ASSERT_TRUE(Table::Open(options, &source, source.Size(), &raw).ok());
+    std::unique_ptr<Table> table(raw);
+    uint64_t count = 99;
+    ASSERT_FALSE(
+        LocalCountTableAccess::Lookup(table.get(), cache.get(), "a", &count)
+            .ok());
+    ASSERT_EQ(0, count);
+    TableInternalStats stats;
+    ASSERT_TRUE(table->GetInternalStats(&stats).ok());
+    ASSERT_TRUE(stats.valid);
+    ASSERT_EQ(1, stats.total_records);
+    std::unique_ptr<Iterator> iter(table->NewIterator(read));
+    iter->SeekToFirst();
+    ASSERT_TRUE(iter->Valid());
+    ASSERT_EQ("v", iter->value().ToString());
+  }
+}
+
+TEST(LocalCountIndexTest, TableCacheFallbackAndErrorPropagation) {
+  const std::string dir = testing::TempDir() + "local-count-fallback";
+  Env* env = Env::Default();
+  env->CreateDir(dir);
+  InternalKeyComparator internal(BytewiseComparator());
+  Options options;
+  options.comparator = &internal;
+  options.compression = kNoCompression;
+  for (bool indexed : {false, true}) {
+    const uint64_t number = indexed ? 2 : 1;
+    const std::string path = TableFileName(dir, number);
+    WritableFile* out = nullptr;
+    ASSERT_TRUE(env->NewWritableFile(path, &out).ok());
+    {
+      TableBuilder builder(options, out);
+      builder.EnableInternalStatsMetadata();
+      if (indexed) LocalCountTableAccess::Enable(&builder, path);
+      for (uint64_t seq = 20; seq > 0; --seq)
+        builder.Add(InternalKey("a", seq, kTypeValue).Encode(), "value");
+      ASSERT_TRUE(builder.Finish().ok());
+    }
+    ASSERT_TRUE(out->Close().ok());
+    delete out;
+    uint64_t size = 0;
+    ASSERT_TRUE(env->GetFileSize(path, &size).ok());
+    // Both old files and files with a damaged optional index must use exact
+    // primary records, without hiding real data checksum errors.
+    if (indexed) {
+      std::string bytes;
+      ASSERT_TRUE(ReadFileToString(env, path, &bytes).ok());
+      Footer footer;
+      Slice encoded(bytes.data() + bytes.size() - Footer::kEncodedLength,
+                    Footer::kEncodedLength);
+      ASSERT_TRUE(footer.DecodeFrom(&encoded).ok());
+      StringSource source(bytes);
+      BlockContents contents;
+      ASSERT_TRUE(ReadBlock(&source, ReadOptions(), footer.metaindex_handle(),
+                            &contents)
+                      .ok());
+      Block block(contents);
+      std::unique_ptr<Iterator> meta(block.NewIterator(BytewiseComparator()));
+      meta->Seek("leveldb.local-counts.v1");
+      ASSERT_TRUE(meta->Valid());
+      BlockHandle descriptor_handle;
+      Slice dh = meta->value();
+      ASSERT_TRUE(descriptor_handle.DecodeFrom(&dh).ok());
+      BlockContents descriptor;
+      ASSERT_TRUE(
+          ReadBlock(&source, ReadOptions(), descriptor_handle, &descriptor)
+              .ok());
+      std::unique_ptr<char[]> descriptor_owner(
+          descriptor.heap_allocated ? const_cast<char*>(descriptor.data.data())
+                                    : nullptr);
+      Slice d = descriptor.data;
+      d.remove_prefix(4);
+      uint32_t h;
+      uint64_t n, records;
+      ASSERT_TRUE(GetVarint32(&d, &h));
+      ASSERT_TRUE(GetVarint64(&d, &n));
+      ASSERT_TRUE(GetVarint64(&d, &records));
+      BlockHandle root;
+      ASSERT_TRUE(root.DecodeFrom(&d).ok());
+      bytes[root.offset()] ^= 0x40;
+      ASSERT_TRUE(WriteStringToFile(env, bytes, path).ok());
+    }
+    {
+      TableCache cache(dir, options, 4);
+      uint64_t count = 0;
+      ASSERT_TRUE(cache.CountUserKeyRecords(number, size, "a", &count).ok());
+      ASSERT_EQ(20, count);
+      bool exists = false;
+      ASSERT_TRUE(cache.HasUserKeyRecords(number, size, "a", &exists).ok());
+      ASSERT_TRUE(exists);
+      ASSERT_TRUE(
+          cache.HasUserKeyRecords(number, size, "absent", &exists).ok());
+      ASSERT_FALSE(exists);
+    }
+    std::string good;
+    ASSERT_TRUE(ReadFileToString(env, path, &good).ok());
+    Footer footer;
+    Slice tail(good.data() + good.size() - Footer::kEncodedLength,
+               Footer::kEncodedLength);
+    ASSERT_TRUE(footer.DecodeFrom(&tail).ok());
+    std::string bad_directory = good;
+    // Encoding is still readable; only the primary directory CRC is bad.
+    bad_directory[footer.index_handle().offset() +
+                  footer.index_handle().size() + 1] ^= 0x40;
+    ASSERT_TRUE(WriteStringToFile(env, bad_directory, path).ok());
+    {
+      TableCache cache(dir, options, 4);
+      uint64_t count = 99;
+      ASSERT_FALSE(cache.CountUserKeyRecords(number, size, "a", &count).ok());
+      bool exists = false;
+      ASSERT_FALSE(cache.HasUserKeyRecords(number, size, "a", &exists).ok());
+    }
+    ASSERT_TRUE(WriteStringToFile(env, good, path).ok());
+    std::string broken = good;
+    broken[0] ^= 0x40;
+    ASSERT_TRUE(WriteStringToFile(env, broken, path).ok());
+    {
+      TableCache cache(dir, options, 4);
+      uint64_t count = 99;
+      ASSERT_FALSE(cache.CountUserKeyRecords(number, size, "a", &count).ok());
+      bool exists = false;
+      ASSERT_FALSE(cache.HasUserKeyRecords(number, size, "a", &exists).ok());
+    }
+    ASSERT_TRUE(env->RemoveFile(path).ok());
+  }
+  env->RemoveDir(dir);
+}
+
+class CountRunFailureEnv : public EnvWrapper {
+ public:
+  CountRunFailureEnv() : EnvWrapper(Env::Default()) {}
+  Status NewWritableFile(const std::string& name,
+                         WritableFile** file) override {
+    if (name.find(".counts.") != std::string::npos) {
+      *file = nullptr;
+      return Status::IOError("injected count run failure");
+    }
+    return target()->NewWritableFile(name, file);
+  }
+};
+TEST(LocalCountIndexTest, SpillFailureAndRecoveryCleanup) {
+  CountRunFailureEnv fail;
+  Options options;
+  options.env = &fail;
+  options.metadata_workspace_size = 1;
+  LocalCountIndexBuilder builder(
+      4096, [](const Slice&, BlockHandle*) { return Status::OK(); });
+  LocalCountCollector collector(options, testing::TempDir() + "fail.ldb", false,
+                                &builder);
+  ASSERT_TRUE(collector.Add("key").IsIOError());
+  const std::string dir = testing::TempDir() + "local-count-restart";
+  options.env = Env::Default();
+  options.create_if_missing = true;
+  DestroyDB(dir, options);
+  options.env->CreateDir(dir);
+  const std::string orphan = dir + "/000123.ldb.counts.45.dbtmp";
+  ASSERT_TRUE(WriteStringToFile(options.env, "incomplete run", orphan).ok());
+  DB* db = nullptr;
+  ASSERT_TRUE(DB::Open(options, dir, &db).ok());
+  ASSERT_FALSE(options.env->FileExists(orphan));
+  delete db;
+  ASSERT_TRUE(DestroyDB(dir, options).ok());
+}
+
+TEST(LocalCountIndexTest, CacheWarmHitsAndSmallCacheEviction) {
+  InternalKeyComparator internal(BytewiseComparator());
+  Options options;
+  options.comparator = &internal;
+  options.metadata_cache_size = 2 << 20;
+  StringSink sink;
+  {
+    TableBuilder builder(options, &sink);
+    builder.EnableInternalStatsMetadata();
+    LocalCountTableAccess::Enable(&builder, "unused");
+    for (uint64_t i = 0; i < 10000; ++i) {
+      char key[32];
+      std::snprintf(key, sizeof(key), "%012llu", (unsigned long long)i);
+      builder.Add(InternalKey(key, 1, kTypeValue).Encode(), "v");
+    }
+    ASSERT_TRUE(builder.Finish().ok());
+  }
+  StringSource source(sink.contents());
+  Table* raw = nullptr;
+  ASSERT_TRUE(Table::Open(options, &source, source.Size(), &raw).ok());
+  std::unique_ptr<Table> table(raw);
+  std::unique_ptr<Cache> cache(NewLRUCache(options.metadata_cache_size / 2));
+  uint64_t count;
+  const auto before = source.Reads();
+  ASSERT_TRUE(LocalCountTableAccess::Lookup(table.get(), cache.get(),
+                                            "000000000017", &count)
+                  .ok());
+  const auto cold_reads = source.Reads() - before;
+  ASSERT_GE(cold_reads, 2);
+  ASSERT_LT(cold_reads, 6);
+  ASSERT_TRUE(LocalCountTableAccess::Lookup(table.get(), cache.get(),
+                                            "000000000017", &count)
+                  .ok());
+  ASSERT_EQ(before + cold_reads, source.Reads());
+  ASSERT_EQ(1, count);
+  // Admitted blocks also face real eviction, not just oversized bypass.
+  options.metadata_cache_size = 512 << 10;
+  Table* pressure_raw = nullptr;
+  ASSERT_TRUE(Table::Open(options, &source, source.Size(), &pressure_raw).ok());
+  std::unique_ptr<Table> pressure_table(pressure_raw);
+  std::unique_ptr<Cache> pressure(NewLRUCache(options.metadata_cache_size / 2));
+  for (int pass = 0; pass < 2; ++pass) {
+    const auto reads_before = source.Reads();
+    for (int i = 0; i < 200; ++i) {
+      char key[32];
+      std::snprintf(key, sizeof(key), "%012llu", (unsigned long long)(i * 47));
+      ASSERT_TRUE(LocalCountTableAccess::Lookup(pressure_table.get(),
+                                                pressure.get(), key, &count)
+                      .ok());
+      ASSERT_EQ(1, count);
+      ASSERT_LE(pressure->TotalCharge(), options.metadata_cache_size / 2);
+    }
+    ASSERT_GT(pressure->TotalCharge(), 0);
+    ASSERT_GT(source.Reads(), reads_before);
+  }
+  options.metadata_cache_size = 128;
+  Table* tiny_raw = nullptr;
+  ASSERT_TRUE(Table::Open(options, &source, source.Size(), &tiny_raw).ok());
+  std::unique_ptr<Table> tiny_table(tiny_raw);
+  std::unique_ptr<Cache> tiny(NewLRUCache(64));
+  for (int i = 0; i < 20; ++i) {
+    ASSERT_TRUE(LocalCountTableAccess::Lookup(tiny_table.get(), tiny.get(),
+                                              "000000000017", &count)
+                    .ok());
+    ASSERT_EQ(1, count);
+    ASSERT_LE(tiny->TotalCharge(), 64);
+  }
+}
+
+TEST(LocalCountIndexTest, MemTableExactRawEquivalenceAndPresence) {
+  RawEquivalentComparator cmp;
+  InternalKeyComparator internal(&cmp);
+  MemTable* mem = new MemTable(internal);
+  mem->Ref();
+  mem->Add(5, kTypeValue, "a", "v");
+  mem->Add(4, kTypeDeletion, "b", "");
+  mem->Add(3, kTypeValue, "a", "old");
+  mem->Add(2, kTypeDeletion, "", "");
+  uint64_t count;
+  bool exists;
+  ASSERT_TRUE(mem->CountUserKeyRecords("a", &count).ok());
+  ASSERT_EQ(2, count);
+  ASSERT_TRUE(mem->CountUserKeyRecords("b", &count).ok());
+  ASSERT_EQ(1, count);
+  ASSERT_TRUE(mem->HasUserKeyRecords("", &exists).ok());
+  ASSERT_TRUE(exists);
+  ASSERT_TRUE(mem->HasUserKeyRecords("missing", &exists).ok());
+  ASSERT_FALSE(exists);
+  mem->Unref();
+}
 
 typedef std::map<std::string, std::string, STLLessThan> KVMap;
 

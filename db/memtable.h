@@ -50,7 +50,8 @@ class MemTable {
 
   // Count records for the exact raw user key. Tombstones and expired TTL
   // values are included because both remain physical records.
-  uint64_t CountUserKeyRecords(const Slice& key) const;
+  Status CountUserKeyRecords(const Slice& key, uint64_t* count) const;
+  Status HasUserKeyRecords(const Slice& key, bool* exists) const;
 
   // Return an iterator that yields the contents of the memtable.
   //

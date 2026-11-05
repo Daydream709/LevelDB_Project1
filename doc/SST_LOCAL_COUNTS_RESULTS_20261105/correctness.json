@@ -1,0 +1,30 @@
+{
+  "native": {
+    "tests": 340,
+    "passed": 338,
+    "skipped": 2,
+    "skip_reason": "Snappy/Zstd unavailable",
+    "log": "/home/ubuntu/leveldb_project1/build/sst-local-count-comparison/native-final.log",
+    "fault_injection_tests_passed": 2
+  },
+  "additional_targeted": {
+    "passed": 8,
+    "cache_eviction_assertions": true,
+    "log": "/home/ubuntu/leveldb_project1/build/sst-local-count-comparison/targeted-final.log"
+  },
+  "baseline_official": {
+    "runs": 280,
+    "status": "pass",
+    "summary": "/home/ubuntu/leveldb_project1/build/sst-local-count-comparison/baseline-final/summary.json"
+  },
+  "candidate_official": {
+    "runs": 280,
+    "status": "pass",
+    "summary": "/home/ubuntu/leveldb_project1/build/sst-local-count-comparison/candidate-final/summary.json",
+    "regression_status": "pass"
+  },
+  "official_suite_hashes_identical": true,
+  "regression_sources_identical": true,
+  "production_source_matches_bench_snapshot": true,
+  "test_only_after_snapshot": "Additional cache-eviction assertions, built and run separately; product code unchanged."
+}

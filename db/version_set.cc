@@ -437,6 +437,25 @@ Status Version::Get(const ReadOptions& options, const LookupKey& k,
   return state.found ? std::move(state.s) : Status::NotFound(Slice());
 }
 
+Status Version::HasUserKeyRecords(const Slice& key, bool* exists) const {
+  *exists = false;
+  const Comparator* cmp = vset_->icmp_.user_comparator();
+  for (int level = 0; level < config::kNumLevels; ++level) {
+    for (FileMetaData* file : files_[level]) {
+      if (cmp->Compare(key, file->smallest.user_key()) < 0 ||
+          cmp->Compare(key, file->largest.user_key()) > 0)
+        continue;
+      Status s = vset_->table_cache_->HasUserKeyRecords(
+          file->number, file->file_size, key, exists);
+      if (!s.ok() || *exists) {
+        if (*exists) ProfileScope::Count("metadata.presence_early_stop");
+        return s;
+      }
+    }
+  }
+  return Status::OK();
+}
+
 Status Version::CountUserKeyRecords(const Slice& user_key,
                                     const std::set<uint64_t>* exclude,
                                     uint64_t* count) const {
@@ -475,6 +494,22 @@ void Version::CollectFilesExcept(const std::set<uint64_t>& exclude,
       if (exclude.find(file->number) == exclude.end()) files->push_back(file);
     }
   }
+}
+
+Status Version::HasUserKeyRecordsInFiles(
+    const Slice& key, const std::vector<FileMetaData*>& files,
+    bool* exists) const {
+  *exists = false;
+  const Comparator* cmp = vset_->icmp_.user_comparator();
+  for (FileMetaData* file : files) {
+    if (cmp->Compare(key, file->smallest.user_key()) < 0 ||
+        cmp->Compare(key, file->largest.user_key()) > 0)
+      continue;
+    Status s = vset_->table_cache_->HasUserKeyRecords(
+        file->number, file->file_size, key, exists);
+    if (!s.ok() || *exists) return s;
+  }
+  return Status::OK();
 }
 
 Status Version::CountUserKeyRecordsInFiles(

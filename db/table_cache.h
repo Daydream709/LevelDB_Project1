@@ -48,10 +48,17 @@ class TableCache {
   Status CountUserKeyRecords(uint64_t file_number, uint64_t file_size,
                              const Slice& user_key, uint64_t* count);
 
+  Status HasUserKeyRecords(uint64_t file_number, uint64_t file_size,
+                           const Slice& user_key, bool* exists);
+
   Status GetInternalStats(uint64_t file_number, uint64_t file_size,
                           TableInternalStats* stats);
   Status GetTTLStats(uint64_t file_number, uint64_t file_size,
                      TableInternalStats* stats);
+
+  size_t LocalCountCacheCharge() const {
+    return local_count_cache_->TotalCharge();
+  }
 
   // Evict any entry for the specified file number
   void Evict(uint64_t file_number);
@@ -64,6 +71,7 @@ class TableCache {
   const Options& options_;
   const bool bytewise_internal_;
   Cache* cache_;
+  Cache* local_count_cache_;
 };
 
 }  // namespace leveldb

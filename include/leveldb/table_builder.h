@@ -51,8 +51,8 @@ class LEVELDB_EXPORT TableBuilder {
   // REQUIRES: Finish(), Abandon() have not been called
   void Add(const Slice& key, const Slice& value);
 
-  // Enable the DB-internal TTL scheduling summary. Exact per-key statistics
-  // live in the auxiliary LSM. Generic table users must opt in because their
+  // Enable the DB-internal file and TTL summary. Generic table users opt in;
+  // per-key local counts are enabled separately by the internal adapter. Their
   // keys need not be internal keys.
   void EnableInternalStatsMetadata();
 
@@ -85,6 +85,8 @@ class LEVELDB_EXPORT TableBuilder {
   uint64_t FileSize() const;
 
  private:
+  friend class LocalCountTableAccess;
+  void EnableLocalCounts(const std::string& temporary_prefix);
   bool ok() const { return status().ok(); }
   void WriteBlock(BlockBuilder* block, BlockHandle* handle);
   void WriteRawBlock(const Slice& data, CompressionType, BlockHandle* handle);

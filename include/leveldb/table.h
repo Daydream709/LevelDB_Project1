@@ -21,6 +21,7 @@ struct Options;
 class RandomAccessFile;
 struct ReadOptions;
 class TableCache;
+class Cache;
 
 struct TableInternalStats {
   uint64_t total_records = 0;
@@ -76,6 +77,9 @@ class LEVELDB_EXPORT Table {
   uint64_t ApproximateOffsetOf(const Slice& key) const;
 
  private:
+  friend class LocalCountTableAccess;
+  Status LookupLocalCounts(Cache*, const Slice&, uint64_t*);
+  Status VerifyPrimaryIndex();
   friend class TableCache;
   friend class MetadataTableAccess;
   struct GetResult {

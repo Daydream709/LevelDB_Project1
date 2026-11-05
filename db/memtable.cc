@@ -3,12 +3,16 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/memtable.h"
-#include "util/profiler.h"
+
 #include "db/dbformat.h"
+#include <memory>
+
 #include "leveldb/comparator.h"
 #include "leveldb/env.h"
 #include "leveldb/iterator.h"
+
 #include "util/coding.h"
+#include "util/profiler.h"
 
 namespace leveldb {
 
@@ -152,7 +156,8 @@ void MemTable::AddWithTTL(SequenceNumber s, const Slice& key, const Slice& value
   if (num_entries_ == 1) has_entries_.store(true, std::memory_order_release);
 }
 
-uint64_t MemTable::CountUserKeyRecords(const Slice& key) const {
+Status MemTable::CountUserKeyRecords(const Slice& key, uint64_t* count) const {
+  *count = 0;
   uint64_t result = 0;
   InternalKey seek(key, kMaxSequenceNumber, kValueTypeForSeek);
   Iterator* iter = const_cast<MemTable*>(this)->NewIterator();
@@ -161,18 +166,46 @@ uint64_t MemTable::CountUserKeyRecords(const Slice& key) const {
       comparator_.comparator.user_comparator();
   while (iter->Valid()) {
     ParsedInternalKey parsed;
-    if (!ParseInternalKey(iter->key(), &parsed) ||
-        user_comparator->Compare(parsed.user_key, key) != 0) {
-      break;
+    if (!ParseInternalKey(iter->key(), &parsed)) {
+      delete iter;
+      return Status::Corruption("invalid internal key in memory count");
     }
+    if (user_comparator->Compare(parsed.user_key, key) != 0) break;
     if (parsed.user_key == key) {
-      if (result == std::numeric_limits<uint64_t>::max()) break;
+      if (result == std::numeric_limits<uint64_t>::max()) {
+        delete iter;
+        return Status::Corruption("memory record count overflow");
+      }
       ++result;
     }
     iter->Next();
   }
+  Status s = iter->status();
   delete iter;
-  return result;
+  if (s.ok()) *count = result;
+  return s;
+}
+
+Status MemTable::HasUserKeyRecords(const Slice& key, bool* exists) const {
+  *exists = false;
+  InternalKey seek(key, kMaxSequenceNumber, kValueTypeForSeek);
+  std::unique_ptr<Iterator> iter(const_cast<MemTable*>(this)->NewIterator());
+  iter->Seek(seek.Encode());
+  while (iter->Valid()) {
+    ParsedInternalKey parsed;
+    if (!ParseInternalKey(iter->key(), &parsed))
+      return Status::Corruption(
+          "invalid internal key in memory presence lookup");
+    if (comparator_.comparator.user_comparator()->Compare(parsed.user_key,
+                                                          key) != 0)
+      break;
+    if (parsed.user_key == key) {
+      *exists = true;
+      return Status::OK();
+    }
+    iter->Next();
+  }
+  return iter->status();
 }
 
 bool MemTable::Get(const LookupKey& key, uint64_t read_time_micros,

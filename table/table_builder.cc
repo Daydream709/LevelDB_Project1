@@ -3,10 +3,11 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "leveldb/table_builder.h"
-#include "util/profiler.h"
 
-#include <cassert>
+#include "db/dbformat.h"
 #include <algorithm>
+#include <cassert>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -14,11 +15,14 @@
 #include "leveldb/env.h"
 #include "leveldb/filter_policy.h"
 #include "leveldb/options.h"
+
 #include "table/block_builder.h"
 #include "table/filter_block.h"
 #include "table/format.h"
+#include "table/local_count_index.h"
 #include "util/coding.h"
 #include "util/crc32c.h"
+#include "util/profiler.h"
 
 namespace leveldb {
 
@@ -82,6 +86,9 @@ struct TableBuilder::Rep {
   uint64_t internal_stats_histogram[16] = {};
   std::vector<uint64_t> internal_expire_times;
 
+  std::unique_ptr<LocalCountIndexBuilder> local_index;
+  std::unique_ptr<LocalCountCollector> local_collector;
+  std::string local_descriptor;
   std::string compressed_output;
 };
 
@@ -151,6 +158,10 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
       r->internal_expire_times.push_back(DecodeFixed64(value.data()));
     }
   }
+  if (r->local_collector) {
+    r->status = r->local_collector->Add(Slice(key.data(), key.size() - 8));
+    if (!ok()) return;
+  }
   if (r->num_entries > 0) {
     assert(r->options.comparator->Compare(key, Slice(r->last_key)) > 0);
   }
@@ -181,6 +192,47 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
 void TableBuilder::EnableInternalStatsMetadata() {
   assert(!rep_->closed);
   rep_->internal_stats_enabled = true;
+}
+
+void LocalCountTableAccess::Enable(TableBuilder* builder,
+                                   const std::string& prefix) {
+  builder->EnableLocalCounts(prefix);
+}
+
+void TableBuilder::EnableLocalCounts(const std::string& prefix) {
+  Rep* r = rep_;
+  assert(r->num_entries == 0 && !r->closed);
+  const auto* comparator =
+      static_cast<const InternalKeyComparator*>(r->options.comparator);
+  r->local_index.reset(new LocalCountIndexBuilder(
+      4096, [this](const Slice& raw, BlockHandle* handle) {
+        Flush();
+        if (!ok()) return status();
+        // Use the same compression policy and trailer as primary blocks.
+        std::string compressed;
+        CompressionType type = kNoCompression;
+        Slice data = raw;
+        if (rep_->options.compression == kSnappyCompression &&
+            port::Snappy_Compress(raw.data(), raw.size(), &compressed) &&
+            compressed.size() < raw.size() - raw.size() / 8) {
+          type = kSnappyCompression;
+          data = compressed;
+        } else if (rep_->options.compression == kZstdCompression &&
+                   port::Zstd_Compress(rep_->options.zstd_compression_level,
+                                       raw.data(), raw.size(), &compressed) &&
+                   compressed.size() < raw.size() - raw.size() / 8) {
+          type = kZstdCompression;
+          data = compressed;
+        }
+        WriteRawBlock(data, type, handle);
+        ProfileScope::Count("metadata.local_count_disk_bytes",
+                            data.size() + kBlockTrailerSize);
+        if (rep_->filter_block) rep_->filter_block->StartBlock(rep_->offset);
+        return status();
+      }));
+  r->local_collector.reset(new LocalCountCollector(
+      r->options, prefix, comparator->user_comparator() == BytewiseComparator(),
+      r->local_index.get()));
 }
 
 void TableBuilder::Flush() {
@@ -275,10 +327,21 @@ Status TableBuilder::Finish() {
   Rep* r = rep_;
   Flush();
   assert(!r->closed);
-  r->closed = true;
 
-  BlockHandle filter_block_handle, stats_block_handle, metaindex_block_handle,
-      index_block_handle;
+  BlockHandle local_descriptor_handle, filter_block_handle, stats_block_handle,
+      metaindex_block_handle, index_block_handle;
+
+  if (ok() && r->local_collector) {
+    r->status = r->local_collector->Finish();
+    if (ok()) r->status = r->local_index->Finish(&r->local_descriptor);
+    r->local_collector.reset();
+  }
+
+  r->closed = true;
+  if (ok() && !r->local_descriptor.empty()) {
+    WriteRawBlock(r->local_descriptor, kNoCompression,
+                  &local_descriptor_handle);
+  }
 
   // Write filter block
   if (ok() && r->filter_block != nullptr) {
@@ -314,7 +377,9 @@ Status TableBuilder::Finish() {
     for (uint64_t count : r->internal_stats_histogram) {
       PutFixed64(&stats, count);
     }
-    PutVarint32(&stats, 0);  // TTL-only summary; counts live in the auxiliary LSM.
+    PutVarint32(
+        &stats,
+        0);  // File summary; local counts have their own optional index.
     const uint32_t checksum = crc32c::Value(stats.data(), stats.size());
     PutFixed32(&stats, checksum);
     ProfileScope::Count("metadata.serialized_index_bytes", stats.size());
@@ -340,6 +405,11 @@ Status TableBuilder::Finish() {
       std::string handle_encoding;
       stats_block_handle.EncodeTo(&handle_encoding);
       meta_index_block.Add("leveldb.internal-stats.v1", handle_encoding);
+    }
+    if (!r->local_descriptor.empty()) {
+      std::string encoded;
+      local_descriptor_handle.EncodeTo(&encoded);
+      meta_index_block.Add("leveldb.local-counts.v1", encoded);
     }
     WriteBlock(&meta_index_block, &metaindex_block_handle);
   }

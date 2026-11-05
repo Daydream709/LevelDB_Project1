@@ -345,8 +345,7 @@ class MetadataIndex::MetadataTableCache {
 };
 
 MetadataIndex::MetadataIndex(Env* env, const std::string& dbname,
-                             const Options& options,
-                             MetadataProfile* profile)
+                             const Options& options, MetadataProfile* profile)
     : env_(env),
       dbname_(dbname),
       options_(options),
@@ -354,17 +353,16 @@ MetadataIndex::MetadataIndex(Env* env, const std::string& dbname,
       active_memory_usage_(0),
       next_generation_id_(1),
       value_cache_generation_(0),
-      value_cache_(NewLRUCache(std::max<size_t>(
-          1, options.metadata_cache_size / 4))),
-      block_cache_(NewLRUCache(std::max<size_t>(
-          1, options.metadata_cache_size / 2))),
+      value_cache_(
+          NewLRUCache(std::max<size_t>(1, options.metadata_cache_size / 8))),
+      block_cache_(
+          NewLRUCache(std::max<size_t>(1, options.metadata_cache_size / 4))),
       block_cache_observer_(profile == nullptr
                                 ? nullptr
                                 : new CountingCache(block_cache_, profile)),
       table_cache_(new MetadataTableCache(
-          env, dbname, TableOptions(), std::max<size_t>(
-                                          1, options.metadata_cache_size / 4),
-          profile)) {}
+          env, dbname, TableOptions(),
+          std::max<size_t>(1, options.metadata_cache_size / 8), profile)) {}
 
 MetadataIndex::~MetadataIndex() {
   delete table_cache_;
