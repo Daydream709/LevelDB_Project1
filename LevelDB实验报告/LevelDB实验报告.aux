@@ -1,7 +1,7 @@
 \relax 
 \providecommand\hyper@newdestlabel[2]{}
-\providecommand*\HyPL@Entry[1]{}
-\HyPL@Entry{0<</S/D>>}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
 \@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces 主数据操作与统计发布的伪代码}}{1}{table.caption.5}\protected@file@percent }
 \providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
 \newlabel{tab:algorithm-publish}{{1}{1}{主数据操作与统计发布的伪代码}{table.caption.5}{}}
@@ -9,8 +9,8 @@
 \newlabel{fig:ttl-overview}{{1}{2}{TTL 写入、固定视图读取与安全回收总览。（a）截止时间沿主数据路径持久化；（b）固定视图中的过期版本屏蔽旧值；（c）摘要用于候选调度，删除受快照和版本规则约束，文件变更与统计同次提交。读取图省略损坏载荷的错误分支；后台选择不保证按时回收。}{figure.caption.7}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces TTL 在不同存储层的表示}}{2}{table.caption.9}\protected@file@percent }
 \newlabel{tab:report-1}{{2}{2}{TTL 在不同存储层的表示}{table.caption.9}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces TTL 截止时间的溢出检查}}{2}{table.caption.10}\protected@file@percent }
-\newlabel{tab:code-ttl}{{3}{2}{TTL 截止时间的溢出检查}{table.caption.10}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces TTL 截止时间的溢出检查}}{3}{table.caption.10}\protected@file@percent }
+\newlabel{tab:code-ttl}{{3}{3}{TTL 截止时间的溢出检查}{table.caption.10}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces TTL 点读与旧版本屏蔽的伪代码}}{3}{table.caption.13}\protected@file@percent }
 \newlabel{tab:algorithm-ttl}{{4}{3}{TTL 点读与旧版本屏蔽的伪代码}{table.caption.13}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces 统计维护方案比较}}{4}{table.caption.20}\protected@file@percent }
@@ -29,11 +29,35 @@
 \newlabel{tab:perf-common}{{10}{8}{10 万键普通性能场景的吞吐量中位数}{table.caption.41}{}}
 \@writefile{lot}{\contentsline {table}{\numberline {11}{\ignorespaces 10 万键 TTL 与统计场景的吞吐量中位数}}{8}{table.caption.43}\protected@file@percent }
 \newlabel{tab:perf-special}{{11}{8}{10 万键 TTL 与统计场景的吞吐量中位数}{table.caption.43}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {12}{\ignorespaces 构建与原生测试命令}}{9}{table.caption.52}\protected@file@percent }
-\newlabel{tab:cmd-build}{{12}{9}{构建与原生测试命令}{table.caption.52}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {13}{\ignorespaces 联合基准测试命令}}{9}{table.caption.53}\protected@file@percent }
-\newlabel{tab:cmd-benchmark}{{13}{9}{联合基准测试命令}{table.caption.53}{}}
-\newlabel{LastPage}{{}{9}{B 实验结果文件}{page.9}{}}
-\gdef\lastpage@lastpage{9}
-\gdef\lastpage@lastpageHy{9}
-\gdef \@abspage@last{9}
+\@writefile{lot}{\contentsline {table}{\numberline {12}{\ignorespaces 10 万键代表场景的三轮吞吐量范围（次/s）}}{8}{table.caption.45}\protected@file@percent }
+\newlabel{tab:result-variation}{{12}{8}{10 万键代表场景的三轮吞吐量范围（次/s）}{table.caption.45}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {13}{\ignorespaces 构建与原生测试命令}}{9}{table.caption.53}\protected@file@percent }
+\newlabel{tab:cmd-build}{{13}{9}{构建与原生测试命令}{table.caption.53}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {14}{\ignorespaces 联合基准测试命令}}{9}{table.caption.54}\protected@file@percent }
+\newlabel{tab:cmd-benchmark}{{14}{9}{联合基准测试命令}{table.caption.54}{}}
+\gdef \LT@i {\LT@entry 
+    {1}{17.00002pt}\LT@entry 
+    {4}{29.89803pt}\LT@entry 
+    {1}{20.00002pt}\LT@entry 
+    {1}{26.57301pt}\LT@entry 
+    {1}{20.00002pt}\LT@entry 
+    {4}{37.86403pt}\LT@entry 
+    {4}{44.10803pt}\LT@entry 
+    {4}{32.15903pt}\LT@entry 
+    {4}{32.15903pt}\LT@entry 
+    {4}{32.15903pt}\LT@entry 
+    {4}{41.84703pt}\LT@entry 
+    {4}{34.86403pt}}
+\@writefile{lot}{\contentsline {table}{\numberline {15}{\ignorespaces 各性能阶段的三次运行中位数}}{11}{table.15}\protected@file@percent }
+\gdef \LT@ii {\LT@entry 
+    {1}{25.00002pt}\LT@entry 
+    {4}{41.75606pt}\LT@entry 
+    {1}{32.00002pt}\LT@entry 
+    {1}{39.70401pt}\LT@entry 
+    {1}{32.00002pt}\LT@entry 
+    {1}{74.98604pt}}
+\@writefile{lot}{\contentsline {table}{\numberline {16}{\ignorespaces 各场景进程峰值 RSS 的三次运行中位数}}{14}{table.16}\protected@file@percent }
+\newlabel{LastPage}{{}{16}{C.4 峰值 RSS 中位数}{page.16}{}}
+\gdef\lastpage@lastpage{16}
+\gdef\lastpage@lastpageHy{16}
+\gdef \@abspage@last{16}
