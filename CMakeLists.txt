@@ -63,7 +63,7 @@ else()
           "Unknown LEVELDB_CRC32C_PROVIDER='${LEVELDB_CRC32C_PROVIDER}'")
 endif()
 check_library_exists(snappy snappy_compress "" HAVE_SNAPPY)
-check_library_exists(zstd zstd_compress "" HAVE_ZSTD)
+check_library_exists(zstd ZSTD_compress "" HAVE_ZSTD)
 check_library_exists(tcmalloc malloc "" HAVE_TCMALLOC)
 
 include(CheckCXXSymbolExists)

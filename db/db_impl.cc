@@ -6265,13 +6265,23 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
     edit.SetLogNumber(impl->logfile_number_);
     s = impl->LogAndApply(&edit);
   }
+  bool recovery_read_only = false;
   if (s.ok() && impl->metadata_needs_rebuild_) {
     s = impl->RebuildMetadata();
-    if (s.ok()) s = impl->PersistPrimaryMetadataCheckpoint();
+    if (s.ok()) {
+      s = impl->PersistPrimaryMetadataCheckpoint();
+    } else if (s.IsCorruption() && !options.paranoid_checks) {
+      // The primary iterator may still expose intact records, as in normal
+      // LevelDB recovery. Never publish partial counts or allow writes or GC
+      // until the damaged database has been repaired and reopened.
+      impl->bg_error_ = s;
+      recovery_read_only = true;
+      s = Status::OK();
+    }
   } else if (s.ok()) {
     impl->MaybeFreezeMetadata();
   }
-  if (s.ok()) {
+  if (s.ok() && !recovery_read_only) {
     ProfileScope publish("recovery.publish");
     impl->RemoveObsoleteFiles();
     impl->MaybeScheduleCompaction();

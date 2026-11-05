@@ -73,6 +73,7 @@ class CorruptionTest : public testing::Test {
   }
 
   void Check(int min_expected, int max_expected) {
+    ASSERT_NE(db_, nullptr) << "database did not reopen";
     int next_expected = 0;
     int missed = 0;
     int bad_keys = 0;
@@ -264,6 +265,30 @@ TEST_F(CorruptionTest, TableFileIndexData) {
   Corrupt(kTableFile, -2000, 500);
   Reopen();
   Check(5000, 9999);
+}
+
+TEST_F(CorruptionTest, CorruptCompressedTableOpensReadOnlyWithoutStats) {
+  std::string compressed;
+  if (!port::Snappy_Compress("aaaaaaaaaaaaaaaa", 16, &compressed)) {
+    GTEST_SKIP() << "Snappy is unavailable";
+  }
+  options_.compression = kSnappyCompression;
+  ASSERT_NO_FATAL_FAILURE(Reopen());
+  Build(10000);
+  ASSERT_LEVELDB_OK(reinterpret_cast<DBImpl*>(db_)->TEST_CompactMemTable());
+  Corrupt(kTableFile, -2000, 500);
+  ASSERT_LEVELDB_OK(TryReopen());
+  ASSERT_NE(nullptr, db_);
+  Stats stats;
+  EXPECT_TRUE(db_->GetCurrentStats(ReadOptions(), &stats).IsCorruption());
+  EXPECT_TRUE(db_->Put(WriteOptions(), "new", "value").IsCorruption());
+  GCResult gc;
+  EXPECT_TRUE(db_->RunFullGC(&gc).IsCorruption());
+  EXPECT_FALSE(gc.complete);
+  options_.paranoid_checks = true;
+  Status status = TryReopen();
+  EXPECT_TRUE(status.IsCorruption()) << status.ToString();
+  EXPECT_EQ(nullptr, db_);
 }
 
 TEST_F(CorruptionTest, MissingDescriptor) {

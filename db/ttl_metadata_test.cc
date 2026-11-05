@@ -1123,6 +1123,181 @@ TEST_P(TTLMetadataTest, FixedTimeSnapshotsAndBidirectionalIterator) {
   db_->ReleaseSnapshot(after_expiry);
 }
 
+TEST_P(TTLMetadataTest, RepeatedKeyBatchPreservesViewsThroughRecoveryAndGC) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "old"));
+  const Snapshot* before = db_->GetSnapshot();
+  const uint64_t deadline = env_.NowMicros() + 4 * kMicrosPerSecond;
+
+  WriteBatch batch;
+  batch.PutWithExpiration("key", "temporary", deadline);
+  batch.Delete("key");
+  batch.Put("key", "permanent");
+  batch.PutWithExpiration("expired", "hidden", env_.NowMicros());
+  batch.PutWithExpiration("live", "ttl", deadline);
+  ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &batch));
+  ExpectStatsMatchPhysicalScan(6);
+  Stats stats;
+  ReadOptions old_options;
+  old_options.snapshot = before;
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(old_options, &stats));
+  EXPECT_EQ(6U, stats.total_entries);
+  EXPECT_EQ(3U, stats.distinct_keys);
+  EXPECT_EQ(6U, stats.seq);
+  ExpectValue("key", "old", before);
+  ExpectValue("key", "permanent");
+  ExpectMissing("expired");
+  ExpectValue("live", "ttl");
+
+  std::unique_ptr<Iterator> pinned(db_->NewIterator(ReadOptions()));
+  env_.Advance(4 * kMicrosPerSecond);
+  ExpectMissing("live");
+  pinned->SeekToFirst();
+  ASSERT_TRUE(pinned->Valid());
+  EXPECT_EQ("key", pinned->key().ToString());
+  pinned->Next();
+  ASSERT_TRUE(pinned->Valid());
+  EXPECT_EQ("live", pinned->key().ToString());
+  EXPECT_EQ("ttl", pinned->value().ToString());
+  pinned->Prev();
+  ASSERT_TRUE(pinned->Valid());
+  EXPECT_EQ("key", pinned->key().ToString());
+  ASSERT_LEVELDB_OK(pinned->status());
+
+  GCResult blocked;
+  ASSERT_LEVELDB_OK(db_->RunFullGC(&blocked));
+  EXPECT_FALSE(blocked.complete);
+  ExpectValue("key", "old", before);
+  db_->ReleaseSnapshot(before);
+  pinned.reset();
+  GCResult complete;
+  ASSERT_LEVELDB_OK(db_->RunFullGC(&complete));
+  ASSERT_TRUE(complete.complete);
+  ExpectValue("key", "permanent");
+  ExpectMissing("expired");
+  ExpectMissing("live");
+  ExpectStatsMatchPhysicalScan(6);
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
+  EXPECT_EQ(1U, stats.total_entries);
+  EXPECT_EQ(1U, stats.distinct_keys);
+  Reopen();
+  ExpectValue("key", "permanent");
+  ExpectMissing("expired");
+  ExpectMissing("live");
+  ExpectStatsMatchPhysicalScan(6);
+}
+
+TEST_P(TTLMetadataTest, BinaryKeysAndEmptyValuesSurviveOverwriteAndGC) {
+  ASSERT_LEVELDB_OK(Open(true));
+  const std::vector<std::string> keys = {
+      "", std::string("\0", 1), std::string("\0\xff", 2),
+      std::string("\x7f", 1), std::string("\x80", 1),
+      std::string("\xff", 1), std::string(4096, 'x')};
+  for (const std::string& key : keys)
+    ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), key, ""));
+  auto* impl = static_cast<DBImpl*>(db_.get());
+  ASSERT_LEVELDB_OK(impl->TEST_CompactMemTable());
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), keys[5], "short", 1));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), keys[0], "short", 1));
+  ASSERT_LEVELDB_OK(db_->Delete(WriteOptions(), keys[3]));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), keys[1], "updated"));
+  ExpectStatsMatchPhysicalScan(11);
+  Stats stats;
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
+  EXPECT_EQ(11U, stats.total_entries);
+  EXPECT_EQ(7U, stats.distinct_keys);
+  env_.Advance(kMicrosPerSecond);
+  Reopen();
+  ExpectMissing(keys[0]);
+  ExpectMissing(keys[3]);
+  ExpectMissing(keys[5]);
+  ExpectValue(keys[1], "updated");
+  ExpectValue(keys[2], "");
+  ExpectValue(keys[4], "");
+  ExpectValue(keys[6], "");
+  GCResult gc;
+  ASSERT_LEVELDB_OK(db_->RunFullGC(&gc));
+  ASSERT_TRUE(gc.complete);
+  ExpectStatsMatchPhysicalScan(11);
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
+  EXPECT_EQ(4U, stats.total_entries);
+  EXPECT_EQ(4U, stats.distinct_keys);
+  Reopen();
+  ExpectMissing(keys[0]);
+  ExpectValue(keys[1], "updated");
+  ExpectValue(keys[2], "");
+  ExpectMissing(keys[3]);
+  ExpectValue(keys[4], "");
+  ExpectMissing(keys[5]);
+  ExpectValue(keys[6], "");
+  ExpectStatsMatchPhysicalScan(11);
+}
+
+TEST_P(TTLMetadataTest, ConcurrentMixedBatchStatsIgnoreSnapshotAtomically) {
+  ASSERT_LEVELDB_OK(Open(true));
+  const Snapshot* empty_snapshot = db_->GetSnapshot();
+  constexpr int kBatches = 200;
+  std::atomic<bool> start{false};
+  std::atomic<bool> done{false};
+  std::atomic<bool> inconsistent{false};
+  std::atomic<unsigned> samples{0};
+  std::atomic<unsigned> observed_intermediate{0};
+  auto reader = [&](unsigned bit) {
+    ReadOptions options;
+    options.snapshot = empty_snapshot;
+    while (!start.load(std::memory_order_acquire)) std::this_thread::yield();
+    do {
+      Stats stats;
+      const Status status = db_->GetCurrentStats(options, &stats);
+      const uint64_t expected_distinct = stats.seq == 0 ? 0 : 1 + 2 * (stats.seq / 3);
+      if (!status.ok() || stats.seq % 3 != 0 ||
+          stats.total_entries != stats.seq || stats.distinct_keys != expected_distinct ||
+          stats.seq > 3 * kBatches) {
+        inconsistent.store(true, std::memory_order_relaxed);
+      }
+      if (status.ok() && stats.seq > 0 && stats.seq < 3 * kBatches)
+        observed_intermediate.fetch_or(bit, std::memory_order_relaxed);
+      samples.fetch_add(1, std::memory_order_relaxed);
+    } while (!done.load(std::memory_order_acquire));
+  };
+  std::thread first(reader, 1U), second(reader, 2U);
+  start.store(true, std::memory_order_release);
+  bool writes_ok = true;
+  for (int i = 0; i < kBatches; ++i) {
+    WriteBatch batch;
+    batch.PutWithExpiration("shared", "ttl", env_.NowMicros() + 60 * kMicrosPerSecond);
+    batch.Put("left/" + std::to_string(i), "value");
+    batch.Delete("right/" + std::to_string(i));
+    if (!db_->Write(WriteOptions(), &batch).ok()) {
+      writes_ok = false;
+      break;
+    }
+    if (i == 0) {
+      const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+      while (observed_intermediate.load(std::memory_order_relaxed) != 3 &&
+             std::chrono::steady_clock::now() < limit)
+        std::this_thread::yield();
+    }
+    std::this_thread::yield();
+  }
+  done.store(true, std::memory_order_release);
+  first.join();
+  second.join();
+  ASSERT_TRUE(writes_ok);
+  EXPECT_FALSE(inconsistent.load());
+  EXPECT_GT(samples.load(), 0U);
+  EXPECT_EQ(3U, observed_intermediate.load());
+  Stats stats;
+  ReadOptions old_options;
+  old_options.snapshot = empty_snapshot;
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(old_options, &stats));
+  EXPECT_EQ(3U * kBatches, stats.total_entries);
+  EXPECT_EQ(1U + 2U * kBatches, stats.distinct_keys);
+  EXPECT_EQ(3U * kBatches, stats.seq);
+  ExpectStatsMatchPhysicalScan(3U * kBatches);
+  db_->ReleaseSnapshot(empty_snapshot);
+}
+
 TEST_P(TTLMetadataTest, OverwriteDeadlinesRemainBarriersAfterRecovery) {
   ASSERT_LEVELDB_OK(Open(true));
   ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "old"));

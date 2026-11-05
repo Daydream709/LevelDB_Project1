@@ -68,6 +68,9 @@ class LEVELDB_EXPORT DB {
   // OK on success.
   // Stores nullptr in *dbptr and returns a non-OK status on error.
   // Caller should delete *dbptr when it is no longer needed.
+  // If non-paranoid recovery encounters corruption while rebuilding exact
+  // statistics, Open may succeed in a restricted read-only state: reads may
+  // access intact data, while statistics, writes, and full GC report corruption.
   static Status Open(const Options& options, const std::string& name,
                      DB** dbptr);
 
