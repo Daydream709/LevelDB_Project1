@@ -188,6 +188,34 @@ class FaultClockEnv : public EnvWrapper {
   unsigned FaultHits() const { return fault_hits_.load(); }
   unsigned MetadataFilesCreated() const { return metadata_files_created_.load(); }
 
+  void BlockNextLogAppend() {
+    std::lock_guard<std::mutex> lock(log_mu_);
+    block_next_log_append_ = true;
+    log_append_blocked_ = false;
+    release_log_append_ = false;
+  }
+  bool WaitForBlockedLogAppend() {
+    std::unique_lock<std::mutex> lock(log_mu_);
+    return log_cv_.wait_for(lock, std::chrono::seconds(10),
+                            [this] { return log_append_blocked_; });
+  }
+  void ReleaseLogAppend() {
+    std::lock_guard<std::mutex> lock(log_mu_);
+    release_log_append_ = true;
+    log_cv_.notify_all();
+  }
+  void MaybeBlockLogAppend(const std::string& fname) {
+    if (fname.size() < 4 || fname.compare(fname.size() - 4, 4, ".log") != 0)
+      return;
+    std::unique_lock<std::mutex> lock(log_mu_);
+    if (!block_next_log_append_) return;
+    block_next_log_append_ = false;
+    log_append_blocked_ = true;
+    log_cv_.notify_all();
+    log_cv_.wait(lock, [this] { return release_log_append_; });
+    log_append_blocked_ = false;
+  }
+
   void BlockNextTableRead(bool fail = false) {
     std::lock_guard<std::mutex> lock(read_mu_);
     block_next_table_read_ = true;
@@ -309,6 +337,7 @@ class FaultClockEnv : public EnvWrapper {
         : env_(env), fname_(std::move(fname)), file_(file) {}
 
     Status Append(const Slice& data) override {
+      env_->MaybeBlockLogAppend(fname_);
       if (env_->ShouldFailAppend(fname_)) {
         ++env_->fault_hits_;
         return Status::IOError(fname_, "injected append failure");
@@ -333,6 +362,11 @@ class FaultClockEnv : public EnvWrapper {
   };
 
   std::mutex read_mu_;
+  std::mutex log_mu_;
+  std::condition_variable log_cv_;
+  bool block_next_log_append_ = false;
+  bool log_append_blocked_ = false;
+  bool release_log_append_ = false;
   std::condition_variable read_cv_;
   bool block_next_table_read_ = false;
   bool table_read_blocked_ = false;
@@ -1231,6 +1265,136 @@ TEST_P(TTLMetadataTest, BinaryKeysAndEmptyValuesSurviveOverwriteAndGC) {
   ExpectMissing(keys[5]);
   ExpectValue(keys[6], "");
   ExpectStatsMatchPhysicalScan(11);
+}
+
+TEST_P(TTLMetadataTest, ConcurrentWriterHandoffPreservesStatsAndRecovery) {
+  options_.enable_metadata_profiling = true;
+  ASSERT_LEVELDB_OK(Open(true));
+  constexpr int kThreads = 8;
+  constexpr int kWrites = 200;
+  std::atomic<bool> start{false};
+  std::atomic<bool> failed{false};
+  std::vector<std::thread> workers;
+  for (int t = 0; t < kThreads; ++t) {
+    workers.emplace_back([&, t] {
+      while (!start.load(std::memory_order_acquire)) std::this_thread::yield();
+      for (int i = 0; i < kWrites; ++i) {
+        WriteOptions options;
+        options.sync = (i % 31 == 0);
+        const std::string key = "writer/" + std::to_string(t) + "/" + std::to_string(i);
+        Status s;
+        if (i % 3 == 0) {
+          s = db_->Delete(options, key);
+        } else if (i % 3 == 1) {
+          s = db_->Put(options, key, "ttl", 100);
+        } else {
+          s = db_->Put(options, key, "value");
+        }
+        if (!s.ok()) failed.store(true, std::memory_order_relaxed);
+        if (i % 8 == 0 && !db_->Put(options, "shared", "value").ok())
+          failed.store(true, std::memory_order_relaxed);
+      }
+    });
+  }
+  start.store(true, std::memory_order_release);
+  for (auto& worker : workers) worker.join();
+  ASSERT_FALSE(failed.load());
+  constexpr uint64_t kSequence = kThreads * (kWrites + kWrites / 8);
+  ExpectStatsMatchPhysicalScan(kSequence);
+  std::string profile;
+  ASSERT_TRUE(db_->GetProperty("leveldb.metadata-profile", &profile));
+  for (const char* marker : {"\"writer_spins\":", "\"writer_spin_ready\":",
+                             "\"writer_parks\":", "\"writer_wakeups\":",
+                             "\"write_group_size_8_plus\":",
+                             "\"memtable_insert\":"}) {
+    EXPECT_NE(profile.find(marker), std::string::npos) << marker;
+  }
+  auto counter = [&](const std::string& name) {
+    const std::string marker = "\"" + name + "\":";
+    const size_t position = profile.find(marker);
+    EXPECT_NE(position, std::string::npos) << name;
+    return position == std::string::npos ? uint64_t{0}
+        : static_cast<uint64_t>(std::stoull(profile.substr(position + marker.size())));
+  };
+  uint64_t groups = counter("write_group_size_8_plus");
+  for (int i = 1; i <= 7; ++i)
+    groups += counter("write_group_size_" + std::to_string(i));
+  EXPECT_EQ(groups, counter("write_batches"));
+  EXPECT_LE(counter("writer_spin_ready"), counter("writer_spins"));
+  EXPECT_EQ(counter("writer_parks"), counter("writer_wakeups"));
+  Reopen();
+  ExpectStatsMatchPhysicalScan(kSequence);
+  for (int t = 0; t < kThreads; ++t) {
+    for (int i = 0; i < kWrites; ++i) {
+      const std::string key = "writer/" + std::to_string(t) + "/" + std::to_string(i);
+      if (i % 3 == 0) ExpectMissing(key);
+      else ExpectValue(key, i % 3 == 1 ? "ttl" : "value");
+    }
+  }
+}
+
+TEST_P(TTLMetadataTest, WaitingWritersWakeAfterBlockedLogAppend) {
+  options_.enable_metadata_profiling = true;
+  ASSERT_LEVELDB_OK(Open(true));
+  env_.BlockNextLogAppend();
+  std::atomic<bool> failed{false};
+  std::thread leader([&] {
+    if (!db_->Put(WriteOptions(), "leader", "value").ok()) failed.store(true);
+  });
+  const bool blocked = env_.WaitForBlockedLogAppend();
+  std::vector<std::thread> followers;
+  if (blocked) {
+    for (int i = 0; i < 7; ++i) {
+      followers.emplace_back([&, i] {
+        if (!db_->Put(WriteOptions(), "follower/" + std::to_string(i), "value").ok())
+          failed.store(true);
+      });
+    }
+  }
+  bool observed_park = false;
+  const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (blocked && !observed_park && std::chrono::steady_clock::now() < limit) {
+    std::string profile;
+    if (db_->GetProperty("leveldb.metadata-profile", &profile)) {
+      const std::string marker = "\"writer_parks\":";
+      const auto pos = profile.find(marker);
+      if (pos != std::string::npos)
+        observed_park = std::stoull(profile.substr(pos + marker.size())) > 0;
+    }
+    std::this_thread::yield();
+  }
+  env_.ReleaseLogAppend();
+  leader.join();
+  for (auto& follower : followers) follower.join();
+  ASSERT_TRUE(blocked);
+  ASSERT_TRUE(observed_park);
+  ASSERT_FALSE(failed.load());
+  ExpectStatsMatchPhysicalScan(8);
+  Reopen();
+  ExpectStatsMatchPhysicalScan(8);
+}
+
+TEST_P(TTLMetadataTest, ConcurrentWriterLogFailureDoesNotPublishStats) {
+  ASSERT_LEVELDB_OK(Open(true));
+  env_.SetFault(FaultClockEnv::Fault::kLogAppend);
+  constexpr int kThreads = 8;
+  std::atomic<bool> start{false};
+  std::atomic<int> failed{0};
+  std::vector<std::thread> workers;
+  for (int t = 0; t < kThreads; ++t) {
+    workers.emplace_back([&, t] {
+      while (!start.load(std::memory_order_acquire)) std::this_thread::yield();
+      if (!db_->Put(WriteOptions(), "fault/" + std::to_string(t), "v").ok())
+        failed.fetch_add(1, std::memory_order_relaxed);
+    });
+  }
+  start.store(true, std::memory_order_release);
+  for (auto& worker : workers) worker.join();
+  EXPECT_EQ(kThreads, failed.load());
+  ExpectStatsMatchPhysicalScan(0);
+  env_.SetFault(FaultClockEnv::Fault::kNone);
+  Reopen();
+  ExpectStatsMatchPhysicalScan(0);
 }
 
 TEST_P(TTLMetadataTest, ConcurrentMixedBatchStatsIgnoreSnapshotAtomically) {

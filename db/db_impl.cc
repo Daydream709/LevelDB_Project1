@@ -32,6 +32,9 @@
 #include <string>
 #include <thread>
 #include <vector>
+#if defined(__linux__)
+#include <sched.h>
+#endif
 
 #include "leveldb/comparator.h"
 #include "leveldb/db.h"
@@ -54,6 +57,19 @@ namespace leveldb {
 const int kNumNonTableCacheFiles = 10;
 
 namespace {
+
+unsigned WriteAvailableCPUs() {
+  unsigned count = std::thread::hardware_concurrency();
+#if defined(__linux__)
+  cpu_set_t allowed;
+  CPU_ZERO(&allowed);
+  if (sched_getaffinity(0, sizeof(allowed), &allowed) == 0) {
+    const unsigned affinity_count = static_cast<unsigned>(CPU_COUNT(&allowed));
+    if (affinity_count != 0) count = affinity_count;
+  }
+#endif
+  return count;
+}
 
 const char kMetadataWALMagic[] = "LDBMETA2";
 const size_t kMetadataWALMagicSize = sizeof(kMetadataWALMagic) - 1;
@@ -341,7 +357,7 @@ class BatchMetadataCounter final : public WriteBatch::Handler {
   size_t memory_usage_;
   uint64_t total_records_;
   bool count_overflow_;
-  static constexpr size_t kInlineCapacity = 4;
+  static constexpr size_t kInlineCapacity = 8;
   struct InlineEntry { Slice key; uint64_t count; };
   InlineEntry inline_entries_[kInlineCapacity];
   size_t inline_size_ = 0;
@@ -397,6 +413,8 @@ struct DBImpl::Writer {
         sync(false),
         done(false),
         single_put(false),
+        wake_state(0),
+        parked(false),
         cv(mu) {}
 
   Status status;
@@ -405,6 +423,9 @@ struct DBImpl::Writer {
   bool done;
   bool single_put;
   Slice single_put_key;
+  // Hints are observed without mutex_; status and queue membership are not.
+  std::atomic<unsigned> wake_state;
+  bool parked;
   port::CondVar cv;
 };
 
@@ -5254,11 +5275,55 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
       &metadata_profile_, MetadataProfileStage::kWriteQueueWait);
   MutexLock l(&mutex_);
   writers_.push_back(&w);
+  static const unsigned write_cpu_count = WriteAvailableCPUs();
+  if (&w != writers_.front() && !w.sync && !writers_.front()->sync &&
+      !metadata_commit_in_progress_ && write_cpu_count > 1 &&
+      writers_.size() <= write_cpu_count && spinning_writers_ < 2 &&
+      !(imm_ != nullptr && mem_->ApproximateMemoryUsage() > write_buffer_limit_) &&
+      versions_->NumLevelFiles(0) < config::kL0_StopWritesTrigger) {
+    ++spinning_writers_;
+    metadata_profile_.Count(MetadataProfileCounter::kWriterSpins);
+    mutex_.Unlock();
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::microseconds(8);
+    unsigned spin_iterations = 0;
+    while (w.wake_state.load(std::memory_order_acquire) == 0) {
+      if ((spin_iterations++ & 255U) == 0 &&
+          std::chrono::steady_clock::now() >= deadline) break;
+#if (defined(__GNUC__) || defined(__clang__)) && \
+    (defined(__x86_64__) || defined(__i386__))
+      __asm__ __volatile__("pause" ::: "memory");
+#elif (defined(__GNUC__) || defined(__clang__)) && \
+      (defined(__aarch64__) || defined(__arm__))
+      __asm__ __volatile__("yield" ::: "memory");
+#else
+      std::atomic_signal_fence(std::memory_order_seq_cst);
+#endif
+    }
+    const bool spin_ready =
+        w.wake_state.load(std::memory_order_acquire) != 0;
+    mutex_.Lock();
+    --spinning_writers_;
+    if (spin_ready)
+      metadata_profile_.Count(MetadataProfileCounter::kWriterSpinReady);
+  }
   if (ProfileScope::Current()) {
     ProfileScope queue("write.queue_wait");
-    while (!w.done && &w != writers_.front()) w.cv.Wait();
+    while (!w.done && &w != writers_.front()) {
+      w.parked = true;
+      metadata_profile_.Count(MetadataProfileCounter::kWriterParks);
+      w.cv.Wait();
+      metadata_profile_.Count(MetadataProfileCounter::kWriterWakeups);
+      w.parked = false;
+    }
   } else {
-    while (!w.done && &w != writers_.front()) w.cv.Wait();
+    while (!w.done && &w != writers_.front()) {
+      w.parked = true;
+      metadata_profile_.Count(MetadataProfileCounter::kWriterParks);
+      w.cv.Wait();
+      metadata_profile_.Count(MetadataProfileCounter::kWriterWakeups);
+      w.parked = false;
+    }
   }
   queue_wait_timer.Stop();
   if (w.done) {
@@ -5277,8 +5342,10 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
   uint64_t last_sequence = versions_->LastSequence();
   Writer* last_writer = &w;
   WriteBatch* write_batch = nullptr;
+  bool all_single_put_writers = false;
+  bool background_waiters_signaled = false;
   if (status.ok() && updates != nullptr) {
-    write_batch = BuildBatchGroup(&last_writer);
+    write_batch = BuildBatchGroup(&last_writer, &all_single_put_writers);
     if (static_cast<uint64_t>(WriteBatchInternal::Count(write_batch)) >
         kMaxSequenceNumber - last_sequence) {
       status = Status::InvalidArgument("sequence number space exhausted");
@@ -5431,15 +5498,6 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
       batch_counter.Increment(w.single_put_key);
       status = batch_counter.status();
     } else {
-      bool all_single_put_writers = true;
-      for (auto iter = writers_.begin(); iter != writers_.end(); ++iter) {
-        Writer* grouped_writer = *iter;
-        if (grouped_writer->batch != nullptr && !grouped_writer->single_put) {
-          all_single_put_writers = false;
-          break;
-        }
-        if (grouped_writer == last_writer) break;
-      }
       if (all_single_put_writers) {
         for (auto iter = writers_.begin(); iter != writers_.end(); ++iter) {
           Writer* grouped_writer = *iter;
@@ -5691,6 +5749,8 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
       }
       metadata_wal_io_mutex_.Unlock();
       if (status.ok()) {
+        MetadataProfile::Timer insert_timer(
+            &metadata_profile_, MetadataProfileStage::kMemtableInsert);
         status = WriteBatchInternal::InsertInto(write_batch, mem_);
       }
       mutex_.Lock();
@@ -5713,6 +5773,7 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
       }
       write_log_in_progress_ = false;
       background_work_finished_signal_.SignalAll();
+      background_waiters_signaled = true;
       if (sync_error) {
         // The state of the log file is indeterminate: the log record we
         // just added may or may not show up when the DB is re-opened.
@@ -5787,26 +5848,30 @@ Status DBImpl::WriteInternal(const WriteOptions& options, WriteBatch* updates,
     if (ready != &w) {
       ready->status = status;
       ready->done = true;
-      ready->cv.Signal();
+      ready->wake_state.store(2, std::memory_order_release);
+      if (ready->parked) ready->cv.Signal();
     }
     if (ready == last_writer) break;
   }
 
   // Notify new head of write queue
   if (!writers_.empty()) {
-    writers_.front()->cv.Signal();
+    Writer* next = writers_.front();
+    next->wake_state.store(1, std::memory_order_release);
+    if (next->parked) next->cv.Signal();
   }
-  background_work_finished_signal_.SignalAll();
+  if (!background_waiters_signaled) background_work_finished_signal_.SignalAll();
 
   return profile_result(status);
 }
 
 // REQUIRES: Writer list must be non-empty
 // REQUIRES: First writer must have a non-null batch
-WriteBatch* DBImpl::BuildBatchGroup(Writer** last_writer) {
+WriteBatch* DBImpl::BuildBatchGroup(Writer** last_writer, bool* all_single_put) {
   mutex_.AssertHeld();
   assert(!writers_.empty());
   Writer* first = writers_.front();
+  *all_single_put = first->single_put;
   WriteBatch* result = first->batch;
   assert(result != nullptr);
 
@@ -5821,6 +5886,7 @@ WriteBatch* DBImpl::BuildBatchGroup(Writer** last_writer) {
   }
 
   *last_writer = first;
+  size_t group_writers = 1;
   std::deque<Writer*>::iterator iter = writers_.begin();
   ++iter;  // Advance past "first"
   for (; iter != writers_.end(); ++iter) {
@@ -5836,6 +5902,7 @@ WriteBatch* DBImpl::BuildBatchGroup(Writer** last_writer) {
         // Do not make batch too big
         break;
       }
+      *all_single_put = *all_single_put && w->single_put;
 
       // Append to *result
       if (result == first->batch) {
@@ -5847,7 +5914,11 @@ WriteBatch* DBImpl::BuildBatchGroup(Writer** last_writer) {
       WriteBatchInternal::Append(result, w->batch);
     }
     *last_writer = w;
+    ++group_writers;
   }
+  metadata_profile_.Count(static_cast<MetadataProfileCounter>(
+      static_cast<size_t>(MetadataProfileCounter::kWriteGroupSize1) +
+      std::min<size_t>(group_writers, 8) - 1));
   return result;
 }
 

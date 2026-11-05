@@ -57,6 +57,18 @@ enum class MetadataProfileCounter : size_t {
   kCompactionTailBytes,
   kRebuilds,
   kRebuiltRecords,
+  kWriterSpins,
+  kWriterSpinReady,
+  kWriterParks,
+  kWriterWakeups,
+  kWriteGroupSize1,
+  kWriteGroupSize2,
+  kWriteGroupSize3,
+  kWriteGroupSize4,
+  kWriteGroupSize5,
+  kWriteGroupSize6,
+  kWriteGroupSize7,
+  kWriteGroupSize8Plus,
   kCount
 };
 
@@ -77,6 +89,7 @@ enum class MetadataProfileStage : size_t {
   kRecovery,
   kRebuild,
   kBackpressure,
+  kMemtableInsert,
   kCount
 };
 
@@ -184,7 +197,11 @@ class MetadataProfile {
         "metadata_compaction_output_bytes", "primary_compactions",
         "compaction_journal_bytes", "compaction_journal_files",
         "compaction_tail_keys", "compaction_tail_bytes",
-        "rebuilds", "rebuilt_records"};
+        "rebuilds", "rebuilt_records", "writer_spins", "writer_spin_ready",
+        "writer_parks", "writer_wakeups", "write_group_size_1",
+        "write_group_size_2", "write_group_size_3", "write_group_size_4",
+        "write_group_size_5", "write_group_size_6", "write_group_size_7",
+        "write_group_size_8_plus"};
     return names[static_cast<size_t>(counter)];
   }
 
@@ -194,7 +211,7 @@ class MetadataProfile {
         "metadata_flush", "metadata_compaction", "primary_compaction_commit",
         "primary_compaction_prepare", "primary_compaction_tail",
         "primary_compaction_gate", "write_queue_wait", "wal_io_wait",
-        "recovery", "rebuild", "backpressure"};
+        "recovery", "rebuild", "backpressure", "memtable_insert"};
     return names[static_cast<size_t>(stage)];
   }
 

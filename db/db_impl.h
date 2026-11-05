@@ -248,7 +248,7 @@ class DBImpl : public DB {
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status WriteInternal(const WriteOptions& options, WriteBatch* updates,
                        bool trusted_single_put, const Slice& single_put_key);
-  WriteBatch* BuildBatchGroup(Writer** last_writer)
+  WriteBatch* BuildBatchGroup(Writer** last_writer, bool* all_single_put)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void RecordBackgroundError(const Status& s);
@@ -391,6 +391,7 @@ class DBImpl : public DB {
 
   // Queue of writers.
   std::deque<Writer*> writers_ GUARDED_BY(mutex_);
+  size_t spinning_writers_ GUARDED_BY(mutex_) = 0;
   WriteBatch* tmp_batch_ GUARDED_BY(mutex_);
 
   SnapshotList snapshots_ GUARDED_BY(mutex_);
