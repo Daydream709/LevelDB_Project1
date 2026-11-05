@@ -3,6 +3,7 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #include "db/db_impl.h"
+#include "db/filename.h"
 #include "db/version_set.h"
 #include "db/table_cache.h"
 #include "util/mutexlock.h"
@@ -16,7 +17,9 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <condition_variable>
+#include <fstream>
 #include <map>
 #include <limits>
 #include <memory>
@@ -41,6 +44,7 @@
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <dirent.h>
 extern char** environ;
 #endif
 
@@ -59,6 +63,16 @@ class TTLCompactionTestPeer {
     MutexLock lock(&impl->mutex_);
     while (impl->background_compaction_scheduled_ || impl->profiling_callbacks_ != 0)
       impl->background_work_finished_signal_.Wait();
+  }
+  static bool WaitForIdleFor(DB* db, std::chrono::milliseconds timeout) {
+    auto* impl = static_cast<DBImpl*>(db);
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    MutexLock lock(&impl->mutex_);
+    while (impl->background_compaction_scheduled_ || impl->profiling_callbacks_ != 0) {
+      if (std::chrono::steady_clock::now() >= deadline) return false;
+      impl->background_work_finished_signal_.TimedWait(10000);
+    }
+    return true;
   }
   static void Schedule(DB* db) {
     auto* impl = static_cast<DBImpl*>(db);
@@ -823,6 +837,126 @@ TEST_P(TTLMetadataTest, KilledWriterRecoversFlushedSSTWithoutRenewal) {
   CheckKilledWriter("sst");
 }
 
+TEST_P(TTLMetadataTest, KilledAtWALAndFileInstallationBoundaries) {
+#if defined(LEVELDB_TTL_CRASH_WRITER_PATH)
+  for (const char* mode : {"wal_partial", "wal_flushed", "wal_synced",
+                           "sst_synced", "manifest_before_sync", "manifest_synced",
+                           "compact_sst_synced", "compact_manifest_before_sync",
+                           "compact_manifest_synced", "gc_sst_synced",
+                           "gc_manifest_before_sync", "gc_manifest_synced"}) {
+    SCOPED_TRACE(mode);
+    db_.reset();
+    ASSERT_LEVELDB_OK(DestroyDB(dbname_, options_));
+    int ready[2];
+    ASSERT_EQ(0, pipe(ready));
+    posix_spawn_file_actions_t actions;
+    ASSERT_EQ(0, posix_spawn_file_actions_init(&actions));
+    posix_spawn_file_actions_adddup2(&actions, ready[1], STDOUT_FILENO);
+    posix_spawn_file_actions_addclose(&actions, ready[0]);
+    posix_spawn_file_actions_addclose(&actions, ready[1]);
+    std::string executable = LEVELDB_TTL_CRASH_WRITER_PATH;
+    std::string mode_arg = mode;
+    char* argv[] = {&executable[0], &dbname_[0], &mode_arg[0], nullptr};
+    pid_t child;
+    const int spawn_status = posix_spawn(&child, executable.c_str(), &actions, nullptr, argv, environ);
+    posix_spawn_file_actions_destroy(&actions);
+    close(ready[1]);
+    if (spawn_status != 0) { close(ready[0]); FAIL() << spawn_status; return; }
+    pollfd readiness{ready[0], POLLIN, 0};
+    int polled;
+    do { polled = poll(&readiness, 1, 15000); } while (polled < 0 && errno == EINTR);
+    char ack = 0;
+    const ssize_t bytes = polled > 0 ? read(ready[0], &ack, 1) : -1;
+    close(ready[0]);
+    const int killed = kill(child, SIGKILL);
+    int status = 0;
+    pid_t waited;
+    do { waited = waitpid(child, &status, 0); } while (waited < 0 && errno == EINTR);
+    ASSERT_EQ(1, bytes) << "requested fault point not reached";
+    ASSERT_EQ('R', ack);
+    ASSERT_EQ(0, killed);
+    ASSERT_EQ(child, waited);
+    ASSERT_TRUE(WIFSIGNALED(status));
+    ASSERT_EQ(SIGKILL, WTERMSIG(status));
+    std::fprintf(stderr, "crash-hook hit: %s\n", mode);
+
+    const bool gc_mode = std::strncmp(mode, "gc_", 3) == 0;
+    const bool compact_mode = std::strncmp(mode, "compact_", 8) == 0;
+    env_.SetTime(kTestEpochMicros + (gc_mode ? 3 : 1) * kMicrosPerSecond);
+    ASSERT_LEVELDB_OK(Open(false));
+    ExpectValue("stable", "before");
+    std::string value;
+    const Status first = db_->Get(ReadOptions(), "first", &value);
+    const bool recovered = first.ok();
+    if (recovered) EXPECT_EQ(std::string(1024, 'x'), value);
+    else EXPECT_TRUE(first.IsNotFound()) << first.ToString();
+    if (std::strcmp(mode, "wal_partial") == 0) EXPECT_FALSE(recovered);
+    if (std::strcmp(mode, "wal_synced") == 0 ||
+        std::strcmp(mode, "sst_synced") == 0 ||
+        std::strcmp(mode, "manifest_before_sync") == 0 ||
+        std::strcmp(mode, "manifest_synced") == 0 || gc_mode || compact_mode)
+      EXPECT_TRUE(recovered);
+    if (recovered && !gc_mode) ExpectValue("second", "ttl");
+    else ExpectMissing("second");
+    const uint64_t recovered_sequence = (gc_mode || compact_mode) ? 4 : (recovered ? 3 : 1);
+    ExpectStatsMatchPhysicalScan(recovered_sequence);
+    env_.SetTime(kTestEpochMicros + (gc_mode ? 3 : 2) * kMicrosPerSecond);
+    ExpectMissing("second");
+    Reopen();
+    ExpectValue("stable", "before");
+    ExpectMissing("second");
+    ExpectStatsMatchPhysicalScan(recovered_sequence);
+  }
+#else
+  GTEST_SKIP() << "Requires POSIX crash-writer test helper";
+#endif
+}
+
+TEST_P(TTLMetadataTest, CorruptMiddleWALRebuildsStatsFromRecoveredRecords) {
+  options_.paranoid_checks = false;
+  ASSERT_LEVELDB_OK(Open(true));
+  WriteOptions sync;
+  sync.sync = true;
+  ASSERT_LEVELDB_OK(db_->Put(sync, "first", "one"));
+  ASSERT_LEVELDB_OK(db_->Put(sync, "damaged", std::string(32768, 'y')));
+  ASSERT_LEVELDB_OK(db_->Put(sync, "last", "three"));
+  db_.reset();
+  std::vector<std::string> children;
+  ASSERT_LEVELDB_OK(env_.GetChildren(dbname_, &children));
+  uint64_t latest = 0;
+  for (const auto& child : children) {
+    uint64_t number = 0;
+    FileType type;
+    if (ParseFileName(child, &number, &type) && type == kLogFile)
+      latest = std::max(latest, number);
+  }
+  ASSERT_GT(latest, 0U);
+  const std::string path = LogFileName(dbname_, latest);
+  std::string bytes;
+  ASSERT_LEVELDB_OK(ReadFileToString(&env_, path, &bytes));
+  size_t offset = 0;
+  for (int record = 0; record < 2; ++record) {
+    ASSERT_LE(offset + 7, bytes.size());
+    const size_t length = static_cast<unsigned char>(bytes[offset + 4]) |
+        (static_cast<size_t>(static_cast<unsigned char>(bytes[offset + 5])) << 8);
+    ASSERT_EQ(record == 0 ? 1 : 2, static_cast<unsigned char>(bytes[offset + 6]));
+    ASSERT_GT(length, 0U);
+    ASSERT_LE(offset + 7 + length, bytes.size());
+    if (record == 1) bytes[offset + 7 + length / 2] ^= 1;
+    offset += 7 + length;
+  }
+  ASSERT_LEVELDB_OK(WriteStringToFile(&env_, bytes, path));
+  ASSERT_LEVELDB_OK(Open(false));
+  ExpectValue("first", "one");
+  ExpectMissing("damaged");
+  ExpectValue("last", "three");
+  ExpectStatsMatchPhysicalScan(3);
+  Stats stats;
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
+  EXPECT_EQ(2U, stats.total_entries);
+  EXPECT_EQ(2U, stats.distinct_keys);
+}
+
 TEST_P(TTLMetadataTest, PartialRangeRetainsOutsideRecordsInSameSST) {
   CheckPartialRange(BytewiseComparator());
 }
@@ -1267,6 +1401,51 @@ TEST_P(TTLMetadataTest, BinaryKeysAndEmptyValuesSurviveOverwriteAndGC) {
   ExpectStatsMatchPhysicalScan(11);
 }
 
+TEST_P(TTLMetadataTest, SameKeyAcrossSSTImmutableAndActiveMemtable) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "shared", "sst-1"));
+  const Snapshot* pin = db_->GetSnapshot();
+  auto* impl = static_cast<DBImpl*>(db_.get());
+  ASSERT_LEVELDB_OK(impl->TEST_CompactMemTable());
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "shared", "sst-2"));
+  ASSERT_LEVELDB_OK(impl->TEST_CompactMemTable());
+  ASSERT_TRUE(TTLCompactionTestPeer::WaitForIdleFor(db_.get(), std::chrono::seconds(5)));
+  unsigned table_count = 0;
+  for (int level = 0; level < config::kNumLevels; ++level) {
+    std::string count;
+    ASSERT_TRUE(db_->GetProperty("leveldb.num-files-at-level" + std::to_string(level), &count));
+    table_count += std::stoul(count);
+  }
+  ASSERT_GE(table_count, 2U);
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "shared", "immutable"));
+  env_.BlockNextTableSync();
+  Status flush_status;
+  std::thread flush([&] { flush_status = impl->TEST_CompactMemTable(); });
+  if (!env_.WaitForBlockedTableSync()) {
+    env_.ReleaseTableSync();
+    flush.join();
+    db_->ReleaseSnapshot(pin);
+    FAIL() << "immutable flush did not reach table sync";
+    return;
+  }
+  Status write_status = db_->Put(WriteOptions(), "shared", "active");
+  if (write_status.ok()) {
+    ExpectValue("shared", "active");
+    ExpectValue("shared", "sst-1", pin);
+    ExpectStatsMatchPhysicalScan(4);
+  }
+  env_.ReleaseTableSync();
+  flush.join();
+  db_->ReleaseSnapshot(pin);
+  ASSERT_LEVELDB_OK(write_status);
+  ASSERT_LEVELDB_OK(flush_status);
+  ASSERT_TRUE(TTLCompactionTestPeer::WaitForIdleFor(db_.get(), std::chrono::seconds(5)));
+  ExpectStatsMatchPhysicalScan(4);
+  Reopen();
+  ExpectValue("shared", "active");
+  ExpectStatsMatchPhysicalScan(4);
+}
+
 TEST_P(TTLMetadataTest, ConcurrentWriterHandoffPreservesStatsAndRecovery) {
   options_.enable_metadata_profiling = true;
   ASSERT_LEVELDB_OK(Open(true));
@@ -1395,6 +1574,60 @@ TEST_P(TTLMetadataTest, ConcurrentWriterLogFailureDoesNotPublishStats) {
   env_.SetFault(FaultClockEnv::Fault::kNone);
   Reopen();
   ExpectStatsMatchPhysicalScan(0);
+}
+
+TEST_P(TTLMetadataTest, MixedBatchWritersPublishAtomicStatsAcrossThreadCounts) {
+  for (const int writer_count : {1, 2, 4, 8, 16, 32}) {
+    SCOPED_TRACE(::testing::Message() << "writers=" << writer_count);
+    db_.reset();
+    ASSERT_LEVELDB_OK(DestroyDB(dbname_, options_));
+    env_.SetTime(kTestEpochMicros);
+    ASSERT_LEVELDB_OK(Open(true));
+    const Snapshot* empty = db_->GetSnapshot();
+    std::atomic<bool> start{false}, done{false}, failed{false};
+    std::atomic<unsigned> samples{0};
+    std::vector<std::thread> workers;
+    std::thread reader([&] {
+      ReadOptions read;
+      read.snapshot = empty;
+      while (!start.load(std::memory_order_acquire)) std::this_thread::yield();
+      do {
+        Stats stats;
+        Status s = db_->GetCurrentStats(read, &stats);
+        if (!s.ok() || stats.seq % 3 != 0 || stats.total_entries != stats.seq ||
+            stats.distinct_keys != (stats.seq == 0 ? 0 : 1 + 2 * (stats.seq / 3)) ||
+            stats.seq > static_cast<uint64_t>(writer_count * 100 * 3))
+          failed.store(true, std::memory_order_relaxed);
+        samples.fetch_add(1, std::memory_order_relaxed);
+      } while (!done.load(std::memory_order_acquire));
+    });
+    for (int t = 0; t < writer_count; ++t) {
+      workers.emplace_back([&, t] {
+        while (!start.load(std::memory_order_acquire)) std::this_thread::yield();
+        for (int i = 0; i < 100; ++i) {
+          const std::string suffix = std::to_string(t) + "/" + std::to_string(i);
+          WriteBatch batch;
+          batch.Put("unique/" + suffix, "value");
+          batch.PutWithExpiration("shared", "ttl", env_.NowMicros() + 60 * kMicrosPerSecond);
+          batch.Delete("deleted/" + suffix);
+          WriteOptions options;
+          options.sync = i % 31 == 0;
+          if (!db_->Write(options, &batch).ok()) failed.store(true, std::memory_order_relaxed);
+        }
+      });
+    }
+    start.store(true, std::memory_order_release);
+    for (auto& worker : workers) worker.join();
+    done.store(true, std::memory_order_release);
+    reader.join();
+    EXPECT_FALSE(failed.load());
+    EXPECT_GT(samples.load(), 0U);
+    ExpectStatsMatchPhysicalScan(static_cast<uint64_t>(writer_count * 100 * 3));
+    db_->ReleaseSnapshot(empty);
+    Reopen();
+    ExpectStatsMatchPhysicalScan(static_cast<uint64_t>(writer_count * 100 * 3));
+    ASSERT_FALSE(HasFailure());
+  }
 }
 
 TEST_P(TTLMetadataTest, ConcurrentMixedBatchStatsIgnoreSnapshotAtomically) {
@@ -2080,6 +2313,257 @@ TEST_P(TTLMetadataTest, BottomGCSpillsBufferedDeltasAndPreservesCounts) {
   Reopen();
   ExpectValue("permanent", "retained");
   ExpectStatsMatchPhysicalScan(kKeys + 1);
+}
+
+// Explicit opt-in: this is a long-running stability test, not a unit test.
+// Run one parameter at a time with --gtest_also_run_disabled_tests.
+TEST_P(TTLMetadataTest, DISABLED_MixedWorkloadSoak) {
+  const char* seconds_env = std::getenv("LEVELDB_SOAK_SECONDS");
+  const int seconds = seconds_env ? std::atoi(seconds_env) : 1200;
+  ASSERT_GT(seconds, 0);
+  ASSERT_LEVELDB_OK(Open(true));
+  constexpr int kWriters = 4, kKeys = 64;
+  struct Expected { bool present = false; uint64_t deadline = 0; std::string value; };
+  std::vector<Expected> expected(kWriters * kKeys);
+  uint64_t sequence = 0;
+  auto start = std::chrono::steady_clock::now();
+  unsigned rounds = 0;
+  while (std::chrono::steady_clock::now() - start < std::chrono::seconds(seconds)) {
+    std::atomic<bool> stop{false}, failed{false};
+    std::atomic<uint64_t> writes{0}, reads{0};
+    std::vector<std::thread> workers;
+    for (int w = 0; w < kWriters; ++w) {
+      workers.emplace_back([&, w] {
+        std::mt19937 random(0xabc000 + w * 101 + rounds);
+        while (!stop.load()) {
+          const int slot = w * kKeys + random() % kKeys;
+          const std::string key = "soak-" + std::to_string(slot);
+          const unsigned kind = random() % 4;
+          const std::string value = std::to_string(rounds) + ":" + std::to_string(random());
+          const uint64_t deadline = kind == 1 ? env_.NowMicros() + 3 * kMicrosPerSecond : 0;
+          WriteBatch batch;
+          if (kind == 0) batch.Delete(key);
+          else if (kind == 1) batch.PutWithExpiration(key, value, deadline);
+          else batch.Put(key, value);
+          Status status = db_->Write(WriteOptions(), &batch);
+          if (!status.ok()) { failed.store(true); break; }
+          expected[slot] = {kind != 0, deadline, value};
+          ++writes;
+          std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+      });
+    }
+    workers.emplace_back([&] {
+      while (!stop.load()) {
+        Stats stats;
+        if (!db_->GetCurrentStats(ReadOptions(), &stats).ok() ||
+            stats.distinct_keys > stats.total_entries || stats.total_entries > stats.seq) {
+          failed.store(true); break;
+        }
+        const Snapshot* snapshot = db_->GetSnapshot();
+        ReadOptions read;
+        read.snapshot = snapshot;
+        std::unique_ptr<Iterator> it(db_->NewIterator(read));
+        std::string previous;
+        bool first = true;
+        for (it->SeekToFirst(); it->Valid(); it->Next()) {
+          if (!first && previous >= it->key().ToString()) failed.store(true);
+          previous = it->key().ToString(); first = false;
+        }
+        if (!it->status().ok()) failed.store(true);
+        it.reset();
+        db_->ReleaseSnapshot(snapshot);
+        ++reads;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
+    });
+    auto round_end = std::min(start + std::chrono::seconds(seconds),
+                              std::chrono::steady_clock::now() + std::chrono::seconds(10));
+    while (!failed.load() && std::chrono::steady_clock::now() < round_end)
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    stop.store(true);
+    for (auto& worker : workers) worker.join();
+    ASSERT_FALSE(failed.load());
+    ASSERT_GT(writes.load(), 0U);
+    ASSERT_GT(reads.load(), 0U);
+    sequence += writes.load();
+    env_.Advance(kMicrosPerSecond);
+    GCResult gc;
+    ASSERT_LEVELDB_OK(db_->RunFullGC(&gc));
+    ASSERT_TRUE(gc.complete);
+    ASSERT_TRUE(TTLCompactionTestPeer::WaitForIdleFor(db_.get(), std::chrono::seconds(10)));
+    ExpectStatsMatchPhysicalScan(sequence);
+    Reopen();
+    for (int slot = 0; slot < kWriters * kKeys; ++slot) {
+      const std::string key = "soak-" + std::to_string(slot);
+      if (expected[slot].present &&
+          (expected[slot].deadline == 0 || expected[slot].deadline > env_.NowMicros()))
+        ExpectValue(key, expected[slot].value);
+      else
+        ExpectMissing(key);
+    }
+    ASSERT_FALSE(HasFailure());
+    std::vector<std::string> files;
+    ASSERT_LEVELDB_OK(env_.GetChildren(dbname_, &files));
+    size_t logs = 0, tables = 0;
+    for (const auto& f : files) {
+      if (f.size() >= 4 && f.substr(f.size() - 4) == ".log") ++logs;
+      if (f.size() >= 4 && f.substr(f.size() - 4) == ".ldb") ++tables;
+    }
+    std::ifstream statm("/proc/self/statm");
+    uint64_t pages = 0, resident = 0;
+    statm >> pages >> resident;
+    size_t descriptors = 0;
+#if defined(LEVELDB_TTL_CRASH_WRITER_PATH)
+    DIR* dir = opendir("/proc/self/fd");
+    if (dir) { while (readdir(dir)) ++descriptors; closedir(dir); }
+#endif
+    std::fprintf(stderr, "SOAK seconds=%lld round=%u seq=%llu writes=%llu reads=%llu rss_pages=%llu fds=%zu wal=%zu sst=%zu gc_complete=%d\n",
+                 static_cast<long long>(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start).count()),
+                 ++rounds, static_cast<unsigned long long>(sequence),
+                 static_cast<unsigned long long>(writes.load()), static_cast<unsigned long long>(reads.load()),
+                 static_cast<unsigned long long>(resident), descriptors, logs, tables, gc.complete);
+    std::fflush(stderr);
+  }
+}
+
+TEST_P(TTLMetadataTest, SeededMixedOperationsMatchReferenceModel) {
+  struct Entry { bool present; uint64_t expiry; std::string value; };
+  using Model = std::map<std::string, Entry>;
+  struct View { const Snapshot* snapshot; Model model; uint64_t time; };
+  const std::vector<std::string> keys = {
+      "", std::string("binary\0key", 10), std::string(512, 'x'),
+      "a", "b", "c", "d", "e", "f", "g", "h", "i"};
+  const char* selected_seed = std::getenv("LEVELDB_ROBUST_SEED");
+  const char* operation_log = std::getenv("LEVELDB_ROBUST_LOG");
+  const uint64_t seed_begin = selected_seed ? std::strtoull(selected_seed, nullptr, 10) : 0;
+  const uint64_t seed_end = selected_seed ? seed_begin + 1 : 20;
+  for (uint64_t seed = seed_begin; seed < seed_end; ++seed) {
+    std::fprintf(stderr, "robust-model seed=%llu\n", static_cast<unsigned long long>(seed));
+    SCOPED_TRACE(::testing::Message() << "seed=" << seed);
+    db_.reset();
+    ASSERT_LEVELDB_OK(DestroyDB(dbname_, options_));
+    env_.SetTime(kTestEpochMicros);
+    ASSERT_LEVELDB_OK(Open(true));
+    std::mt19937_64 random(0x71a5c0deULL + seed);
+    Model model;
+    std::vector<View> views;
+    uint64_t sequence = 0;
+    auto check = [&](const Model& expected, uint64_t time, const Snapshot* snap) {
+      ReadOptions ro;
+      ro.snapshot = snap;
+      for (const auto& key : keys) {
+        auto it = expected.find(key);
+        const bool visible = it != expected.end() && it->second.present &&
+            (it->second.expiry == 0 || time < it->second.expiry);
+        std::string got;
+        Status status = db_->Get(ro, key, &got);
+        if (visible) {
+          EXPECT_TRUE(status.ok()) << status.ToString();
+          if (status.ok()) EXPECT_EQ(got, it->second.value);
+        } else {
+          EXPECT_TRUE(status.IsNotFound()) << status.ToString();
+        }
+      }
+      std::unique_ptr<Iterator> iter(db_->NewIterator(ro));
+      auto expected_it = expected.begin();
+      for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+        while (expected_it != expected.end() &&
+               (!expected_it->second.present ||
+                (expected_it->second.expiry && time >= expected_it->second.expiry)))
+          ++expected_it;
+        ASSERT_NE(expected_it, expected.end());
+        EXPECT_EQ(iter->key().ToString(), expected_it->first);
+        EXPECT_EQ(iter->value().ToString(), expected_it->second.value);
+        ++expected_it;
+      }
+      while (expected_it != expected.end() &&
+             (!expected_it->second.present ||
+              (expected_it->second.expiry && time >= expected_it->second.expiry)))
+        ++expected_it;
+      EXPECT_EQ(expected_it, expected.end());
+      EXPECT_TRUE(iter->status().ok()) << iter->status().ToString();
+    };
+    for (int i = 0; i < 10000; ++i) {
+      SCOPED_TRACE(::testing::Message() << "operation=" << i);
+      const unsigned action = random() % 100;
+      if (operation_log) std::fprintf(stderr, "op=%d action=%u time=%llu\n", i, action,
+          static_cast<unsigned long long>(env_.NowMicros()));
+      if (action < 78) {
+        WriteBatch batch;
+        const int size = 1 + random() % 4;
+        for (int j = 0; j < size; ++j) {
+          const size_t key_index = random() % keys.size();
+          const std::string& key = keys[key_index];
+          const std::string value = std::to_string(i) + "/" + std::to_string(j);
+          const unsigned type = random() % 3;
+          if (operation_log) std::fprintf(stderr, "  record=%d key_index=%zu type=%u\n", j, key_index, type);
+          if (type == 0) { batch.Delete(key); model[key] = {false, 0, ""}; }
+          else if (type == 1) { batch.Put(key, value); model[key] = {true, 0, value}; }
+          else {
+            const uint64_t expiry = env_.NowMicros() + (random() % 5) * kMicrosPerSecond;
+            if (operation_log) std::fprintf(stderr, "  expiry=%llu\n", static_cast<unsigned long long>(expiry));
+            batch.PutWithExpiration(key, value, expiry);
+            model[key] = {true, expiry, value};
+          }
+        }
+        ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &batch));
+        sequence += size;
+      } else if (action < 86) {
+        env_.Advance(kMicrosPerSecond);
+      } else if (action < 90 && views.size() < 3) {
+        views.push_back({db_->GetSnapshot(), model, env_.NowMicros()});
+      } else if (action < 93 && !views.empty()) {
+        if (operation_log) std::fprintf(stderr, "  release_snapshot begin\n");
+        db_->ReleaseSnapshot(views.front().snapshot);
+        if (operation_log) std::fprintf(stderr, "  release_snapshot end\n");
+        views.erase(views.begin());
+      } else if (action == 93) {
+        ASSERT_LEVELDB_OK(static_cast<DBImpl*>(db_.get())->TEST_CompactMemTable());
+      } else if (action == 94) {
+        db_->CompactRange(nullptr, nullptr);
+      } else if (action == 95 && views.empty()) {
+        Reopen();
+      } else if (action == 96 && i % 16 == 0) {
+        GCResult result;
+        ASSERT_LEVELDB_OK(db_->RunFullGC(&result));
+      }
+      if (i % 100 == 0 || i == 9999) {
+        if (operation_log) std::fprintf(stderr, "  wait_idle begin\n");
+        TTLCompactionTestPeer::WaitForIdle(db_.get());
+        if (operation_log) std::fprintf(stderr, "  wait_idle end\n");
+        check(model, env_.NowMicros(), nullptr);
+        if (operation_log) std::fprintf(stderr, "  current_check end\n");
+        for (const auto& view : views) check(view.model, view.time, view.snapshot);
+        if (operation_log) std::fprintf(stderr, "  snapshot_checks end\n");
+        ExpectStatsMatchPhysicalScan(sequence);
+        if (operation_log) std::fprintf(stderr, "  physical_check end\n");
+        ASSERT_FALSE(HasFailure());
+      }
+    }
+    for (const auto& view : views) db_->ReleaseSnapshot(view.snapshot);
+  }
+}
+
+TEST_P(TTLMetadataTest, BottomRewriteReclaimsExpiredVersionHiddenByLiveValue) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "old", 1));
+  const Snapshot* snapshot = db_->GetSnapshot();
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "new"));
+  ASSERT_NO_FATAL_FAILURE(PushToBottom());
+  env_.Advance(2 * kMicrosPerSecond);
+  ExpectValue("key", "new");
+  db_->ReleaseSnapshot(snapshot);
+  ASSERT_TRUE(TTLCompactionTestPeer::WaitForIdleFor(db_.get(), std::chrono::seconds(5)));
+  ExpectValue("key", "new");
+  ExpectStatsMatchPhysicalScan(2);
+  Stats stats;
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
+  EXPECT_EQ(1U, stats.total_entries);
+  EXPECT_EQ(1U, stats.distinct_keys);
+  Reopen();
+  ExpectValue("key", "new");
+  ExpectStatsMatchPhysicalScan(2);
 }
 
 TEST_P(TTLMetadataTest, RandomOperationsMatchVisibilityAndPhysicalOracle) {

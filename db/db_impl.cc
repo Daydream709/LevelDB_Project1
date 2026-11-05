@@ -3409,8 +3409,11 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
       --current_key_delta;
     }
 
-    const bool keep =
-        !current_key_in_range || preserve_snapshots || keep_current_key;
+    // Without a pinned snapshot, the newest record is the only bottom-level
+    // version needed for a key. Retaining older expired versions behind a
+    // live newest value causes repeated TTL rewrites without reclaiming them.
+    const bool keep = !current_key_in_range || preserve_snapshots ||
+                      (keep_current_key && new_user_key);
     if (keep) {
       if (profile_gc_records && preserve_snapshots)
         ProfileScope::Count("gc.retained_snapshot_records");
@@ -3865,6 +3868,10 @@ void DBImpl::MaybeScheduleCompaction() {
     // Coalesce repeated unsuccessful TTL scans for at most one millisecond.
     // Manual/size compactions and immutable memtables bypass this branch.
     const uint64_t scan_now = env_->NowMicros();
+    if (scan_now == UINT64_MAX && ttl_cached_generation_ == ttl_scan_generation_ &&
+        ttl_scan_not_before_micros_ == UINT64_MAX) {
+      return;
+    }
     if (ttl_cached_generation_ == ttl_scan_generation_ &&
         ttl_scan_not_before_micros_ > scan_now &&
         ttl_scan_not_before_micros_ - scan_now <= 1000) {
@@ -4051,6 +4058,8 @@ void DBImpl::BackgroundCompaction() {
   bool is_manual = (manual_compaction_ != nullptr);
   bool is_ttl_compaction = false;
   bool ttl_bottom_rewrite = false;
+  const bool scheduled_ttl = !is_manual && ttl_compaction_level_ >= 0;
+  const uint64_t entries_before_ttl = metadata_total_entries_;
   InternalKey manual_end;
   InternalKey ttl_begin;
   InternalKey ttl_end;
@@ -4150,6 +4159,17 @@ void DBImpl::BackgroundCompaction() {
     RemoveObsoleteFiles();
   }
   delete c;
+
+  // An expired record may need to remain as a visibility barrier while an
+  // overlapping file still contains older data. Avoid repeatedly rewriting
+  // such a candidate without reclaiming records. Version changes invalidate
+  // this short negative cache; explicit maintenance bypasses it.
+  if (scheduled_ttl && status.ok() &&
+      metadata_total_entries_ == entries_before_ttl) {
+    ttl_cached_generation_ = ttl_scan_generation_;
+    const uint64_t now = env_->NowMicros();
+    ttl_scan_not_before_micros_ = now <= UINT64_MAX - 1000 ? now + 1000 : UINT64_MAX;
+  }
 
   if (status.ok()) {
     // Done
