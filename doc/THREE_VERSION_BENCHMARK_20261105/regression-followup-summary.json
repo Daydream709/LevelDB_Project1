@@ -1,0 +1,23 @@
+[
+  {
+    "round": 1,
+    "status": "pass",
+    "returncode": 0,
+    "seconds": 89.81762041902402,
+    "log": "/home/ubuntu/leveldb_project1/build/three-version-comparison-20261105/regression-followup/r1/homework_regression.log"
+  },
+  {
+    "round": 2,
+    "status": "pass",
+    "returncode": 0,
+    "seconds": 90.11707251501502,
+    "log": "/home/ubuntu/leveldb_project1/build/three-version-comparison-20261105/regression-followup/r2/homework_regression.log"
+  },
+  {
+    "round": 3,
+    "status": "pass",
+    "returncode": 0,
+    "seconds": 90.27080621698406,
+    "log": "/home/ubuntu/leveldb_project1/build/three-version-comparison-20261105/regression-followup/r3/homework_regression.log"
+  }
+]

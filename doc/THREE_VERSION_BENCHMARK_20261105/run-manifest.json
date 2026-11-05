@@ -1,0 +1,101 @@
+{
+  "versions": {
+    "teacher": "10568369137063605ec7f61ed30349d3ea44dfa0",
+    "primary": "2026-11-01 archived primary-attached source; 163 files checked against recorded provenance",
+    "latest": "512309f6ec235d0b47d951b67842ec5aa04b7aa9"
+  },
+  "binaries_sha256": {
+    "teacher": "e427dc4bd2b3335761db9451913ab987fb7f5f0e1bd210b1b50845600b04f2d4",
+    "primary": "e515fd87edfe34b0efa454f491575479e66576c15a6c1a38286ee7cbd79b01fe",
+    "latest": "cb74dedfd99f34144149d1faf24bd51c6c2f743dc6b7417437ed89d2befaafa4"
+  },
+  "cases": {
+    "teacher": [
+      "perf_concurrent",
+      "perf_read",
+      "perf_reopen",
+      "perf_scan",
+      "perf_write"
+    ],
+    "primary": [
+      "combined_concurrent",
+      "combined_contract",
+      "combined_gc",
+      "combined_overwrites",
+      "combined_reopen",
+      "combined_views",
+      "metadata_contract",
+      "metadata_reopen",
+      "perf_combined_gc",
+      "perf_combined_stats_under_write",
+      "perf_concurrent",
+      "perf_read",
+      "perf_reopen",
+      "perf_scan",
+      "perf_stats",
+      "perf_stats_under_write",
+      "perf_ttl_gc",
+      "perf_ttl_mixed",
+      "perf_ttl_write",
+      "perf_write",
+      "ttl_contract",
+      "ttl_views"
+    ],
+    "latest": [
+      "combined_concurrent",
+      "combined_contract",
+      "combined_gc",
+      "combined_overwrites",
+      "combined_reopen",
+      "combined_views",
+      "metadata_contract",
+      "metadata_reopen",
+      "perf_combined_gc",
+      "perf_combined_stats_under_write",
+      "perf_concurrent",
+      "perf_read",
+      "perf_reopen",
+      "perf_scan",
+      "perf_stats",
+      "perf_stats_under_write",
+      "perf_ttl_gc",
+      "perf_ttl_mixed",
+      "perf_ttl_write",
+      "perf_write",
+      "ttl_contract",
+      "ttl_views"
+    ]
+  },
+  "unsupported_on_teacher": [
+    "combined_concurrent",
+    "combined_contract",
+    "combined_gc",
+    "combined_overwrites",
+    "combined_reopen",
+    "combined_views",
+    "metadata_contract",
+    "metadata_reopen",
+    "perf_combined_gc",
+    "perf_combined_stats_under_write",
+    "perf_stats",
+    "perf_stats_under_write",
+    "perf_ttl_gc",
+    "perf_ttl_mixed",
+    "perf_ttl_write",
+    "ttl_contract",
+    "ttl_views"
+  ],
+  "config": {
+    "keys": 100000,
+    "threads": 8,
+    "rounds": 8,
+    "repeat": 3
+  },
+  "seed": 7774596,
+  "value_bytes": 256,
+  "expired_percent": 50,
+  "matrix": true,
+  "schedule": "per case and variant, 3 rounds; rotate teacher/primary/latest to balance execution position",
+  "machine": "Linux-5.15.0-1117-aws-x86_64-with-glibc2.31",
+  "cpu_count": 8
+}

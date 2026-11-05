@@ -1,0 +1,33 @@
+{
+  "total": 27,
+  "passed": 24,
+  "failures": [
+    {
+      "round": 1,
+      "version": "primary",
+      "target": "homework_regression",
+      "status": "fail",
+      "returncode": -11,
+      "seconds": 19.59143661201233,
+      "log": "/home/ubuntu/leveldb_project1/build/three-version-comparison-20261105/regression-runs/r1/primary/homework_regression.log"
+    },
+    {
+      "round": 2,
+      "version": "primary",
+      "target": "homework_regression",
+      "status": "fail",
+      "returncode": -11,
+      "seconds": 19.592855156050064,
+      "log": "/home/ubuntu/leveldb_project1/build/three-version-comparison-20261105/regression-runs/r2/primary/homework_regression.log"
+    },
+    {
+      "round": 3,
+      "version": "primary",
+      "target": "homework_regression",
+      "status": "fail",
+      "returncode": -11,
+      "seconds": 19.59403494099388,
+      "log": "/home/ubuntu/leveldb_project1/build/three-version-comparison-20261105/regression-runs/r3/primary/homework_regression.log"
+    }
+  ]
+}
