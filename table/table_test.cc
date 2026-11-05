@@ -5,7 +5,10 @@
 #include "leveldb/table.h"
 
 #include <map>
+#include <limits>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "db/dbformat.h"
@@ -20,6 +23,7 @@
 #include "table/block_builder.h"
 #include "table/format.h"
 #include "util/random.h"
+#include "util/coding.h"
 #include "util/testutil.h"
 
 namespace leveldb {
@@ -720,6 +724,63 @@ TEST_F(Harness, RandomizedLongDB) {
     files += atoi(value.c_str());
   }
   ASSERT_GT(files, 0);
+}
+
+TEST(BlockTest, RejectsOverflowingEntryLengths) {
+  std::string contents;
+  PutVarint32(&contents, 0);
+  PutVarint32(&contents, std::numeric_limits<uint32_t>::max());
+  PutVarint32(&contents, 2);
+  contents.push_back('x');
+  PutFixed32(&contents, 0);
+  PutFixed32(&contents, 1);
+  BlockContents block_contents;
+  block_contents.data = contents;
+  block_contents.cachable = false;
+  block_contents.heap_allocated = false;
+  Block block(block_contents);
+  std::unique_ptr<Iterator> it(block.NewIterator(BytewiseComparator()));
+  it->SeekToFirst();
+  EXPECT_FALSE(it->Valid());
+  EXPECT_TRUE(it->status().IsCorruption());
+}
+
+TEST(BlockTest, IteratorReconstructsKeysAcrossRestartAndLongKeyTransitions) {
+  Options options;
+  options.block_restart_interval = 2;
+  BlockBuilder builder(&options);
+  const std::vector<std::string> keys = {
+      "a", "aa", std::string(48, 'b') + "0", std::string(48, 'b') + "1",
+      "c", "ca", "cb"};
+  for (const auto& key : keys) builder.Add(key, key);
+  const std::string contents = builder.Finish().ToString();
+  BlockContents block_contents;
+  block_contents.data = contents;
+  block_contents.cachable = false;
+  block_contents.heap_allocated = false;
+  Block block(block_contents);
+  std::unique_ptr<Iterator> it(block.NewIterator(BytewiseComparator()));
+  it->SeekToFirst();
+  for (const auto& key : keys) {
+    ASSERT_TRUE(it->Valid());
+    EXPECT_EQ(key, it->key().ToString());
+    EXPECT_EQ(key, it->value().ToString());
+    it->Next();
+  }
+  EXPECT_FALSE(it->Valid());
+  it->SeekToLast();
+  for (auto key = keys.rbegin(); key != keys.rend(); ++key) {
+    ASSERT_TRUE(it->Valid());
+    EXPECT_EQ(*key, it->key().ToString());
+    it->Prev();
+  }
+  EXPECT_FALSE(it->Valid());
+  for (const auto& key : keys) {
+    it->Seek(key);
+    ASSERT_TRUE(it->Valid());
+    EXPECT_EQ(key, it->key().ToString());
+  }
+  EXPECT_TRUE(it->status().ok());
 }
 
 TEST(MemTableTest, Simple) {

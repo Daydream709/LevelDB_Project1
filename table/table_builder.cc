@@ -7,6 +7,7 @@
 
 #include <cassert>
 #include <algorithm>
+#include <optional>
 #include <vector>
 
 #include "leveldb/comparator.h"
@@ -119,8 +120,11 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
   assert(!r->closed);
   if (!ok()) return;
   if (r->internal_stats_enabled) {
-    ProfileScope collect("metadata.collect_sst_index");
-    ProfileScope::Count("metadata.index_records");
+    std::optional<ProfileScope> collect;
+    if (ProfileScope::Current() != nullptr) {
+      collect.emplace("metadata.collect_sst_index");
+      ProfileScope::Count("metadata.index_records");
+    }
     if (key.size() < 8) {
       r->status = Status::Corruption(
           "internal statistics enabled for a non-internal table key");
@@ -142,6 +146,8 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
         return;
       }
       ++r->internal_stats_ttl;
+      if (r->internal_expire_times.empty())
+        r->internal_expire_times.reserve(4096);
       r->internal_expire_times.push_back(DecodeFixed64(value.data()));
     }
   }

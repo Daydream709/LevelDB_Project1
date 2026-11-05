@@ -94,6 +94,12 @@ class TTLCompactionTestPeer {
     MutexLock lock(&impl->mutex_);
     return impl->RewriteBottomLevelRangeLocked(begin, end);
   }
+  static Status ProfiledRewriteRange(DB* db) {
+    auto* impl = static_cast<DBImpl*>(db);
+    ProfileScope profile(impl->profiler_, impl->profiling_id_, "test.bottom_gc");
+    MutexLock lock(&impl->mutex_);
+    return impl->RewriteBottomLevelRangeLocked(nullptr, nullptr);
+  }
   static std::vector<std::pair<std::string, std::string>> BottomBounds(DB* db) {
     auto* impl = static_cast<DBImpl*>(db);
     MutexLock lock(&impl->mutex_);
@@ -180,6 +186,7 @@ class FaultClockEnv : public EnvWrapper {
   void Advance(uint64_t delta) { now_.fetch_add(delta); }
   void SetFault(Fault fault) { fault_.store(static_cast<int>(fault)); }
   unsigned FaultHits() const { return fault_hits_.load(); }
+  unsigned MetadataFilesCreated() const { return metadata_files_created_.load(); }
 
   void BlockNextTableRead(bool fail = false) {
     std::lock_guard<std::mutex> lock(read_mu_);
@@ -239,6 +246,9 @@ class FaultClockEnv : public EnvWrapper {
   Status NewWritableFile(const std::string& fname,
                          WritableFile** result) override {
     Status status = target()->NewWritableFile(fname, result);
+    if (status.ok() && fname.size() >= 5 &&
+        fname.compare(fname.size() - 5, 5, ".midx") == 0)
+      ++metadata_files_created_;
     if (status.ok()) *result = new FaultyWritableFile(this, fname, *result);
     return status;
   }
@@ -331,6 +341,7 @@ class FaultClockEnv : public EnvWrapper {
   std::atomic<uint64_t> now_;
   std::atomic<int> fault_{static_cast<int>(Fault::kNone)};
   std::atomic<unsigned> fault_hits_{0};
+  std::atomic<unsigned> metadata_files_created_{0};
   std::mutex sync_mu_;
   std::condition_variable sync_cv_;
   bool block_next_table_sync_ = false;
@@ -928,6 +939,20 @@ TEST_P(TTLMetadataTest, PrunedScoringMatchesExhaustiveSelection) {
   env_.Advance(2 * kMicrosPerSecond);
   ASSERT_NO_FATAL_FAILURE(TTLCompactionTestPeer::CheckCandidateAgainstLinearScan(db_.get()));
   ExpectStatsMatchPhysicalScan(192);
+}
+
+TEST_P(TTLMetadataTest, BottomRewritePreservesNewerMemtableStats) {
+  ASSERT_LEVELDB_OK(Open(true));
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "old", 1));
+  ASSERT_NO_FATAL_FAILURE(PushToBottom());
+  ASSERT_LEVELDB_OK(db_->Put(WriteOptions(), "key", "new"));
+  env_.Advance(kMicrosPerSecond);
+  ASSERT_LEVELDB_OK(TTLCompactionTestPeer::RewriteRange(db_.get(), nullptr, nullptr));
+  ExpectValue("key", "new");
+  ExpectStatsMatchPhysicalScan(2);
+  Reopen();
+  ExpectValue("key", "new");
+  ExpectStatsMatchPhysicalScan(2);
 }
 
 TEST_P(TTLMetadataTest, UnlockedCandidateReschedulesManualWork) {
@@ -1675,6 +1700,47 @@ TEST_P(TTLMetadataTest, LargeTTLBatchUsesAuxiliarySpillAndReopens) {
   EXPECT_EQ(stats.distinct_keys, 0U);
   Reopen();
   ExpectStatsMatchPhysicalScan(2U * keys);
+}
+
+TEST_P(TTLMetadataTest, BottomGCSpillsBufferedDeltasAndPreservesCounts) {
+  options_.metadata_workspace_size = 64 << 10;
+  options_.profiler = std::make_shared<Profiler>();
+  options_.profiler->SetEnabled(true);
+  ASSERT_LEVELDB_OK(Open(true));
+  constexpr int kKeys = 4096;
+  const uint64_t deadline = env_.NowMicros() + 60 * kMicrosPerSecond;
+  WriteBatch batch;
+  for (int i = 0; i < kKeys; ++i) {
+    const std::string key = "expired-" + std::string(48, 'x') + std::to_string(i);
+    batch.PutWithExpiration(key, "value", deadline);
+  }
+  batch.Put("permanent", "retained");
+  ASSERT_LEVELDB_OK(db_->Write(WriteOptions(), &batch));
+  auto* impl = static_cast<DBImpl*>(db_.get());
+  ASSERT_LEVELDB_OK(impl->TEST_CompactMemTable());
+  for (int level = 0; level < config::kNumLevels - 1; ++level)
+    impl->TEST_CompactRange(level, nullptr, nullptr);
+  ASSERT_FALSE(TTLCompactionTestPeer::BottomBounds(db_.get()).empty());
+  TTLCompactionTestPeer::WaitForIdle(db_.get());
+  env_.Advance(60 * kMicrosPerSecond);
+  const unsigned files_before = env_.MetadataFilesCreated();
+  const uint64_t removed_before = ProfilerTestPeer::Counter(
+      *options_.profiler, "gc.installed_removed_records");
+  ASSERT_LEVELDB_OK(TTLCompactionTestPeer::ProfiledRewriteRange(db_.get()));
+  EXPECT_GT(env_.MetadataFilesCreated(), files_before);
+  EXPECT_EQ(ProfilerTestPeer::Counter(*options_.profiler,
+                                      "gc.installed_removed_records") - removed_before,
+            static_cast<uint64_t>(kKeys));
+  ExpectValue("permanent", "retained");
+  ExpectMissing("expired-" + std::string(48, 'x') + "0");
+  ExpectStatsMatchPhysicalScan(kKeys + 1);
+  Stats stats;
+  ASSERT_LEVELDB_OK(db_->GetCurrentStats(ReadOptions(), &stats));
+  EXPECT_EQ(stats.total_entries, 1U);
+  EXPECT_EQ(stats.distinct_keys, 1U);
+  Reopen();
+  ExpectValue("permanent", "retained");
+  ExpectStatsMatchPhysicalScan(kKeys + 1);
 }
 
 TEST_P(TTLMetadataTest, RandomOperationsMatchVisibilityAndPhysicalOracle) {

@@ -426,6 +426,10 @@ struct DBImpl::CompactionState {
 
   Compaction* const compaction;
   VersionEdit* replacement_edit = nullptr;
+  Version* scanned_bottom_version = nullptr;
+  std::set<uint64_t> scanned_bottom_files;
+  std::string scanned_bottom_smallest;
+  std::string scanned_bottom_largest;
   const char* profiling_trigger = "size";
 
   // Sequence numbers < smallest_snapshot are not significant since we
@@ -445,6 +449,8 @@ struct DBImpl::CompactionState {
   std::map<std::string, PrimaryMetadataDelta, MetadataKeyLess> metadata_deltas;
   size_t metadata_delta_bytes = 0;
   std::vector<MetadataFileMeta> metadata_delta_runs;
+  // Sorted bottom-level deltas can stay private and bounded until install.
+  std::string sorted_delta_buffer;
   std::vector<uint64_t> metadata_delta_output_numbers;
   bool has_metadata_delta_range = false;
   std::string metadata_delta_smallest;
@@ -2951,14 +2957,12 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
   uint64_t profiling_input_bytes = 0;
   for (FileMetaData* file : files) profiling_input_bytes += file->file_size;
   ProfileScope::Count("gc.input_sst_bytes", profiling_input_bytes);
-  std::vector<Iterator*> children;
-  children.reserve(files.size());
-  for (FileMetaData* file : files) {
-    children.push_back(table_cache_->NewIterator(ReadOptions(), file->number,
-                                                 file->file_size));
-  }
-  Iterator* input = NewMergingIterator(&internal_comparator_, children.data(),
-                                      children.size());
+  // A nonzero level has disjoint files in internal-key order, so sequential
+  // concatenation avoids comparing every entry against all other files.
+  ReadOptions gc_read_options;
+  // A full maintenance scan should not evict the foreground read working set.
+  gc_read_options.fill_cache = false;
+  Iterator* input = base->NewFileListIterator(gc_read_options, &files);
   const bool preserve_snapshots = !snapshots_.empty() ||
       (full_gc_active_ && versions_->LastSequence() > full_gc_sequence_);
   const uint64_t read_time_micros = full_gc_active_
@@ -2982,6 +2986,12 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
   TableBuilder* builder = nullptr;
   auto* compact = new CompactionState(nullptr);
   compact->replacement_edit = &edit;
+  base->Ref();
+  compact->scanned_bottom_version = base;
+  compact->scanned_bottom_smallest = files.front()->smallest.user_key().ToString();
+  compact->scanned_bottom_largest = files.back()->largest.user_key().ToString();
+  for (FileMetaData* file : files)
+    compact->scanned_bottom_files.insert(file->number);
   uint64_t removed_records = 0;
   // Preserve TTL filtering while spilling raw-key deltas within the local
   // metadata workspace budget. Install through the auxiliary LSM transaction.
@@ -3146,6 +3156,9 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
   TableBuilder* sorted_delta_builder = nullptr;
   MetadataFileMeta sorted_delta_run;
   bool sorted_delta_has_key = false;
+  bool sorted_delta_spilled = false;
+  const size_t sorted_delta_buffer_limit =
+      std::min(options_.metadata_workspace_size, size_t{4 << 20});
 
   auto finish_sorted_delta_run = [&]() -> Status {
     if (sorted_delta_builder == nullptr) return Status::OK();
@@ -3172,6 +3185,31 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
   auto append_sorted_delta = [&](const std::string& key, int64_t delta,
                                  uint64_t output_records) -> Status {
     if (delta == 0) return Status::OK();
+    char encoded_delta[16];
+    if (delta == -1 && output_records == 0) {
+      std::memset(encoded_delta, 0, 8);
+      std::memset(encoded_delta + 8, 0xff, 8);
+    } else {
+      uint64_t delta_bits;
+      std::memcpy(&delta_bits, &delta, sizeof(delta_bits));
+      EncodeFixed64(encoded_delta, output_records);
+      EncodeFixed64(encoded_delta + 8, delta_bits);
+    }
+    const size_t remaining = sorted_delta_buffer_limit -
+                             compact->sorted_delta_buffer.size();
+    if (!sorted_delta_spilled && key.size() <= UINT32_MAX &&
+        key.size() <= remaining && remaining - key.size() >= 21) {
+      if (compact->sorted_delta_buffer.empty())
+        compact->sorted_delta_buffer.reserve(sorted_delta_buffer_limit);
+      if (key.size() < 128) {
+        compact->sorted_delta_buffer.push_back(static_cast<char>(key.size()));
+        compact->sorted_delta_buffer.append(key.data(), key.size());
+      } else {
+        PutLengthPrefixedSlice(&compact->sorted_delta_buffer, key);
+      }
+      compact->sorted_delta_buffer.append(encoded_delta, sizeof(encoded_delta));
+      return Status::OK();
+    }
     if (sorted_delta_builder == nullptr) {
       const uint64_t number = allocate_delta_file();
       sorted_delta_run.kind = kMetadataIndex;
@@ -3181,9 +3219,28 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
       if (!run_status.ok()) return run_status;
       sorted_delta_builder =
           new TableBuilder(metadata_index_->TableOptions(), sorted_delta_file);
+      if (!sorted_delta_spilled) {
+        sorted_delta_spilled = true;
+        Slice buffered(compact->sorted_delta_buffer);
+        while (!buffered.empty()) {
+          Slice buffered_key;
+          if (!GetLengthPrefixedSlice(&buffered, &buffered_key) ||
+              buffered.size() < sizeof(encoded_delta)) {
+            return Status::Corruption("invalid buffered compaction delta");
+          }
+          sorted_delta_builder->Add(buffered_key,
+                                    Slice(buffered.data(), sizeof(encoded_delta)));
+          if (!sorted_delta_has_key) {
+            sorted_delta_run.smallest = buffered_key.ToString();
+            sorted_delta_has_key = true;
+          }
+          sorted_delta_run.largest = buffered_key.ToString();
+          buffered.remove_prefix(sizeof(encoded_delta));
+        }
+        std::string().swap(compact->sorted_delta_buffer);
+      }
     }
-    sorted_delta_builder->Add(
-        key, EncodeMetadataDelta(delta, output_records));
+    sorted_delta_builder->Add(key, Slice(encoded_delta, sizeof(encoded_delta)));
     if (!sorted_delta_has_key) {
       sorted_delta_run.smallest = key;
       sorted_delta_has_key = true;
@@ -3203,6 +3260,7 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
   int64_t current_key_delta = 0;
   uint64_t current_key_output_records = 0;
   Status status = Status::OK();
+  const bool profile_gc_records = ProfileScope::Current() != nullptr;
 
   input->SeekToFirst();
   while (input->Valid()) {
@@ -3213,8 +3271,9 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
           "invalid internal key in bottom-level rewrite");
       break;
     }
-    ProfileScope filtering("gc.iterate_filter");
-    ProfileScope::Count("gc.records_checked");
+    std::optional<ProfileScope> filtering;
+    if (profile_gc_records) filtering.emplace("gc.iterate_filter");
+    if (profile_gc_records) ProfileScope::Count("gc.records_checked");
     if (!stream_sorted_deltas) {
       const std::string raw_key = parsed.user_key.ToString();
       status = add_metadata_delta(raw_key, -1, 0);
@@ -3223,8 +3282,10 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
 
     const bool new_user_key =
         !have_user_key ||
-        user_comparator()->Compare(parsed.user_key, Slice(current_user_key)) !=
-            0;
+        (stream_sorted_deltas
+             ? parsed.user_key != Slice(current_user_key)
+             : user_comparator()->Compare(parsed.user_key,
+                                          Slice(current_user_key)) != 0);
     if (new_user_key) {
       if (stream_sorted_deltas && have_user_key) {
         status = append_sorted_delta(current_user_key, current_key_delta,
@@ -3276,22 +3337,29 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
     const bool keep =
         !current_key_in_range || preserve_snapshots || keep_current_key;
     if (keep) {
-      if (preserve_snapshots) ProfileScope::Count("gc.retained_snapshot_records");
+      if (profile_gc_records && preserve_snapshots)
+        ProfileScope::Count("gc.retained_snapshot_records");
       if (builder == nullptr) {
         output_meta.number = versions_->NewFileNumber();
         pending_outputs_.insert(output_meta.number);
         status = env_->NewWritableFile(
             TableFileName(dbname_, output_meta.number), &outfile);
         if (!status.ok()) break;
-        builder = new TableBuilder(options_, outfile);
+        Options gc_output_options = options_;
+        if (gc_output_options.block_size == 4096)
+          gc_output_options.block_size = 8192;
+        builder = new TableBuilder(gc_output_options, outfile);
         builder->EnableInternalStatsMetadata();
-      }
-      if (builder->NumEntries() == 0) {
         output_meta.smallest.DecodeFrom(internal_key);
       }
       output_meta.largest.DecodeFrom(internal_key);
-      { ProfileScope emit("gc.output_add"); builder->Add(internal_key, input->value()); }
-      ProfileScope::Count("gc.records_output");
+      if (profile_gc_records) {
+        ProfileScope emit("gc.output_add");
+        builder->Add(internal_key, input->value());
+      } else {
+        builder->Add(internal_key, input->value());
+      }
+      if (profile_gc_records) ProfileScope::Count("gc.records_output");
       if (stream_sorted_deltas) {
         if (current_key_delta == std::numeric_limits<int64_t>::max() ||
             current_key_output_records ==
@@ -3309,11 +3377,13 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
     }
     if (!keep) {
       ++removed_records;
-      ProfileScope::Count("gc.records_dropped");
-      ProfileScope::Count("gc.dropped_encoded_bytes", internal_key.size() + input->value().size());
-      if (new_user_key && parsed.type == kTypeValueWithTTL) ProfileScope::Count("gc.dropped_expired_ttl");
-      else if (new_user_key && parsed.type == kTypeDeletion) ProfileScope::Count("gc.dropped_tombstone");
-      else ProfileScope::Count("gc.dropped_hidden_version");
+      if (profile_gc_records) {
+        ProfileScope::Count("gc.records_dropped");
+        ProfileScope::Count("gc.dropped_encoded_bytes", internal_key.size() + input->value().size());
+        if (new_user_key && parsed.type == kTypeValueWithTTL) ProfileScope::Count("gc.dropped_expired_ttl");
+        else if (new_user_key && parsed.type == kTypeDeletion) ProfileScope::Count("gc.dropped_tombstone");
+        else ProfileScope::Count("gc.dropped_hidden_version");
+      }
     }
     input->Next();
   }
@@ -3371,7 +3441,6 @@ Status DBImpl::RewriteBottomLevelRangeLocked(const Slice* begin,
     if (status.ok()) {
       ProfileScope::Count("gc.installed_input_sst_bytes", profiling_input_bytes);
       ProfileScope::Count("gc.installed_output_sst_bytes", output_meta.file_size);
-      ProfileScope::Count("gc.installed_removed_records", removed_records);
     }
   }
   if (output_meta.number != 0) {
@@ -3412,6 +3481,14 @@ void DBImpl::TEST_CompactRange(int level, const Slice* begin,
   }
 
   MutexLock l(&mutex_);
+  // With no pending producer or compaction, an empty range has no work to
+  // enqueue. Retain the normal wait path whenever an in-flight task could
+  // still install files into this level.
+  if (manual_compaction_ == nullptr && !background_compaction_scheduled_ &&
+      imm_ == nullptr &&
+      !versions_->current()->OverlapInLevel(level, begin, end)) {
+    return;
+  }
   while (!manual.done && !shutting_down_.load(std::memory_order_acquire) &&
          bg_error_.ok()) {
     if (manual_compaction_ == nullptr) {  // Idle
@@ -3916,14 +3993,41 @@ void DBImpl::BackgroundCompaction() {
   } else if (ttl_compaction_level_ >= 0) {
     const int level = ttl_compaction_level_;
     const std::string begin = ttl_compaction_begin_;
-    const std::string end = ttl_compaction_end_;
+    std::string end = ttl_compaction_end_;
     ttl_compaction_level_ = -1;
     ttl_compaction_begin_.clear();
     ttl_compaction_end_.clear();
     if (level == config::kNumLevels - 1) {
+      // Keep candidate scoring unchanged; batch safe adjacent files only when
+      // consuming the selected bottom-level job.
+      Version* current = versions_->current();
+      const auto& files = current->files(level);
+      auto next = std::lower_bound(files.begin(), files.end(), Slice(end),
+          [this](const FileMetaData* file, const Slice& key) {
+            return user_comparator()->Compare(file->largest.user_key(), key) < 0;
+          });
+      if (next != files.end()) ++next;
+      const uint64_t now = env_->NowMicros();
+      const uint64_t safe_time = snapshots_.oldest_read_time_micros(
+          full_gc_active_ ? std::min(now, full_gc_time_micros_) : now);
+      for (unsigned count = 1; next != files.end() && count < 16; ++next, ++count) {
+        FileMetaData* file = *next;
+        const Slice low = file->smallest.user_key();
+        const Slice high = file->largest.user_key();
+        bool overlaps = false;
+        for (int upper = 0; upper < level; ++upper) {
+          if (current->OverlapInLevel(upper, &low, &high)) { overlaps = true; break; }
+        }
+        if (overlaps) break;
+        TableInternalStats stats;
+        status = table_cache_->GetTTLStats(file->number, file->file_size, &stats);
+        if (!status.ok() || !stats.valid || stats.ttl_records == 0 ||
+            stats.min_expire_time_micros > safe_time) break;
+        end.assign(high.data(), high.size());
+      }
       const Slice begin_slice(begin);
       const Slice end_slice(end);
-      status = RewriteBottomLevelRangeLocked(&begin_slice, &end_slice);
+      if (status.ok()) status = RewriteBottomLevelRangeLocked(&begin_slice, &end_slice);
       ttl_bottom_rewrite = true;
       if (!status.ok()) RecordBackgroundError(status);
     } else {
@@ -3994,6 +4098,10 @@ void DBImpl::BackgroundCompaction() {
 }
 
 void DBImpl::CleanupCompaction(CompactionState* compact) {
+  if (compact->scanned_bottom_version != nullptr) {
+    compact->scanned_bottom_version->Unref();
+    compact->scanned_bottom_version = nullptr;
+  }
   mutex_.AssertHeld();
   if (compact->builder != nullptr) {
     // May happen if we get a shutdown call in the middle of compaction
@@ -4120,7 +4228,8 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
 
   // Identical input/output record counts do not change any statistic. These
   // jobs can install without blocking foreground writes.
-  if (compact->metadata_delta_runs.empty()) {
+  if (compact->metadata_delta_runs.empty() &&
+      compact->sorted_delta_buffer.empty()) {
     add_primary_file_edits();
     Status s = LogAndApply(edit);
     if (s.ok())
@@ -4139,18 +4248,65 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
   uint64_t positive_records = 0;
   uint64_t negative_records = 0;
   uint64_t removed_distinct = 0;
-  Iterator* deltas = metadata_index_->NewIterator(
-      compact->metadata_delta_runs, false);
-  deltas->SeekToFirst();
+  const bool active_has_records = mem_ != nullptr && mem_->HasEntries();
+  const bool immutable_has_records = imm_ != nullptr && imm_->HasEntries();
+  const bool use_scanned_bottom = compact->scanned_bottom_version != nullptr &&
+      compact->scanned_bottom_version == versions_->current();
+  std::vector<FileMetaData*> other_bottom_files;
+  if (use_scanned_bottom) {
+    versions_->current()->CollectFilesExcept(compact->scanned_bottom_files,
+                                             &other_bottom_files);
+    const Comparator* comparator = user_comparator();
+    other_bottom_files.erase(
+        std::remove_if(other_bottom_files.begin(), other_bottom_files.end(),
+                       [&](const FileMetaData* file) {
+                         return comparator->Compare(
+                                    file->largest.user_key(),
+                                    compact->scanned_bottom_smallest) < 0 ||
+                                comparator->Compare(
+                                    file->smallest.user_key(),
+                                    compact->scanned_bottom_largest) > 0;
+                       }),
+        other_bottom_files.end());
+  }
   Status status;
-  while (deltas->Valid() && status.ok()) {
-    const std::string key = deltas->key().ToString();
+  const bool buffered_deltas = !compact->sorted_delta_buffer.empty();
+  Iterator* deltas = buffered_deltas ? nullptr : metadata_index_->NewIterator(
+      compact->metadata_delta_runs, false);
+  Slice remaining_deltas(compact->sorted_delta_buffer);
+  Slice buffered_key, buffered_value;
+  bool buffered_valid = false;
+  auto advance_buffered = [&]() {
+    buffered_valid = false;
+    if (remaining_deltas.empty()) return;
+    if (!GetLengthPrefixedSlice(&remaining_deltas, &buffered_key) ||
+        remaining_deltas.size() < 16) {
+      status = Status::Corruption("invalid buffered compaction delta");
+      return;
+    }
+    buffered_value = Slice(remaining_deltas.data(), 16);
+    remaining_deltas.remove_prefix(16);
+    buffered_valid = true;
+  };
+  if (buffered_deltas) advance_buffered();
+  else deltas->SeekToFirst();
+  auto valid_delta = [&]() { return buffered_deltas ? buffered_valid : deltas->Valid(); };
+  auto delta_key = [&]() { return buffered_deltas ? buffered_key : deltas->key(); };
+  auto delta_value = [&]() { return buffered_deltas ? buffered_value : deltas->value(); };
+  auto next_delta = [&]() { if (buffered_deltas) advance_buffered(); else deltas->Next(); };
+  while (valid_delta() && status.ok()) {
+    std::string owned_key;
+    Slice key = delta_key();
+    if (!buffered_deltas) {
+      owned_key.assign(key.data(), key.size());
+      key = Slice(owned_key);
+    }
     int64_t net_records = 0;
     uint64_t output_records = 0;
-    while (deltas->Valid() && deltas->key() == Slice(key)) {
+    while (valid_delta() && delta_key() == key) {
       int64_t delta = 0;
       uint64_t output = 0;
-      if (!DecodeMetadataDelta(deltas->value(), &delta, &output) ||
+      if (!DecodeMetadataDelta(delta_value(), &delta, &output) ||
           (delta > 0 && net_records >
                             std::numeric_limits<int64_t>::max() - delta) ||
           (delta < 0 && net_records <
@@ -4161,7 +4317,7 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
       }
       net_records += delta;
       output_records += output;
-      deltas->Next();
+      next_delta();
     }
     if (!status.ok() || net_records == 0) continue;
 
@@ -4188,7 +4344,24 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
       // to zero, so probe the current primary state for those keys only.
       if (output_records == 0) {
         uint64_t before = 0;
-        status = CountPrimaryRecordsForKey(key, &before);
+        if (use_scanned_bottom) {
+          // The negative delta is the exact number scanned in the input.
+          // Search all other sources, including writes committed since scan.
+          const uint64_t active = active_has_records ? mem_->CountUserKeyRecords(key) : 0;
+          const uint64_t frozen = immutable_has_records ? imm_->CountUserKeyRecords(key) : 0;
+          uint64_t other_tables = 0;
+          status = versions_->current()->CountUserKeyRecordsInFiles(
+              key, other_bottom_files, &other_tables);
+          if (status.ok() &&
+              (UINT64_MAX - amount < active ||
+               UINT64_MAX - (amount + active) < frozen ||
+               UINT64_MAX - (amount + active + frozen) < other_tables)) {
+            status = Status::Corruption("primary compaction count overflow");
+          }
+          if (status.ok()) before = amount + active + frozen + other_tables;
+        } else {
+          status = CountPrimaryRecordsForKey(key, &before);
+        }
         if (!status.ok()) break;
         if (before < amount) {
           status = Status::Corruption(
@@ -4205,7 +4378,7 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
       }
     }
   }
-  if (status.ok()) status = deltas->status();
+  if (status.ok() && deltas != nullptr) status = deltas->status();
   delete deltas;
 
   uint64_t next_total = metadata_total_entries_;
@@ -5638,6 +5811,10 @@ Status DBImpl::MakeRoomForWrite(bool force) {
     } else if (!bg_error_.ok()) {
       // Yield previous error
       s = bg_error_;
+      break;
+    } else if (force && imm_ == nullptr && !mem_->HasEntries()) {
+      // A queued force request is already ordered after preceding writes.
+      // There is no data to flush and no immutable table to wait for.
       break;
     } else if (allow_delay && versions_->NumLevelFiles(0) >=
                                   config::kL0_SlowdownWritesTrigger) {

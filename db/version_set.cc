@@ -228,6 +228,12 @@ Iterator* Version::NewConcatenatingIterator(const ReadOptions& options,
       vset_->table_cache_, options);
 }
 
+Iterator* Version::NewFileListIterator(
+    const ReadOptions& options, const std::vector<FileMetaData*>* files) const {
+  return NewTwoLevelIterator(new LevelFileNumIterator(vset_->icmp_, files),
+                             &GetFileIterator, vset_->table_cache_, options);
+}
+
 void Version::AddIterators(const ReadOptions& options,
                            std::vector<Iterator*>* iters) {
   // Merge all level zero files together since they may overlap
@@ -457,6 +463,35 @@ Status Version::CountUserKeyRecords(const Slice& user_key,
       }
       *count += file_count;
     }
+  }
+  return Status::OK();
+}
+
+void Version::CollectFilesExcept(const std::set<uint64_t>& exclude,
+                                 std::vector<FileMetaData*>* files) const {
+  files->clear();
+  for (int level = 0; level < config::kNumLevels; ++level) {
+    for (FileMetaData* file : files_[level]) {
+      if (exclude.find(file->number) == exclude.end()) files->push_back(file);
+    }
+  }
+}
+
+Status Version::CountUserKeyRecordsInFiles(
+    const Slice& user_key, const std::vector<FileMetaData*>& files,
+    uint64_t* count) const {
+  *count = 0;
+  const Comparator* comparator = vset_->icmp_.user_comparator();
+  for (FileMetaData* file : files) {
+    if (comparator->Compare(user_key, file->smallest.user_key()) < 0 ||
+        comparator->Compare(user_key, file->largest.user_key()) > 0) continue;
+    uint64_t file_count = 0;
+    Status s = vset_->table_cache_->CountUserKeyRecords(
+        file->number, file->file_size, user_key, &file_count);
+    if (!s.ok()) return s;
+    if (std::numeric_limits<uint64_t>::max() - *count < file_count)
+      return Status::Corruption("user key record count overflow");
+    *count += file_count;
   }
   return Status::OK();
 }

@@ -69,6 +69,11 @@ class Version {
   // REQUIRES: This version has been saved (see VersionSet::SaveTo)
   void AddIterators(const ReadOptions&, std::vector<Iterator*>* iters);
 
+  // The caller keeps the sorted, non-overlapping file list alive until the
+  // returned iterator is destroyed.
+  Iterator* NewFileListIterator(const ReadOptions&,
+                                const std::vector<FileMetaData*>* files) const;
+
   // Lookup the value for key.  If found, store it in *val and
   // return OK.  Else return a non-OK status.  Fills *stats.
   // REQUIRES: lock is not held
@@ -81,6 +86,13 @@ class Version {
   Status CountUserKeyRecords(const Slice& user_key,
                              const std::set<uint64_t>* exclude,
                              uint64_t* count) const;
+
+  // The returned file pointers remain valid while this Version is pinned.
+  void CollectFilesExcept(const std::set<uint64_t>& exclude,
+                          std::vector<FileMetaData*>* files) const;
+  Status CountUserKeyRecordsInFiles(const Slice& user_key,
+                                   const std::vector<FileMetaData*>& files,
+                                   uint64_t* count) const;
 
   // Adds "stats" into the current state.  Returns true if a new
   // compaction may need to be triggered, false otherwise.

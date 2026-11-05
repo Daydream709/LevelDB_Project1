@@ -76,7 +76,8 @@ static inline const char* DecodeEntry(const char* p, const char* limit,
     if ((p = GetVarint32Ptr(p, limit, value_length)) == nullptr) return nullptr;
   }
 
-  if (static_cast<uint32_t>(limit - p) < (*non_shared + *value_length)) {
+  if (static_cast<uint64_t>(limit - p) <
+      static_cast<uint64_t>(*non_shared) + *value_length) {
     return nullptr;
   }
   return p;
@@ -90,15 +91,31 @@ class Block::Iter : public Iterator {
    public:
     void clear() {
       if (large_) overflow_.clear();
+      view_ = nullptr;
       size_ = 0;
     }
     size_t size() const { return size_; }
+    void reference(const char* data, size_t size) {
+      view_ = data;
+      size_ = size;
+    }
     void resize(size_t size) {
       assert(size <= size_);
-      if (large_) overflow_.resize(size);
+      if (view_ != nullptr) {
+        if (!large_ && size <= sizeof(inline_)) {
+          std::memcpy(inline_, view_, size);
+        } else {
+          overflow_.assign(view_, size);
+          large_ = true;
+        }
+        view_ = nullptr;
+      } else if (large_) {
+        overflow_.resize(size);
+      }
       size_ = size;
     }
     void append(const char* data, size_t size) {
+      assert(view_ == nullptr);
       if (large_) {
         overflow_.append(data, size);
       } else if (size <= sizeof(inline_) - size_) {
@@ -111,7 +128,7 @@ class Block::Iter : public Iterator {
       size_ += size;
     }
     Slice slice() const {
-      return Slice(large_ ? overflow_.data() : inline_, size_);
+      return Slice(view_ != nullptr ? view_ : (large_ ? overflow_.data() : inline_), size_);
     }
 
    private:
@@ -119,6 +136,7 @@ class Block::Iter : public Iterator {
     std::string overflow_;
     size_t size_ = 0;
     bool large_ = false;
+    const char* view_ = nullptr;
   };
 
   const Comparator* const comparator_;
@@ -333,8 +351,12 @@ class Block::Iter : public Iterator {
       CorruptionError();
       return false;
     } else {
-      key_.resize(shared);
-      key_.append(p, non_shared);
+      if (shared == 0) {
+        key_.reference(p, non_shared);
+      } else {
+        key_.resize(shared);
+        key_.append(p, non_shared);
+      }
       value_ = Slice(p + non_shared, value_length);
       while (restart_index_ + 1 < num_restarts_ &&
              GetRestartPoint(restart_index_ + 1) < current_) {
